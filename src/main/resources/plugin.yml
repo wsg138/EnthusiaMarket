@@ -1,0 +1,13 @@
+name: EnthusiaMarket
+version: ${version}
+api-version: '1.21'
+load: STARTUP
+main: net.badgersmc.em.EnthusiaMarket
+depend: [LumaGuilds, WorldGuard, Vault]
+softdepend: [floodgate, PlaceholderAPI]
+
+commands:
+  enthusiamarket:
+    description: EnthusiaMarket administrative commands
+    usage: /enthusiamarket <subcommand>
+    aliases: [em]

@@ -1,0 +1,12 @@
+market:
+  world: "world"
+  region-prefix: "stall_"
+database:
+  type: sqlite        # sqlite | mariadb
+  sqlite-file: "enthusiamarket.db"
+  mariadb:
+    host: localhost
+    port: 3306
+    database: enthusiamarket
+    username: em
+    password: ""
