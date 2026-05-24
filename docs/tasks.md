@@ -275,7 +275,7 @@ References: REQ-012 through REQ-023
   Description: Failing test: right-click registered shop sign → PurchaseMenu opens showing item, price, stock. Implement PurchaseMenu (ChestGui) + ShopInteractListener routing.
   Evidence: ` `
 
-- [ ] **TDD-53** — Real inventory trade from container
+- [x] **TDD-53** — Real inventory trade from container
   References: REQ-013, REQ-017
   Tag: TDD
   Description: Failing test: BUY/SELL trade takes item from container inventory (not virtual), updates container on success. Implement ShopTradeService replacement using container items.
