@@ -1,13 +1,10 @@
 package net.badgersmc.em.application
 
 import net.badgersmc.em.domain.ports.RegionProvider
-import net.badgersmc.em.domain.stall.OwnerRef
-import net.badgersmc.em.domain.stall.RentTerms
-import net.badgersmc.em.domain.stall.Stall
-import net.badgersmc.em.domain.stall.StallId
-import net.badgersmc.em.domain.stall.StallRepository
-import net.badgersmc.em.domain.stall.StallState
+import net.badgersmc.em.domain.stall.*
+import net.badgersmc.nexus.annotations.Service
 
+@Service
 class ImportStallsService(
     private val regions: RegionProvider,
     private val stalls: StallRepository,

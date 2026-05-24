@@ -1,8 +1,10 @@
 package net.badgersmc.em.infrastructure.lumaguilds
 
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.nexus.annotations.Component
 import java.util.UUID
 
+@Component
 class LumaGuildsGuildProvider : GuildProvider {
     private val dissolveHandlers = mutableListOf<(String) -> Unit>()
 

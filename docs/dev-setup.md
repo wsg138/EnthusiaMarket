@@ -25,9 +25,18 @@ Gradle wrapper bundles its own runtime — do not install Gradle globally.
 ./gradlew shadowJar
 ```
 
-Produces `build/libs/EnthusiaMarket-0.1.0.jar` (shaded; ACF, IDB, Koin relocated under `net.badgersmc.em.libs.*`).
+Produces `build/libs/EnthusiaMarket-0.1.0.jar` (shaded; Nexus + ClassGraph relocated under `net.badgersmc.em.libs.nexus.*`).
 
 `./gradlew build` runs tests then shadowJar.
+
+## Prerequisites
+
+Before building, publish Nexus to mavenLocal:
+
+```bash
+cd /opt/data/nexus
+./gradlew :nexus-core:publishToMavenLocal :nexus-paper:publishToMavenLocal --no-daemon
+```
 
 ## Tests
 
@@ -91,7 +100,10 @@ database:
 
 ## Conventions
 
-- Package layout: `domain/`, `application/`, `infrastructure/`, `di/`. Bukkit / framework imports live only under `infrastructure/`, `di/`, and `EnthusiaMarket.kt`.
+- **DI framework:** Nexus (`@Service`, `@Repository`, `@Component`) — constructor injection with classpath scanning. No manual module wiring.
+- **Config:** Nexus `@ConfigFile` annotated classes in `src/main/kotlin/net/badgersmc/em/config/`. Generated as `enthusiamarket.yaml`.
+- **Commands:** Nexus Paper `@Command` / `@Subcommand` with `@Context`, `@Permission`, `@PlayerOnly` annotations.
+- Package layout: `domain/`, `application/`, `infrastructure/`, `config/`. Bukkit / framework imports live only under `infrastructure/`, `config/`, and `EnthusiaMarket.kt`.
 - Money: integer minor units everywhere; `EconomyProvider` boundary handles the Vault `double` rounding.
 - Times: `java.time.Instant` in domain, epoch millis on the wire / in DB.
 - Tests for domain logic use plain JUnit + MockK; Bukkit-touching tests use MockBukkit.

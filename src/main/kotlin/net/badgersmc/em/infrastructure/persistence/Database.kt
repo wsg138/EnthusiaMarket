@@ -2,27 +2,29 @@ package net.badgersmc.em.infrastructure.persistence
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import org.bukkit.configuration.Configuration
 import java.io.File
 
 object Database {
-    fun open(config: Configuration, dataFolder: File): HikariDataSource {
-        val type = config.getString("database.type", "sqlite")!!
+    fun open(
+        type: String = "sqlite",
+        sqliteFile: String = "enthusiamarket.db",
+        dataFolder: File,
+        mariadbHost: String = "localhost",
+        mariadbPort: Int = 3306,
+        mariadbDatabase: String = "enthusiamarket",
+        mariadbUsername: String = "em",
+        mariadbPassword: String = ""
+    ): HikariDataSource {
         val hc = HikariConfig()
         when (type) {
             "sqlite" -> {
-                val file = config.getString("database.sqlite-file", "enthusiamarket.db")!!
-                hc.jdbcUrl = "jdbc:sqlite:${File(dataFolder, file).absolutePath}"
+                hc.jdbcUrl = "jdbc:sqlite:${File(dataFolder, sqliteFile).absolutePath}"
                 hc.maximumPoolSize = 1
             }
             "mariadb" -> {
-                val host = config.getString("database.mariadb.host")
-                val port = config.getInt("database.mariadb.port", 3306)
-                val db = config.getString("database.mariadb.database")
-                hc.jdbcUrl = "jdbc:mariadb://$host:$port/$db"
-                hc.username = config.getString("database.mariadb.username")
-                hc.password = config.getString("database.mariadb.password")
-                hc.maximumPoolSize = 10
+                hc.jdbcUrl = "jdbc:mariadb://$mariadbHost:$mariadbPort/$mariadbDatabase"
+                hc.username = mariadbUsername
+                hc.password = mariadbPassword
             }
             else -> error("Unknown database.type: $type")
         }

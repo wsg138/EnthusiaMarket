@@ -2,8 +2,10 @@ package net.badgersmc.em.infrastructure.worldguard
 
 import com.sk89q.worldguard.WorldGuard
 import net.badgersmc.em.domain.ports.RegionProvider
+import net.badgersmc.nexus.annotations.Component
 import org.bukkit.Bukkit
 
+@Component
 class WorldGuardRegionProvider : RegionProvider {
 
     override fun listByPrefix(world: String, prefix: String): List<RegionProvider.RegionRef> {

@@ -1,10 +1,12 @@
 # Config — EnthusiaMarket
 
 **Date:** 2026-05-24
-**Status:** Spec (canonical; `src/main/resources/config.yml` extends to match as features land)
+**Status:** Spec (canonical; the `@ConfigFile("enthusiamarket")` annotated `EnthusiaMarketConfig` class in `src/main/kotlin/net/badgersmc/em/config/` generates `enthusiamarket.yaml` with documented defaults)
 **Owner:** BadgersMC
 
-Defines every config key the plugin reads, its type, default, source REQ, and which component consumes it. `INFRA-03` (M0) extends the shipped `config.yml` to cover all keys below.
+Defines every config key the plugin reads, its type, default, source REQ, and which component consumes it. The Nexus `ConfigLoader` generates the YAML on first run; values are edited in `plugins/EnthusiaMarket/enthusiamarket.yaml`.
+
+**Note:** The old `config.yml` (Bukkit Configuration API) has been replaced by the Nexus `@ConfigFile` system. The schema below is authoritative — the Nexus `ConfigLoader` uses reflection on the config class fields, so field names map directly to YAML keys. See `src/main/kotlin/net/badgersmc/em/config/EnthusiaMarketConfig.kt` for the canonical field layout.
 
 ## Conventions
 

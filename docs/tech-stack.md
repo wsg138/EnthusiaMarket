@@ -11,10 +11,11 @@ EnthusiaMarket is a Paper plugin (shaded JAR, target `plugins/`) that turns Worl
 ## 2. Runtimes & languages
 
 | Layer | Language / Tool | Min version | Reason |
-|---|---|---|---|
+|---|---|---|---|---|
 | Plugin | Kotlin | 2.0.0 | Concise domain model, null safety, coroutine-ready |
-| Build tool | Gradle (Kotlin DSL) + Shadow | 8.x / 8.3.6 | Standard for Paper plugins; Shadow relocates ACF/IDB/Koin |
+| Build tool | Gradle (Kotlin DSL) + Shadow | 8.x / 8.3.6 | Standard for Paper plugins; Shadow relocates Nexus + ClassGraph |
 | Test framework | JUnit 5 + MockK + MockBukkit | 5.8.1 / 1.13.11 / 4.107.0 | Idiomatic Kotlin tests + Bukkit-API simulation |
+| DI + Config + Commands | **Nexus** (nexus-core + nexus-paper) | 1.6.0 | Internal BadgersMC framework: classpath-scanning DI, @ConfigFile YAML config, Paper Brigadier @Command/@Subcommand |
 | JVM | JDK 21 | — | Paper 1.21.x minimum |
 | CI runner | GitHub Actions (planned) | — | Single workflow per project standard |
 
@@ -26,18 +27,17 @@ Top-level direct dependencies with pinned versions. Transitive pins live in the 
 
 | Package | Version | Why |
 |---|---|---|
-| io.papermcc.paper:paper-api | 1.21.11-R0.1-SNAPSHOT | Server API (compileOnly) |
+| io.papermc.paper:paper-api | 1.21.11-R0.1-SNAPSHOT | Server API (compileOnly) |
 | com.github.MilkBowl:VaultAPI | 1.7 | Economy abstraction (compileOnly) |
 | com.sk89q.worldguard:worldguard-bukkit | 7.0.9 | Region source for stalls (compileOnly) |
 | org.geysermc.floodgate:api | 2.2.5-SNAPSHOT | Detect Bedrock players (compileOnly) |
 | org.geysermc.cumulus:cumulus | 2.0.0-SNAPSHOT | Bedrock UI forms (compileOnly) |
-| co.aikar:acf-paper | 0.5.1-SNAPSHOT | Command framework (shaded, relocated) |
-| co.aikar:idb-core | 1.0.0-SNAPSHOT | Lightweight JDBC helper (shaded, relocated) |
+| net.badgersmc:nexus-core | 1.6.0 | DI container, @ConfigFile YAML config, coroutines (shaded, relocated) |
+| net.badgersmc:nexus-paper | 1.6.0 | Paper Brigadier @Command/@Subcommand system, BukkitDispatcher (shaded, relocated) |
 | com.zaxxer:HikariCP | 5.1.0 | Connection pool |
 | org.xerial:sqlite-jdbc | 3.45.1.0 | Default embedded DB |
 | org.mariadb.jdbc:mariadb-java-client | 3.3.2 | Production DB option |
-| io.insert-koin:koin-core | 4.0.2 | DI container (shaded, relocated) |
-| org.slf4j:slf4j-nop | 2.0.13 | Silence Koin SLF4J binding |
+| org.slf4j:slf4j-nop | 2.0.13 | Silence Nexus SLF4J binding |
 
 ## 4. Pinned external schemas
 
