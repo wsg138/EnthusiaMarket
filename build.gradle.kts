@@ -52,6 +52,10 @@ dependencies {
         exclude(group = "org.bukkit", module = "bukkit")
     }
     testImplementation("com.lemonappdev:konsist:0.17.3")
+
+    // LumaGuilds API for real GuildProvider implementation
+    compileOnly(files("/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"))
+    testImplementation(files("/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"))
 }
 
 kotlin {
