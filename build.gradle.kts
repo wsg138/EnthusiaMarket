@@ -44,6 +44,7 @@ dependencies {
     testImplementation("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }
+    testImplementation("com.lemonappdev:konsist:0.17.3")
 }
 
 kotlin {

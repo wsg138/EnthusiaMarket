@@ -22,11 +22,18 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
   Description: Create `.github/workflows/build.yml` running `./gradlew test shadowJar` on push and PR for JDK 21.
   Evidence: ` `
 
-- [ ] **INFRA-02** — Wire Konsist dependency for architecture tests
+- [x] **INFRA-02** — Wire Konsist dependency for architecture tests
   References: REQ-101, implementation.md §2
   Tag: INFRA
-  Description: Add `com.lemonappdev:konsist` testImplementation to `build.gradle.kts`. Confirm `src/test/kotlin/net/badgersmc/em/architecture/LayerRulesTest.kt` compiles and passes.
-  Evidence: ` `
+  Description: Add `com.lemonappdev:konsist:0.17.3` testImplementation to `build.gradle.kts`. Confirm `src/test/kotlin/architecture/LayerRulesTest.kt` compiles and passes.
+  Evidence:
+  ```
+  context7:/lemonappdev/konsist-documentation (version + setup)
+  jar:com.lemonappdev:konsist:0.17.3 → com/lemonappdev/konsist/api/{Konsist,architecture/{Layer,KoArchitectureCreator}}.class (verified package + signatures)
+  build.gradle.kts:46 (testImplementation added)
+  src/test/kotlin/architecture/LayerRulesTest.kt (corrected import: com.lemonappdev.konsist.api.architecture.KoArchitectureCreator.assertArchitecture)
+  ./gradlew test --tests "net.badgersmc.em.architecture.LayerRulesTest" → BUILD SUCCESSFUL
+  ```
 
 ### DOC tasks
 
