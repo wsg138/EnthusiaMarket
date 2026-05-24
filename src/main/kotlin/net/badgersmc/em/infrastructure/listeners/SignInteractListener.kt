@@ -5,7 +5,7 @@ import net.badgersmc.em.domain.shop.SignRepository
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
-import org.bukkit.Material
+import org.bukkit.block.Block
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
@@ -36,7 +36,7 @@ open class SignInteractListener(
         if (event.action != Action.RIGHT_CLICK_BLOCK) return
 
         val block = event.clickedBlock ?: return
-        if (!isSign(block.type)) return
+        if (!isSign(block)) return
 
         // 2. Look up sign by location
         val loc = block.location
@@ -56,8 +56,8 @@ open class SignInteractListener(
         event.player.sendMessage(message)
     }
 
-    private fun isSign(type: Material): Boolean {
-        return type.name.endsWith("_SIGN") || type.name.endsWith("_WALL_SIGN")
+    private fun isSign(block: org.bukkit.block.Block): Boolean {
+        return block.state is org.bukkit.block.Sign
     }
 
     private fun serializeLocation(loc: org.bukkit.Location): String =

@@ -22,8 +22,9 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
     }
 
     override fun findOpenByStall(stallId: StallId): Auction? =
-        queryOne("SELECT * FROM auctions WHERE stall_id = ? AND state = 'OPEN'") {
+        queryOne("SELECT * FROM auctions WHERE stall_id = ? AND state = 'OPEN' AND end_at > ?") {
             setString(1, stallId.value)
+            setLong(2, Instant.now().toEpochMilli())
         }
 
     override fun allOpen(): List<Auction> =
@@ -48,23 +49,38 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
     override fun save(auction: Auction) {
         ds.connection.use { conn ->
             conn.prepareStatement(
-                """INSERT OR REPLACE INTO auctions
-                   (id, stall_id, state, start_at, end_at, starting_bid,
-                    high_bid_amount, high_bidder, high_placed_at, anti_snipe_sec)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                """UPDATE auctions
+                   SET state = ?, start_at = ?, end_at = ?, starting_bid = ?,
+                       high_bid_amount = ?, high_bidder = ?, high_placed_at = ?,
+                       anti_snipe_sec = ?
+                   WHERE id = ?"""
             ).use { ps ->
-                bind(ps, auction)
+                ps.setString(1, auction.state.name)
+                ps.setLong(2, auction.startAt.toEpochMilli())
+                ps.setLong(3, auction.endAt.toEpochMilli())
+                ps.setLong(4, auction.startingBid)
+                if (auction.highBid != null) {
+                    ps.setLong(5, auction.highBid.amount)
+                    ps.setString(6, auction.highBid.bidder.toString())
+                    ps.setLong(7, auction.highBid.placedAt.toEpochMilli())
+                } else {
+                    ps.setNull(5, java.sql.Types.INTEGER)
+                    ps.setNull(6, java.sql.Types.VARCHAR)
+                    ps.setNull(7, java.sql.Types.INTEGER)
+                }
+                ps.setLong(8, auction.antiSnipeWindow.toSeconds())
+                ps.setString(9, auction.id.value)
                 ps.executeUpdate()
             }
         }
     }
 
-    fun findExpired(): List<Auction> =
+    override fun findExpired(): List<Auction> =
         queryMany("SELECT * FROM auctions WHERE state = 'OPEN' AND end_at <= ?") {
             setLong(1, Instant.now().toEpochMilli())
         }
 
-    fun delete(id: AuctionId) {
+    override fun delete(id: AuctionId) {
         ds.connection.use { conn ->
             conn.prepareStatement("DELETE FROM auctions WHERE id = ?").use { ps ->
                 ps.setString(1, id.value)

@@ -72,7 +72,7 @@ open class SignPlaceListener(
         // 5. Apply sign text formatting
         val headerColor = if (direction == SignDirection.BUY) NamedTextColor.GOLD else NamedTextColor.AQUA
         event.line(0, AdventureComponent.text("[${direction.name}]", headerColor))
-        event.line(3, AdventureComponent.text("\u00A76[Shop]", NamedTextColor.GOLD))
+        event.line(3, AdventureComponent.text("[Shop]", NamedTextColor.GOLD))
     }
 
     /**
