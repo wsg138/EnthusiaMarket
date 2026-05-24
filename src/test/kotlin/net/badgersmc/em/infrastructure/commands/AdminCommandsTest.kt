@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.commands
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.ImportStallsService
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.stall.OwnerRef
@@ -27,7 +28,7 @@ class AdminCommandsTest {
         val repo = mockk<StallRepository>()
         every { service.import("world", "stall_") } returns ImportStallsService.Result(3, 1)
 
-        val cmd = AdminCommands(service, repo, config)
+        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true))
         cmd.import(sender)
 
         verify { service.import("world", "stall_") }
@@ -42,7 +43,7 @@ class AdminCommandsTest {
                   null, 0L, RentTerms.formula(1.0))
         )
 
-        val cmd = AdminCommands(service, repo, config)
+        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true))
         cmd.list(sender)
 
         verify { sender.sendMessage(match<String> { it.contains("s1") && it.contains("UNOWNED") }) }
