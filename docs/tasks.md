@@ -249,7 +249,7 @@ References: REQ-012 through REQ-023
 
 ### INFRA tasks
 
-- [ ] **INFRA-10** — Add IFramework + Cumulus compile dependencies
+- [x] **INFRA-10** — Add IFramework + Cumulus compile dependencies
   References: REQ-014, REQ-011
   Tag: INFRA
   Description: Add `com.github.stefvanschie.inventoryframework:IF:0.11.6` and `org.geysermc.cumulus:cumulus` as compileOnly deps. Create `Menu` interface + `MenuFactory` routing Java vs Bedrock.
@@ -257,13 +257,13 @@ References: REQ-012 through REQ-023
 
 ### TDD tasks
 
-- [ ] **TDD-50** — Create shop_items db migration + ShopRepositorySql
+- [x] **TDD-50** — Create shop_items db migration + ShopRepositorySql
   References: REQ-020, docs/tech-stack.md §3
   Tag: TDD
   Description: Failing test for shop_items table round-trip: upsert + findById with sign pos, container pos, owner, sell/cost items (ItemStack serialized), trusted set, hopper flags, frozen flag. Implement V004 migration + ShopRepositorySql.
   Evidence: ` `
 
-- [ ] **TDD-51** — Container-linked sign creation via left-click+sneak
+- [x] **TDD-51** — Container-linked sign creation via left-click+sneak
   References: REQ-012
   Tag: TDD
   Description: Failing test: player left-clicks wall sign attached to container while sneaking inside owned stall → CreateShopMenu opens. Implement ShopCreateListener. Red before listener exists.
