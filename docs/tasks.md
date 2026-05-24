@@ -217,25 +217,25 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
 
 ### TDD tasks
 
-- [ ] **TDD-40** — Guild stall authorization
+- [x] **TDD-40** — Guild stall authorization
   References: REQ-010
   Tag: TDD
   Description: Failing test: guild member with required rank passes `Stall.canManage(actor)`; lower rank fails. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-41** — Replace LumaGuilds stub with real adapter
+- [x] **TDD-41** — Replace LumaGuilds stub with real adapter
   References: REQ-010, implementation.md §3.4
   Tag: TDD
   Description: Implement `LumaGuildsGuildProvider` against actual LumaGuilds API. Green.
   Evidence: ` `
 
-- [ ] **TDD-42** — Bedrock player gets Cumulus form
+- [x] **TDD-42** — Bedrock player gets Cumulus form
   References: REQ-011
   Tag: TDD
   Description: Failing test: stall menu dispatch for Bedrock-tagged UUID invokes Cumulus form sender, not Bukkit GUI. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-43** — Implement Bedrock dispatcher
+- [x] **TDD-43** — Implement Bedrock dispatcher
   References: REQ-011
   Tag: TDD
   Description: Add `infrastructure/bedrock/UiDispatcher` checking `FloodgateApi`. Green.
