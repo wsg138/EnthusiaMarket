@@ -2,6 +2,7 @@ package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.application.ShopTradeService
 import net.badgersmc.em.domain.shop.SignRepository
+import net.badgersmc.em.infrastructure.vault.VaultHealth
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -21,11 +22,16 @@ import org.bukkit.plugin.java.JavaPlugin
 @Component
 open class SignInteractListener(
     private val signRepository: SignRepository,
-    private val shopTradeService: ShopTradeService
+    private val shopTradeService: ShopTradeService,
+    private val vaultHealth: VaultHealth
 ) : Listener {
 
     @PostConstruct
     fun register() {
+        if (!vaultHealth.isAvailable) {
+            // Vault absent — shop signs disabled (REQ-041)
+            return
+        }
         val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
             ?: return
         Bukkit.getPluginManager().registerEvents(this, plugin)

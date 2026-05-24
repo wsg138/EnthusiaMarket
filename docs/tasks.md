@@ -139,13 +139,13 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
   Description: Add default/grace logic to `RentCollectionService` and `Stall`. Green.
   Evidence: ` `
 
-- [ ] **TDD-26** — Disable services when Vault missing
+- [x] **TDD-26** — Disable services when Vault missing
   References: REQ-041
   Tag: TDD
   Description: Failing test: enabling plugin with no Vault provider skips scheduler registration and logs single error. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-27** — Implement Vault-absent degradation
+- [x] **TDD-27** — Implement Vault-absent degradation
   References: REQ-041
   Tag: TDD
   Description: Guard rent/auction/sign wiring in `EnthusiaMarket.onEnable`. Green.

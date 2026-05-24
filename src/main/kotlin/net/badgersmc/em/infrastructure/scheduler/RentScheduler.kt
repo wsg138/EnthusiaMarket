@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.scheduler
 
 import net.badgersmc.em.application.RentCollectionService
+import net.badgersmc.em.infrastructure.vault.VaultHealth
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.plugin.Plugin
@@ -17,11 +18,16 @@ import java.util.logging.Level
 @Component
 class RentScheduler(
     private val plugin: Plugin,
-    private val rentCollectionService: RentCollectionService
+    private val rentCollectionService: RentCollectionService,
+    private val vaultHealth: VaultHealth
 ) {
 
     @PostConstruct
     fun start() {
+        if (!vaultHealth.isAvailable) {
+            plugin.logger.warning("Vault not available — rent collection disabled")
+            return
+        }
         object : BukkitRunnable() {
             override fun run() {
                 try {

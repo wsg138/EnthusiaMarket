@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.scheduler
 
 import net.badgersmc.em.application.AuctionLifecycleService
+import net.badgersmc.em.infrastructure.vault.VaultHealth
 import net.badgersmc.nexus.annotations.Component
 import org.bukkit.plugin.Plugin
 import org.bukkit.scheduler.BukkitRunnable
@@ -16,11 +17,16 @@ import net.badgersmc.nexus.annotations.PostConstruct
 @Component
 class AuctionScheduler(
     private val plugin: Plugin,
-    private val auctionLifecycleService: AuctionLifecycleService
+    private val auctionLifecycleService: AuctionLifecycleService,
+    private val vaultHealth: VaultHealth
 ) {
 
     @PostConstruct
     fun start() {
+        if (!vaultHealth.isAvailable) {
+            plugin.logger.warning("Vault not available — auction settlement disabled")
+            return
+        }
         object : BukkitRunnable() {
             override fun run() {
                 try {
