@@ -331,51 +331,51 @@ References: REQ-024 through REQ-027
 
 ### TDD tasks
 
-- [ ] **TDD-70** — Add guild_id + creator_id to shop_items (V005 migration)
+- [x] **TDD-70** — Add guild_id + creator_id to shop_items (V005 migration)
   References: REQ-024, docs/db-schema.md
   Tag: TDD
   Description: Failing test: V005 migration adds guild_id (VARCHAR(36), nullable) and creator_id (VARCHAR(36), nullable) columns to shop_items. ShopRepositorySql.findById returns Shop with guildId/creatorId populated. Confirm red.
-  Evidence: ` `
+  Evidence: `V005__shop_guild.sql created, Shop.guildId/creatorId added, all 235 tests pass`
 
-- [ ] **TDD-71** — ShopRepositorySql guild queries
+- [x] **TDD-71** — ShopRepositorySql guild queries
   References: REQ-024
   Tag: TDD
   Description: Failing test: `findByGuildId(guildId)` returns all shops owned by a guild; `setGuildOwnership(shopId, guildId, creatorId)` updates guild_id and creator_id; `removeGuildOwnership(shopId)` clears them. Confirm red.
-  Evidence: ` `
+  Evidence: `ShopRepository + ShopRepositorySql extended, 3 tests added, all pass`
 
-- [ ] **TDD-72** — Fire ShopCreatedEvent and ShopDeletedEvent
+- [x] **TDD-72** — Fire ShopCreatedEvent and ShopDeletedEvent
   References: REQ-026
   Tag: TDD
   Description: Failing test: ShopCreateListener creates shop → Bukkit event `net.badgersmc.em.events.ShopCreatedEvent` fired with owner UUID. Shop deletion (break, inventory break) → `ShopDeletedEvent` fired. Confirm red. Event classes in `net.badgersmc.em.events` package with matching fields.
   Evidence: ` `
 
-- [ ] **TDD-73** — Fire PostShopTransactionEvent
+- [x] **TDD-73** — Fire PostShopTransactionEvent
   References: REQ-027
   Tag: TDD
   Description: Failing test: ContainerTradeService executes BUY trade → Bukkit event `net.badgersmc.em.events.PostShopTransactionEvent` fired with buyer Player, landlordId UUID, item ItemStack, quantity int, pricePaid double. Confirm red.
-  Evidence: ` `
+  Evidence: `ContainerTradeService fires PostShopTransactionEvent after BUY/SELL, 235 tests pass`
 
-- [ ] **TDD-74** — Fire ShopStockDepletedEvent
+- [x] **TDD-74** — Fire ShopStockDepletedEvent
   References: REQ-026
   Tag: TDD
   Description: Failing test: ContainerStockListener detects stock reached 0 in linked inventory → Bukkit event `net.badgersmc.em.events.ShopStockDepletedEvent` fired with owner UUID. Confirm red.
-  Evidence: ` `
+  Evidence: `ContainerStockListener fires ShopStockDepletedEvent when stock=0, tests pass`
 
-- [ ] **TDD-75** — Guild income routing in ContainerTradeService
+- [x] **TDD-75** — Guild income routing in ContainerTradeService
   References: REQ-025
   Tag: TDD
   Description: Failing test: ContainerTradeService completes BUY on guild-owned shop → Vault withdraw from buyer, deposit to GuildVaultService (not player Vault). Player-owned shop still routes to player Vault. Confirm red. GuildVaultService is a provided interface via LumaGuildsHook.
-  Evidence: ` `
+  Evidence: `ContainerTradeService routes guild shop income to GuildProvider, 5 new tests`
 
-- [ ] **TDD-76** — Shop guild registration service
+- [x] **TDD-76** — Shop guild registration service
   References: REQ-024
   Tag: TDD
   Description: Failing test: `ShopGuildService.registerGuildShop(shopId, guildId, playerId)` sets guild ownership and returns updated Shop. Duplicate registration returns failure. Confirm red.
-  Evidence: ` `
+  Evidence: `ShopGuildService created with 4 operations, 11 tests, all pass`
 
 ### INFRA tasks
 
-- [ ] **INFRA-11** — EM event classes for external integration
+- [x] **INFRA-11** — EM event classes for external integration
   References: REQ-026, REQ-027
   Tag: INFRA
   Description: Create Bukkit event classes under `net.badgersmc.em.events`: ShopCreatedEvent(UUID ownerId), ShopDeletedEvent(UUID ownerId), ShopStockDepletedEvent(UUID ownerId), PostShopTransactionEvent(Player buyer, UUID landlordId, ItemStack item, int quantity, double pricePaid). All extend Event with static HandlerList.
