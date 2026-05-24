@@ -26,6 +26,9 @@ dependencies {
     compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
     compileOnly("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
 
+    // IFramework for Java GUIs
+    compileOnly("com.github.stefvanschie.inventoryframework:IF:0.11.6")
+
     // Nexus DI + config + coroutines (shaded)
     implementation("net.badgersmc:nexus-core:1.6.0")
     // Nexus Paper commands + BukkitDispatcher (shaded)
