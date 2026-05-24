@@ -1,0 +1,91 @@
+# Requirements — EnthusiaMarket
+
+**Date:** 2026-05-24
+**Status:** Bootstrap (emitted by `/spear:init`; extend via `/spear:spec`)
+**EARS subset enforced:** Ubiquitous, Event-driven, State-driven, Unwanted. Optional Feature pattern (`WHERE …`) accepted without validation.
+
+Each requirement carries a stable ID. Tasks reference requirements by ID. New requirements append at the next free integer ID (three-digit padded); IDs are never re-used or renumbered.
+
+---
+
+## Product (what the system is for)
+
+### REQ-001 — Stall marketplace as core product
+**Ubiquitous.** THE SYSTEM SHALL expose WorldGuard regions as rentable or ownable market stalls for individual players and guilds.
+
+### REQ-002 — Admin region import
+**Event-driven.** WHEN an operator runs the admin import command THE SYSTEM SHALL idempotently register every WorldGuard region matching the configured world and prefix as a stall.
+
+### REQ-003 — Rent collection
+**Event-driven.** WHEN the configured rent collection interval elapses THE SYSTEM SHALL debit each rented stall's owner balance by the computed rent amount.
+
+### REQ-004 — Default eviction
+**Unwanted.** IF a stall owner balance is insufficient to cover rent at collection time THEN THE SYSTEM SHALL mark the stall as in default and evict the owner after the grace period configured for that stall.
+
+### REQ-005 — Sign shop creation
+**Event-driven.** WHEN a player places a shop sign inside a stall they own or rent THE SYSTEM SHALL register the sign as a buy or sell endpoint scoped to that stall region.
+
+### REQ-006 — Shop sign transaction
+**Event-driven.** WHEN a player interacts with a registered shop sign with a valid item and balance THE SYSTEM SHALL transfer the item and the price atomically between buyer and seller.
+
+### REQ-007 — Auction creation
+**Event-driven.** WHEN a player runs the auction create command with a held item and a valid duration THE SYSTEM SHALL escrow the item and open an auction lot for that duration.
+
+### REQ-008 — Anti-snipe bid extension
+**Event-driven.** WHEN a winning bid is placed within the anti-snipe window before an auction closes THE SYSTEM SHALL extend the auction end time by the configured anti-snipe duration.
+
+### REQ-009 — Auction settlement
+**Event-driven.** WHEN an auction reaches its end time without further bids THE SYSTEM SHALL transfer the escrowed item to the high bidder and pay the seller the winning amount minus the configured fee.
+
+### REQ-010 — Guild stall ownership
+**State-driven.** WHILE a stall is owned by a guild THE SYSTEM SHALL authorize all guild members with the configured rank to manage the stall's signs and auctions.
+
+### REQ-011 — Bedrock player UI
+**Event-driven.** WHEN a Bedrock player opens a stall or auction menu THE SYSTEM SHALL render the interaction as a Cumulus form instead of a Java inventory GUI.
+
+---
+
+## Interfaces & contracts
+
+### REQ-020 — Persistence backend
+**Ubiquitous.** THE SYSTEM SHALL persist all stall, sign, and auction state to a JDBC datasource configured as either SQLite (default) or MariaDB.
+
+### REQ-021 — Vault economy contract
+**Ubiquitous.** THE SYSTEM SHALL route all currency debits and credits through the Vault Economy provider with no direct balance mutation elsewhere.
+
+### REQ-022 — Admin command surface
+**Ubiquitous.** THE SYSTEM SHALL expose administrative subcommands under `/enthusiamarket` (alias `/em`) gated by the `enthusiamarket.admin` permission.
+
+---
+
+## Non-functional
+
+### REQ-040 — Atomic economy operations
+**Unwanted.** IF an item transfer fails during a shop or auction settlement THEN THE SYSTEM SHALL roll back the corresponding economy operation within the same transaction boundary.
+
+### REQ-041 — Vault unavailable degradation
+**Unwanted.** IF the Vault economy provider is unavailable at plugin enable THEN THE SYSTEM SHALL disable rent collection, sign shops, and auctions and log a single startup error.
+
+### REQ-042 — Migration idempotency
+**Ubiquitous.** THE SYSTEM SHALL apply database migrations in versioned order and skip any migration whose version is already recorded.
+
+### REQ-043 — Server thread safety
+**Ubiquitous.** THE SYSTEM SHALL execute all Bukkit world, inventory, and entity mutations on the main server thread.
+
+---
+
+## Acceptance
+
+### REQ-100 — Smoke test on MockBukkit
+**Event-driven.** WHEN the plugin is loaded into MockBukkit with default config THE SYSTEM SHALL enable without throwing and register the `enthusiamarket` command.
+
+### REQ-101 — Konsist layer enforcement
+**Ubiquitous.** THE SYSTEM SHALL pass the Konsist architecture test asserting domain has no outward dependencies and application depends only on domain.
+
+---
+
+## Authoring rules
+
+1. Every REQ has a single ID, a heading, and exactly one EARS-formatted sentence under a **pattern label** (Ubiquitous / Event-driven / State-driven / Unwanted / Optional).
+2. Use `/spear:spec` to add or revise REQ entries — it runs the EARS validator (`plugins/spear/hooks/lib/ears.mjs`) and assigns the next free ID.
+3. Never reuse an ID. When a requirement is obsolete, strike it through and note the deprecation date; do not renumber.
