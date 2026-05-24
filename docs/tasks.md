@@ -287,19 +287,19 @@ References: REQ-012 through REQ-023
   Description: Failing test: breaking a shop sign → cancelled + owner gets edit menu. Breaking a linked container → all linked shops deleted. Implement BlockProtectionListener.
   Evidence: ` `
 
-- [ ] **TDD-55** — Explosion cleanup
+- [x] **TDD-55** — Explosion cleanup
   References: REQ-016
   Tag: TDD
   Description: Failing test: EntityExplodeEvent destroys shop containers → shops cleaned up. Implement ExplodeCleanupListener.
   Evidence: ` `
 
-- [ ] **TDD-56** — Container stock refresh on inventory change
+- [x] **TDD-56** — Container stock refresh on inventory change
   References: REQ-017
   Tag: TDD
   Description: Failing test: InventoryClickEvent in linked container → sign text refreshes with trade count. Implement ContainerStockListener.
   Evidence: ` `
 
-- [ ] **TDD-57** — Trust management GUI
+- [x] **TDD-57** — Trust management GUI
   References: REQ-018
   Tag: TDD
   Description: Failing test: owner opens trust menu → can add/remove trusted UUIDs. Implement TrustManageMenu.
