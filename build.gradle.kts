@@ -25,6 +25,8 @@ dependencies {
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.9")
     compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
     compileOnly("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
+    testImplementation("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
+    testImplementation("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
 
     // IFramework for Java GUIs
     compileOnly("com.github.stefvanschie.inventoryframework:IF:0.11.6")

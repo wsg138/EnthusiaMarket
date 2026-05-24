@@ -2,7 +2,6 @@ package net.badgersmc.em.infrastructure.bedrock
 
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.spyk
 import io.mockk.verify
 import org.bukkit.entity.Player
 import java.util.UUID
@@ -84,13 +83,12 @@ class UiDispatcherTest {
 
     @Test
     fun `dispatch sends fallback message for Bedrock player when Cumulus absent`() {
-        val dispatcher = spyk(UiDispatcher())
+        val dispatcher = object : UiDispatcher() {
+            override fun isBedrockPlayer(uuid: UUID): Boolean = true
+        }
         val player = mockk<Player>(relaxed = true) {
             every { uniqueId } returns testUuid
         }
-
-        // Force isBedrockPlayer to return true to enter the Bedrock code path
-        every { dispatcher.isBedrockPlayer(testUuid) } returns true
 
         // Should send a fallback chat message instead of throwing
         dispatcher.dispatch(player)

@@ -12,21 +12,22 @@ import java.util.UUID
  * when Floodgate is not installed on the server.
  */
 @Component
-class UiDispatcher {
+open class UiDispatcher {
 
     /**
      * Returns true if the given UUID belongs to a Bedrock/Floodgate player.
      * Uses reflection to access FloodgateApi so the plugin works gracefully
      * when Floodgate is absent.
+     * Open for testability.
      */
-    fun isBedrockPlayer(uuid: UUID): Boolean {
+    open fun isBedrockPlayer(uuid: UUID): Boolean {
         return try {
             val floodgateApiClass = Class.forName("org.geysermc.floodgate.api.FloodgateApi")
             val getInstance = floodgateApiClass.getMethod("getInstance")
             val floodgateApi = getInstance.invoke(null)
             val getPlayer = floodgateApiClass.getMethod("getPlayer", UUID::class.java)
             getPlayer.invoke(floodgateApi, uuid) != null
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             // Floodgate not installed or reflection failed — assume Java player
             false
         }
@@ -72,7 +73,7 @@ class UiDispatcher {
             val form = builderClass.getMethod("build").invoke(builder)
             floodgateApi::class.java.getMethod("sendForm", UUID::class.java, form.javaClass)
                 .invoke(floodgateApi, player.uniqueId, form)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             // Cumulus or Floodgate not available at runtime — log and skip
             player.sendMessage("§cBedrock forms are not available on this server")
         }

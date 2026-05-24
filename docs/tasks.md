@@ -305,19 +305,19 @@ References: REQ-012 through REQ-023
   Description: Failing test: owner opens trust menu → can add/remove trusted UUIDs. Implement TrustManageMenu.
   Evidence: ` `
 
-- [ ] **TDD-58** — Hopper control
+- [x] **TDD-58** — Hopper control
   References: REQ-019
   Tag: TDD
   Description: Failing test: hopper attempting to insert/extract from container with hopperAllowIn/Out=false is blocked. Implement HopperControlListener.
   Evidence: ` `
 
-- [ ] **TDD-59** — Shop freezing
+- [x] **TDD-59** — Shop freezing
   References: REQ-023
   Tag: TDD
   Description: Failing test: frozen shop rejects all trades, shows frozen message. Implement freeze toggle in ShopEditMenu.
   Evidence: ` `
 
-- [ ] **TDD-60** — Bedrock Cumulus menus for create/purchase/edit
+- [x] **TDD-60** — Bedrock Cumulus menus for create/purchase/edit
   References: REQ-011, REQ-012, REQ-013
   Tag: TDD
   Description: Failing test: Bedrock player creates/purchases/edits shop → Cumulus form used. Implement BedrockCreateShopMenu, BedrockPurchaseMenu, BedrockShopEditMenu extending BaseBedrockMenu.
