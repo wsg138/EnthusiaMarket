@@ -35,6 +35,18 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
   ./gradlew test --tests "net.badgersmc.em.architecture.LayerRulesTest" → BUILD SUCCESSFUL
   ```
 
+- [ ] **INFRA-03** — Extend `config.yml` to full spec
+  References: REQ-003, REQ-004, REQ-007, REQ-008, REQ-009, REQ-010, REQ-011, docs/config.md
+  Tag: INFRA
+  Description: Replace `src/main/resources/config.yml` with the full key set in `docs/config.md` (rent, auction, shop, lumaguilds, bedrock, debug sections) including documented defaults. Confirm `Database.open` and `EnthusiaMarket.onEnable` continue to read existing keys without regression.
+  Evidence: ` `
+
+- [ ] **INFRA-04** — Add permissions block to `plugin.yml`
+  References: REQ-022, docs/permissions.md
+  Tag: INFRA
+  Description: Copy the `permissions:` block from `docs/permissions.md` into `src/main/resources/plugin.yml`. No code wiring yet — perms are checked per-command as they land.
+  Evidence: ` `
+
 ### DOC tasks
 
 - [ ] **DOC-01** — Snapshot pinned external schemas
