@@ -248,19 +248,20 @@ class RentCollectionServiceTest {
     // --- tick: economy failure on GRACE stall past grace -> evicts ---
 
     @Test
-    fun `tick GRACE past grace withdraw failure evicts handling error`() {
-        // Stall has been in GRACE for 5 days, grace period is 3 days (expired)
-        val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = false, gracePeriod = "P3D")
+    fun `tick GRACE stall with successful payment restores to OWNED`() {
+        // Stall is in GRACE but owner pays successfully — should be restored to OWNED
+        val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = true, gracePeriod = "P3D")
 
         val report = svc.service.tick()
 
-        assertEquals(0, report.collected)
-        assertEquals(0, report.defaults)  // not newly defaulted
-        assertEquals(1, report.evictions)
+        assertEquals(1, report.collected)
+        assertEquals(0, report.defaults)
+        assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
 
+        // Should save as OWNED with updated ownerSince
         verify { svc.stallRepo.save(match {
-            it.state == StallState.UNOWNED && it.owner == OwnerRef.unowned()
+            it.state == StallState.OWNED && it.ownerSince != null
         }) }
     }
 
