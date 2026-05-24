@@ -18,13 +18,13 @@ EnthusiaMarket/
 │   │   └── ImportStallsService, (planned) RentCollectionService, AuctionLifecycleService, ShopTradeService
 │   ├── infrastructure/     # adapters — imports anything
 │   │   ├── persistence/    # Database, Migrations, *RepositorySql
-│   │   ├── worldguard/     # WorldGuardRegionProvider
-│   │   ├── vault/          # VaultEconomyProvider
-│   │   ├── lumaguilds/     # LumaGuildsGuildProvider
-│   │   ├── commands/       # ACF command classes
-│   │   └── (planned) listeners/, scheduler/, bedrock/
-│   ├── di/                 # Koin module wiring
-│   └── EnthusiaMarket.kt   # JavaPlugin entry point
+│   │   ├── worldguard/     # @Component WorldGuardRegionProvider
+│   │   ├── vault/          # @Service LazyEconomyProvider + VaultEconomyProvider
+│   │   ├── lumaguilds/     # @Component LumaGuildsGuildProvider
+│   │   ├── commands/       # @Command AdminCommands (Nexus Paper)
+│   │   ├── (planned) listeners/, scheduler/, bedrock/
+│   ├── config/              # @ConfigFile EnthusiaMarketConfig (Nexus DI)
+│   └── EnthusiaMarket.kt   # JavaPlugin entry point; creates NexusContext, registers DI + commands
 ├── src/main/resources/
 │   ├── plugin.yml
 │   ├── config.yml
@@ -75,6 +75,7 @@ forbidden:
   - co.aikar.idb
   - com.zaxxer.hikari
   - org.geysermc
+  - net.badgersmc.nexus
 ```
 
 ## 3. Component design
@@ -135,7 +136,7 @@ Validate sign + actor, perform atomic item ↔ economy swap with rollback on fai
 
 ### 3.9 EnthusiaMarket (infrastructure / JavaPlugin)
 
-Bootstraps Koin, opens Hikari datasource, runs migrations, registers ACF commands, schedules services.
+Bootstraps NexusContext with classpath scanning, opens Hikari datasource, runs migrations, registers Paper commands via Nexus's Brigadier system.
 
 ## 4. Data flows
 

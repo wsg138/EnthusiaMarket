@@ -1,49 +1,68 @@
 package net.badgersmc.em
 
-import co.aikar.commands.PaperCommandManager
-import net.badgersmc.em.application.ImportStallsService
-import net.badgersmc.em.di.emModule
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.stall.RentTerms
-import net.badgersmc.em.domain.stall.StallRepository
-import net.badgersmc.em.infrastructure.commands.AdminCommands
 import net.badgersmc.em.infrastructure.persistence.Database
 import net.badgersmc.em.infrastructure.persistence.Migrations
+import net.badgersmc.nexus.core.NexusContext
+import net.badgersmc.nexus.paper.registerPaperCommands
 import org.bukkit.plugin.java.JavaPlugin
-import org.koin.core.context.GlobalContext.startKoin
-import org.koin.core.context.GlobalContext.stopKoin
+import javax.sql.DataSource
 
 open class EnthusiaMarket : JavaPlugin() {
 
-    private var commandManager: PaperCommandManager? = null
+    private var nexus: NexusContext? = null
 
     override fun onEnable() {
-        saveDefaultConfig()
-        val ds = Database.open(config, dataFolder.also { it.mkdirs() })
+        dataFolder.mkdirs()
+
+        // Phase 1: Create Nexus DI context — generates enthusiamarket.yaml with defaults
+        // if it doesn't exist yet (ConfigLoader handles this).
+        nexus = NexusContext.create(
+            basePackage = "net.badgersmc.em",
+            classLoader = this::class.java.classLoader,
+            configDirectory = dataFolder.toPath(),
+            contextName = "EnthusiaMarket",
+            externalBeans = mapOf("plugin" to this)
+        )
+
+        // Phase 2: Read config from Nexus for database bootstrap
+        val cfg = nexus!!.getBean<EnthusiaMarketConfig>()
+        val ds = Database.open(
+            type = cfg.database.type,
+            sqliteFile = cfg.database.sqliteFile,
+            dataFolder = dataFolder,
+            mariadbHost = cfg.database.mariadb.host,
+            mariadbPort = cfg.database.mariadb.port,
+            mariadbDatabase = cfg.database.mariadb.database,
+            mariadbUsername = cfg.database.mariadb.username,
+            mariadbPassword = cfg.database.mariadb.password
+        )
         Migrations.runAll(ds)
 
-        val defaultRent = RentTerms.formula(config.getDouble("rent.formula-pct", 1.0))
-        val world = config.getString("market.world", "world")!!
-        val prefix = config.getString("market.region-prefix", "stall_")!!
+        // Phase 3: Register DataSource bean so @Repository classes can resolve it
+        nexus!!.registerBean("dataSource", DataSource::class, ds as DataSource)
 
-        val koin = startKoin { modules(emModule(ds, defaultRent)) }.koin
-
-        commandManager = PaperCommandManager(this).also { mgr ->
-            mgr.registerCommand(
-                AdminCommands(
-                    service = koin.get<ImportStallsService>(),
-                    stalls = koin.get<StallRepository>(),
-                    world = world,
-                    prefix = prefix
-                )
-            )
+        // Register defaultRent from config
+        val defaultRent = if (cfg.rent.mode == "flat") {
+            RentTerms.flat(cfg.rent.flatAmount)
+        } else {
+            RentTerms.formula(cfg.rent.formulaPct)
         }
+        nexus!!.registerBean("defaultRent", RentTerms::class, defaultRent)
+
+        // Phase 4: Register Paper commands (triggers bean creation via DI)
+        nexus!!.registerPaperCommands(
+            basePackage = "net.badgersmc.em",
+            classLoader = this::class.java.classLoader,
+            plugin = this
+        )
 
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }
 
     override fun onDisable() {
-        commandManager?.unregisterCommands()
-        stopKoin()
+        nexus?.close()
         logger.info("EnthusiaMarket disabled")
     }
 }

@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import net.badgersmc.em.application.ImportStallsService
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -16,14 +17,18 @@ import kotlin.test.Test
 class AdminCommandsTest {
 
     private val sender = mockk<CommandSender>(relaxed = true)
+    private val config = EnthusiaMarketConfig().apply {
+        market.world = "world"
+        market.regionPrefix = "stall_"
+    }
 
     @Test fun `import delegates to service and reports counts`() {
         val service = mockk<ImportStallsService>()
         val repo = mockk<StallRepository>()
         every { service.import("world", "stall_") } returns ImportStallsService.Result(3, 1)
 
-        val cmd = AdminCommands(service, repo, world = "world", prefix = "stall_")
-        cmd.runImport(sender)
+        val cmd = AdminCommands(service, repo, config)
+        cmd.import(sender)
 
         verify { service.import("world", "stall_") }
         verify { sender.sendMessage(match<String> { it.contains("created=3") && it.contains("skipped=1") }) }
@@ -37,8 +42,8 @@ class AdminCommandsTest {
                   null, 0L, RentTerms.formula(1.0))
         )
 
-        val cmd = AdminCommands(service, repo, world = "world", prefix = "stall_")
-        cmd.runList(sender)
+        val cmd = AdminCommands(service, repo, config)
+        cmd.list(sender)
 
         verify { sender.sendMessage(match<String> { it.contains("s1") && it.contains("UNOWNED") }) }
     }

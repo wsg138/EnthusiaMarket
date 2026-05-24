@@ -7,7 +7,8 @@ object Migrations {
     private data class M(val version: Int, val resource: String)
 
     private val ALL = listOf(
-        M(1, "/migrations/V001__init.sql")
+        M(1, "/migrations/V001__init.sql"),
+        M(2, "/migrations/V002__shop_signs.sql")
     )
 
     fun runAll(ds: DataSource) {

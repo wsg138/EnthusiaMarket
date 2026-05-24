@@ -11,10 +11,10 @@ repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://oss.sonatype.org/content/repositories/snapshots")
-    maven("https://repo.aikar.co/content/groups/aikar/")
     maven("https://jitpack.io")
     maven("https://maven.enginehub.org/repo/") // WorldGuard
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
+    mavenLocal() // Nexus local build
 }
 
 dependencies {
@@ -26,16 +26,23 @@ dependencies {
     compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
     compileOnly("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
 
-    implementation("co.aikar:acf-paper:0.5.1-SNAPSHOT")
-    implementation("co.aikar:idb-core:1.0.0-SNAPSHOT")
+    // Nexus DI + config + coroutines (shaded)
+    implementation("net.badgersmc:nexus-core:1.6.0")
+    // Nexus Paper commands + BukkitDispatcher (shaded)
+    implementation("net.badgersmc:nexus-paper:1.6.0")
+
+    // Database
     implementation("com.zaxxer:HikariCP:5.1.0")
     implementation("org.xerial:sqlite-jdbc:3.45.1.0")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.3.2")
-    implementation("io.insert-koin:koin-core:4.0.2")
+
+    // Logging (Nexus uses SLF4J)
     implementation("org.slf4j:slf4j-nop:2.0.13")
 
+    // Kotlin
     shadow("org.jetbrains.kotlin:kotlin-stdlib")
 
+    // Testing
     testImplementation(kotlin("test"))
     testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
     testImplementation("io.mockk:mockk:1.13.11")
@@ -55,9 +62,9 @@ tasks {
     test { useJUnitPlatform() }
     shadowJar {
         archiveClassifier.set("")
-        relocate("co.aikar.commands", "net.badgersmc.em.libs.acf")
-        relocate("co.aikar.idb", "net.badgersmc.em.libs.idb")
-        relocate("org.koin", "net.badgersmc.em.libs.koin")
+        relocate("net.badgersmc.nexus", "net.badgersmc.em.libs.nexus")
+        relocate("io.github.classgraph", "net.badgersmc.em.libs.classgraph")
+        relocate("nonapi.io.github.classgraph", "net.badgersmc.em.libs.nonapi.classgraph")
     }
     build { dependsOn(shadowJar) }
 }
