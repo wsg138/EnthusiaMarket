@@ -45,6 +45,33 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             setString(1, owner.toString())
         }
 
+    override fun findByGuildId(guildId: UUID): List<Shop> =
+        queryMany("SELECT * FROM shop_items WHERE guild_id = ?") {
+            setString(1, guildId.toString())
+        }
+
+    override fun setGuildOwnership(id: Long, guildId: UUID, creatorId: UUID): Shop? {
+        ds.connection.use { conn ->
+            conn.prepareStatement("UPDATE shop_items SET guild_id = ?, creator_id = ? WHERE id = ?").use { ps ->
+                ps.setString(1, guildId.toString())
+                ps.setString(2, creatorId.toString())
+                ps.setLong(3, id)
+                ps.executeUpdate()
+            }
+        }
+        return findById(id)
+    }
+
+    override fun removeGuildOwnership(id: Long): Shop? {
+        ds.connection.use { conn ->
+            conn.prepareStatement("UPDATE shop_items SET guild_id = NULL, creator_id = NULL WHERE id = ?").use { ps ->
+                ps.setLong(1, id)
+                ps.executeUpdate()
+            }
+        }
+        return findById(id)
+    }
+
     override fun all(): List<Shop> = queryMany("SELECT * FROM shop_items") {}
 
     override fun delete(id: Long) {

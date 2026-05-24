@@ -2,6 +2,7 @@ package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.events.ShopStockDepletedEvent
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -83,6 +84,11 @@ class ContainerStockListener(
                 // Update line 3 of the sign with stock info
                 state.setLine(3, "§7Stock: $trades")
                 state.update(true)
+
+                // Fire event when stock reaches zero (REQ-026)
+                if (trades == 0) {
+                    Bukkit.getPluginManager()?.callEvent(ShopStockDepletedEvent(shop.owner))
+                }
             }
         }
     }

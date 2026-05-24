@@ -9,6 +9,9 @@ interface ShopRepository {
     fun findByContainer(world: String, x: Int, y: Int, z: Int): List<Shop>
     fun findByStall(stallId: String): List<Shop>
     fun findByOwner(owner: UUID): List<Shop>
+    fun findByGuildId(guildId: UUID): List<Shop>
+    fun setGuildOwnership(id: Long, guildId: UUID, creatorId: UUID): Shop?
+    fun removeGuildOwnership(id: Long): Shop?
     fun all(): List<Shop>
     fun delete(id: Long)
     fun deleteByContainer(world: String, x: Int, y: Int, z: Int)

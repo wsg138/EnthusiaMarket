@@ -228,4 +228,77 @@ class ShopRepositorySqlTest {
         assertEquals(guildId, found.guildId)
         assertEquals(creatorId, found.creatorId)
     }
+
+    @Test fun `findByGuildId returns all shops for a given guild`() {
+        val guildId = UUID.randomUUID()
+        val owner = UUID.randomUUID()
+        repeat(3) { i ->
+            repo.upsert(Shop(
+                stallId = "stall_guild_$i",
+                owner = owner,
+                signWorld = "world", signX = i * 10, signY = 64, signZ = i * 20,
+                containerWorld = "world", containerX = 1, containerY = 64, containerZ = 1,
+                sellItem = "item$i", sellAmount = 1,
+                costItem = "cost", costAmount = 5,
+                guildId = guildId,
+                creatorId = UUID.randomUUID()
+            ))
+        }
+        // Add a shop with a different guild
+        repo.upsert(Shop(
+            stallId = "stall_other_guild",
+            owner = owner,
+            signWorld = "world", signX = 99, signY = 64, signZ = 99,
+            containerWorld = "world", containerX = 2, containerY = 64, containerZ = 2,
+            sellItem = "other", sellAmount = 1,
+            costItem = "cost", costAmount = 5,
+            guildId = UUID.randomUUID(),
+            creatorId = UUID.randomUUID()
+        ))
+        val shops = repo.findByGuildId(guildId)
+        assertEquals(3, shops.size)
+        shops.forEach { assertEquals(guildId, it.guildId) }
+    }
+
+    @Test fun `setGuildOwnership updates guild_id and creator_id`() {
+        val shop = repo.upsert(Shop(
+            stallId = "stall_ownership",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 50, signY = 64, signZ = 60,
+            containerWorld = "world", containerX = 51, containerY = 64, containerZ = 61,
+            sellItem = "item", sellAmount = 1,
+            costItem = "cost", costAmount = 5
+        ))
+        assertNull(shop.guildId)
+        assertNull(shop.creatorId)
+
+        val guildId = UUID.randomUUID()
+        val creatorId = UUID.randomUUID()
+        val updated = repo.setGuildOwnership(shop.id, guildId, creatorId)
+        assertNotNull(updated)
+        assertEquals(guildId, updated.guildId)
+        assertEquals(creatorId, updated.creatorId)
+    }
+
+    @Test fun `removeGuildOwnership clears guild_id and creator_id`() {
+        val guildId = UUID.randomUUID()
+        val creatorId = UUID.randomUUID()
+        val shop = repo.upsert(Shop(
+            stallId = "stall_remove",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 60, signY = 64, signZ = 70,
+            containerWorld = "world", containerX = 61, containerY = 64, containerZ = 71,
+            sellItem = "item", sellAmount = 1,
+            costItem = "cost", costAmount = 5,
+            guildId = guildId,
+            creatorId = creatorId
+        ))
+        assertEquals(guildId, shop.guildId)
+        assertEquals(creatorId, shop.creatorId)
+
+        val cleared = repo.removeGuildOwnership(shop.id)
+        assertNotNull(cleared)
+        assertNull(cleared.guildId)
+        assertNull(cleared.creatorId)
+    }
 }

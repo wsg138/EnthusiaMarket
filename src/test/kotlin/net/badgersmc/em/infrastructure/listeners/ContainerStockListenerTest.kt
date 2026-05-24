@@ -4,6 +4,8 @@ import io.mockk.*
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.events.ShopStockDepletedEvent
+import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.World
 import org.bukkit.block.Block
@@ -15,6 +17,7 @@ import org.bukkit.event.inventory.InventoryType
 import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.inventory.*
+import org.mockbukkit.mockbukkit.MockBukkit
 import java.util.UUID
 import kotlin.test.Test
 
@@ -24,9 +27,10 @@ class ContainerStockListenerTest {
     private fun shop(
         signX: Int = 100, signY: Int = 64, signZ: Int = 200,
         contX: Int = 50, contY: Int = 64, contZ: Int = 60,
-        sellAmount: Int = 1
+        sellAmount: Int = 1,
+        owner: UUID = UUID.randomUUID()
     ): Shop = Shop(
-        id = 1L, stallId = "s1", owner = UUID.randomUUID(),
+        id = 1L, stallId = "s1", owner = owner,
         signWorld = "world", signX = signX, signY = signY, signZ = signZ,
         containerWorld = "world", containerX = contX, containerY = contY, containerZ = contZ,
         sellItem = "base64item", sellAmount = sellAmount,
@@ -231,6 +235,7 @@ class ContainerStockListenerTest {
 
         // Container contents don't matter since deserialize returns null
         val sign = mockWorldWithShop()
+        every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
         val view = inventoryView(containerHolder())
 
         val event = InventoryClickEvent(
@@ -242,5 +247,47 @@ class ContainerStockListenerTest {
 
         verify { sign.setLine(3, "§7Stock: 0") }
         verify { sign.update(true) }
+    }
+
+    @Test
+    fun `inventory change to zero stock fires ShopStockDepletedEvent with correct owner UUID`() {
+        // ── Given: a shop with zero stock in its linked container ──
+        val server = MockBukkit.mock()
+        try {
+            val sellStack = mockk<ItemStack>(relaxed = true)
+            mockkObject(ItemStackSerializer)
+            every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+            val ownerUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+            val shop = shop(owner = ownerUuid)
+            val repo = mockk<ShopRepository>(relaxed = true)
+            every { repo.findByContainer("world", 50, 64, 60) } returns listOf(shop)
+
+            // Non-matching item → stock = 0
+            val diffItem = mockk<ItemStack>(relaxed = true)
+            every { diffItem.isSimilar(sellStack) } returns false
+
+            val sign = mockWorldWithShop(contents = arrayOf(diffItem))
+
+            // Point Bukkit.getPluginManager() at server's plugin manager
+            every { org.bukkit.Bukkit.getPluginManager() } returns server.pluginManager
+
+            val view = inventoryView(containerHolder())
+            val event = InventoryClickEvent(
+                view, InventoryType.SlotType.CONTAINER, 0,
+                ClickType.LEFT, InventoryAction.PICKUP_ALL
+            )
+            val listener = ContainerStockListener(repo, mockk(relaxed = true))
+
+            // ── When: the listener processes the inventory click ──
+            listener.onClick(event)
+
+            // ── Then: ShopStockDepletedEvent should have been fired ──
+            server.pluginManager.assertEventFired(ShopStockDepletedEvent::class.java) { e ->
+                e.ownerId == ownerUuid
+            }
+        } finally {
+            MockBukkit.unmock()
+        }
     }
 }
