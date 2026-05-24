@@ -28,6 +28,8 @@ dependencies {
 
     // IFramework for Java GUIs
     compileOnly("com.github.stefvanschie.inventoryframework:IF:0.11.6")
+    testImplementation("com.github.stefvanschie.inventoryframework:IF:0.11.6")
+    testImplementation("commons-lang:commons-lang:2.6")
 
     // Nexus DI + config + coroutines (shaded)
     implementation("net.badgersmc:nexus-core:1.6.0")
