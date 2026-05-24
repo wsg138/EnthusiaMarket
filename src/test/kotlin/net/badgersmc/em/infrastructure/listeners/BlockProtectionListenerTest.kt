@@ -12,11 +12,27 @@ import org.bukkit.block.Container
 import org.bukkit.block.Sign
 import org.bukkit.entity.Player
 import org.bukkit.event.block.BlockBreakEvent
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.mockbukkit.mockbukkit.MockBukkit
+import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
 import java.util.logging.Logger
 import kotlin.test.Test
 
 class BlockProtectionListenerTest {
+
+    private lateinit var server: ServerMock
+
+    @BeforeEach
+    fun setUp() {
+        server = MockBukkit.mock()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        MockBukkit.unmock()
+    }
 
     private fun mockBlock(
         state: org.bukkit.block.BlockState,

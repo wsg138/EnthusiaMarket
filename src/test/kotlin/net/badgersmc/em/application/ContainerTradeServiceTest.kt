@@ -12,12 +12,14 @@ import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
+import net.badgersmc.em.events.PostShopTransactionEvent
 import org.bukkit.Bukkit
 import org.bukkit.block.Container
 import org.bukkit.entity.Player
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.PlayerInventory
+import org.mockbukkit.mockbukkit.MockBukkit
 import java.util.UUID
 import java.util.logging.Logger
 import kotlin.test.Test
@@ -213,6 +215,7 @@ class ContainerTradeServiceTest {
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
+        every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
 
         val containerInv = mockk<Inventory>(relaxed = true)
         // addItem returns HashMap<Int, ItemStack>, empty map = success
@@ -233,6 +236,62 @@ class ContainerTradeServiceTest {
         verify { containerInv.addItem(any()) }
         verify { economy.withdraw(ownerUuid, 50L) }
         verify { economy.deposit(playerUuid, 50L) }
+    }
+
+    // ===== BUY: PostShopTransactionEvent fired on success =====
+
+    @Test
+    fun `executeBuy fires PostShopTransactionEvent with correct fields`() {
+        val server = MockBukkit.mock()
+        try {
+            val shop = testShop(costAmount = 50)
+
+            val stallRepo = mockk<StallRepository>(relaxed = true)
+            every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+
+            val economy = mockk<EconomyProvider>(relaxed = true)
+            every { economy.balance(ownerUuid) } returns 100L
+            every { economy.withdraw(ownerUuid, 50L) } returns true
+            every { economy.deposit(playerUuid, 50L) } returns true
+
+            val playerInv = mockk<PlayerInventory>(relaxed = true)
+            every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+
+            val player = mockk<Player>(relaxed = true)
+            every { player.inventory } returns playerInv
+
+            mockkStatic(Bukkit::class)
+            every { Bukkit.getPlayer(playerUuid) } returns player
+            every { Bukkit.getPluginManager() } returns server.pluginManager
+
+            val containerInv = mockk<Inventory>(relaxed = true)
+            every { containerInv.addItem(any()) } returns hashMapOf()
+
+            val container = mockk<Container>(relaxed = true)
+            every { container.inventory } returns containerInv
+
+            val mockItem = mockk<ItemStack>(relaxed = true)
+            val service = buildService(
+                stallRepo = stallRepo,
+                economy = economy,
+                mockItemStack = mockItem,
+                mockContainer = container
+            )
+
+            val result = service.executeBuy(shop, playerUuid)
+            assertTrue(result is ContainerTradeResult.Success, "Expected Success but got $result")
+
+            // Verify PostShopTransactionEvent was fired with correct fields
+            server.pluginManager.assertEventFired(PostShopTransactionEvent::class.java) { event ->
+                event.buyer == player &&
+                        event.landlordId == ownerUuid &&
+                        event.item == mockItem &&
+                        event.quantity == 1 &&
+                        event.pricePaid == 50.0
+            }
+        } finally {
+            MockBukkit.unmock()
+        }
     }
 
     // ===== BUY: Insufficient player items =====
@@ -385,6 +444,7 @@ class ContainerTradeServiceTest {
 
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
+        every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
 
         val containerInv = mockk<Inventory>(relaxed = true)
         every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true

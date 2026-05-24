@@ -10,7 +10,8 @@ object Migrations {
         M(1, "/migrations/V001__init.sql"),
         M(2, "/migrations/V002__shop_signs.sql"),
         M(3, "/migrations/V003__auctions.sql"),
-        M(4, "/migrations/V004__shops.sql")
+        M(4, "/migrations/V004__shops.sql"),
+        M(5, "/migrations/V005__shop_guild.sql")
     )
 
     fun runAll(ds: DataSource) {

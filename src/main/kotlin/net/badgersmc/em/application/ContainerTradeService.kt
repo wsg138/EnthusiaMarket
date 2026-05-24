@@ -112,6 +112,16 @@ open class ContainerTradeService(
             )
         }
 
+        Bukkit.getPluginManager().callEvent(
+            net.badgersmc.em.events.PostShopTransactionEvent(
+                buyer = player,
+                landlordId = ownerUuid,
+                item = sellStack,
+                quantity = shop.sellAmount,
+                pricePaid = shop.costAmount.toDouble()
+            )
+        )
+
         return ContainerTradeResult.Success("Sold ${shop.sellAmount}x for ${shop.costAmount}")
     }
 
@@ -183,6 +193,16 @@ open class ContainerTradeService(
                 compensation = "Trade reversed"
             )
         }
+
+        Bukkit.getPluginManager().callEvent(
+            net.badgersmc.em.events.PostShopTransactionEvent(
+                buyer = player,
+                landlordId = ownerUuid,
+                item = sellStack,
+                quantity = shop.sellAmount,
+                pricePaid = shop.costAmount.toDouble()
+            )
+        )
 
         return ContainerTradeResult.Success("Bought ${shop.sellAmount}x for ${shop.costAmount}")
     }

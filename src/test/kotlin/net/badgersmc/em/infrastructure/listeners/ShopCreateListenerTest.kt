@@ -23,6 +23,10 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.mockbukkit.mockbukkit.MockBukkit
+import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
 import kotlin.test.Test
 
@@ -30,6 +34,17 @@ class ShopCreateListenerTest {
 
     private val testUuid = UUID.fromString("11111111-1111-1111-1111-111111111111")
     private val worldName = "world"
+    private lateinit var server: ServerMock
+
+    @BeforeEach
+    fun setUp() {
+        server = MockBukkit.mock()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        MockBukkit.unmock()
+    }
 
     /** Build a mocked wall-sign block that returns [signBlock] and is attached to [containerBlock] via its facing. */
     private fun wallSignBlock(

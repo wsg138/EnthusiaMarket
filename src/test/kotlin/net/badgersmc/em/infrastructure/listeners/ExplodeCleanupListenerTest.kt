@@ -10,11 +10,27 @@ import org.bukkit.block.Block
 import org.bukkit.block.Container
 import org.bukkit.entity.Entity
 import org.bukkit.event.entity.EntityExplodeEvent
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.mockbukkit.mockbukkit.MockBukkit
+import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
 import java.util.logging.Logger
 import kotlin.test.Test
 
 class ExplodeCleanupListenerTest {
+
+    private lateinit var server: ServerMock
+
+    @BeforeEach
+    fun setUp() {
+        server = MockBukkit.mock()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        MockBukkit.unmock()
+    }
 
     @Test
     fun `explosion destroys container with linked shops cleans them up`() {

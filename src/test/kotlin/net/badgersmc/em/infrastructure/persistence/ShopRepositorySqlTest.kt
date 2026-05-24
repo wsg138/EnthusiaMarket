@@ -204,4 +204,28 @@ class ShopRepositorySqlTest {
         assertEquals("updated", found.sellItem)
         assertEquals(3, found.sellAmount)
     }
+
+    @Test fun `guildId and creatorId round-trip through V005 columns`() {
+        val guildId = UUID.randomUUID()
+        val creatorId = UUID.randomUUID()
+        val shop = Shop(
+            stallId = "stall_guild",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 200, signY = 64, signZ = 300,
+            containerWorld = "world", containerX = 201, containerY = 64, containerZ = 301,
+            sellItem = "item", sellAmount = 1,
+            costItem = "cost", costAmount = 5,
+            guildId = guildId,
+            creatorId = creatorId
+        )
+        val created = repo.upsert(shop)
+        assertTrue(created.id > 0)
+        assertEquals(guildId, created.guildId)
+        assertEquals(creatorId, created.creatorId)
+
+        val found = repo.findById(created.id)
+        assertNotNull(found)
+        assertEquals(guildId, found.guildId)
+        assertEquals(creatorId, found.creatorId)
+    }
 }

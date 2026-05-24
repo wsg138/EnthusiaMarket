@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.events.ShopDeletedEvent
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -69,6 +70,7 @@ class BlockProtectionListener(
                     // Delete all linked shops
                     for (shop in shops) {
                         shopRepository.delete(shop.id)
+                        Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
                         logger.info("Shop ${shop.id} deleted due to container break by ${player.name}")
                     }
                     player.sendMessage("§aDeleted ${shops.size} shop(s) linked to this container")

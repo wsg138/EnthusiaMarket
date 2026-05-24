@@ -6,6 +6,7 @@ import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -79,6 +80,9 @@ open class ShopCreateListener(
         }
 
         event.setUseInteractedBlock(Event.Result.DENY)
+
+        // Fire creation event for external integration
+        Bukkit.getPluginManager().callEvent(ShopCreatedEvent(event.player.uniqueId))
 
         // Open CreateShopMenu — for now just a placeholder
         event.player.sendMessage("§e[Shop] Create menu would open here (TDD-52)")

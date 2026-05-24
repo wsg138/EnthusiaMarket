@@ -74,8 +74,9 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                 (stall_id, owner, sign_world, sign_x, sign_y, sign_z,
                  container_world, container_x, container_y, container_z,
                  sell_item, sell_amount, cost_item, cost_amount,
-                 trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
+                 guild_id, creator_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
             conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS).use { ps ->
                 bind(ps, shop)
@@ -98,11 +99,12 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                      stall_id = ?, owner = ?, sign_world = ?, sign_x = ?, sign_y = ?, sign_z = ?,
                      container_world = ?, container_x = ?, container_y = ?, container_z = ?,
                      sell_item = ?, sell_amount = ?, cost_item = ?, cost_amount = ?,
-                     trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?
+                     trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
+                     guild_id = ?, creator_id = ?
                    WHERE id = ?"""
             ).use { ps ->
                 bind(ps, shop)
-                ps.setLong(20, shop.id)
+                ps.setLong(22, shop.id)
                 ps.executeUpdate()
             }
         }
@@ -128,6 +130,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ps.setBoolean(17, shop.hopperAllowOut)
         ps.setBoolean(18, shop.frozen)
         ps.setBoolean(19, shop.adminShop)
+        if (shop.guildId != null) ps.setString(20, shop.guildId.toString()) else ps.setNull(20, java.sql.Types.VARCHAR)
+        if (shop.creatorId != null) ps.setString(21, shop.creatorId.toString()) else ps.setNull(21, java.sql.Types.VARCHAR)
     }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Shop? {
@@ -161,6 +165,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         } else {
             trustedStr.split(",").filter { it.isNotBlank() }.map { UUID.fromString(it) }.toSet()
         }
+        val guildId = rs.getString("guild_id")?.takeIf { it.isNotBlank() }?.let { UUID.fromString(it) }
+        val creatorId = rs.getString("creator_id")?.takeIf { it.isNotBlank() }?.let { UUID.fromString(it) }
         return Shop(
             id = rs.getLong("id"),
             stallId = rs.getString("stall_id"),
@@ -181,7 +187,9 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             hopperAllowIn = rs.getBoolean("hopper_allow_in"),
             hopperAllowOut = rs.getBoolean("hopper_allow_out"),
             frozen = rs.getBoolean("frozen"),
-            adminShop = rs.getBoolean("admin_shop")
+            adminShop = rs.getBoolean("admin_shop"),
+            guildId = guildId,
+            creatorId = creatorId
         )
     }
 }
