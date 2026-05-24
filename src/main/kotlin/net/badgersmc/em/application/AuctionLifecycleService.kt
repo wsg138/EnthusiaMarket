@@ -213,28 +213,37 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
-        // Award stall to winner
+        // 1. Pay seller first (so if it fails, nothing is committed)
+        val feePct = config.auction.feePct
+        val feeAmount = (bid.amount * feePct).toLong()
+        val sellerProceeds = bid.amount - feeAmount
+        val sellerUuid = extractOwnerUuid(stall)
+        if (sellerUuid == null || !economy.deposit(sellerUuid, sellerProceeds)) {
+            throw IllegalStateException("Failed to deposit seller proceeds for auction ${auction.id}")
+        }
+
+        // 2. Award stall to winner
         val awardAt = Instant.now()
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
         stallRepository.save(updatedStall)
 
-        // Pay seller (minus fee)
-        val feePct = config.auction.feePct
-        val feeAmount = (bid.amount * feePct).toLong()
-        val sellerProceeds = bid.amount - feeAmount
-        if (!economy.deposit(extractOwnerUuid(stall), sellerProceeds)) {
-            throw IllegalStateException("Failed to deposit seller proceeds for auction ${auction.id}")
-        }
-
-        // Close the auction
+        // 3. Close the auction
         auctionRepository.save(auction.close())
     }
 
     /**
      * Extract the player UUID from the stall's owner ref.
-     * Note: currently only SOLO owner type is supported.
+     * Returns null for non-SOLO owner types (guild owners cannot auction).
      */
-    private fun extractOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID {
-        return UUID.fromString(stall.owner.id)
+    private fun extractOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? {
+        return if (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.SOLO) {
+            try {
+                UUID.fromString(stall.owner.id)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        } else {
+            null
+        }
     }
 }

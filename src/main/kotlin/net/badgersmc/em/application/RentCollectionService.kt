@@ -83,7 +83,11 @@ class RentCollectionService(
             return ProcessResult.Skipped
         }
 
-        val ownerUuid = UUID.fromString(stall.owner.id)
+        val ownerUuid = try {
+            UUID.fromString(stall.owner.id)
+        } catch (_: IllegalArgumentException) {
+            return ProcessResult.Skipped
+        }
         val rentDue = stall.rentTerms.dailyRent(stall.winningBid)
 
         val withdrawSuccess = economy.withdraw(ownerUuid, rentDue)
@@ -104,9 +108,9 @@ class RentCollectionService(
         // Payment failed
         return when (stall.state) {
             StallState.OWNED -> {
-                // First failure — move to GRACE (defaulted)
+                // First failure — move to GRACE (defaulted), start grace timer
                 stallRepository.save(
-                    stall.copy(state = StallState.GRACE)
+                    stall.copy(state = StallState.GRACE, ownerSince = Instant.now())
                 )
                 ProcessResult.Defaulted
             }
@@ -134,7 +138,12 @@ class RentCollectionService(
     }
 
     private fun isPastGrace(ownerSince: Instant): Boolean {
-        val graceDuration = Duration.parse(config.rent.gracePeriod)
+        val graceDuration = try {
+            Duration.parse(config.rent.gracePeriod)
+        } catch (e: java.time.format.DateTimeParseException) {
+            // Invalid config — fall back to 3-day default
+            Duration.ofDays(3)
+        }
         val deadline = ownerSince.plus(graceDuration)
         return Instant.now().isAfter(deadline)
     }
