@@ -74,6 +74,20 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 ### REQ-023 — Shop freezing
 **Ubiquitous.** THE SYSTEM SHALL allow shop owners and admins to freeze a shop, preventing all trades until unfrozen.
 
+### REQ-024 — Guild-owned shop creation via command
+**Event-driven.** WHEN a guild member with MANAGE_GUILD_SETTINGS runs `/guild setshop` while targeting a valid EM shop container THE SYSTEM SHALL register the shop as guild-owned by storing the guild ID and player creator ID.
+
+### REQ-025 — Guild shop income routing
+**Event-driven.** WHEN a trade completes at a guild-owned shop in PHYSICAL or BOTH bank mode THE SYSTEM SHALL deposit the proceeds into the guild vault service instead of the player's Vault economy balance.
+
+### REQ-026 — Shop lifecycle Bukkit events
+**Event-driven.** WHEN a shop is created, deleted, or its stock is depleted THE SYSTEM SHALL fire a corresponding Bukkit event with the shop owner UUID for external plugin consumption.
+
+### REQ-027 — Shop transaction Bukkit events
+**Event-driven.** WHEN a shop transaction completes THE SYSTEM SHALL fire a Bukkit PostShopTransactionEvent containing buyer, seller ID, item, quantity, and price.
+
+---
+
 ## Interfaces & contracts
 
 ### REQ-020 — Persistence backend
