@@ -16,7 +16,7 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
 
 ### INFRA tasks
 
-- [ ] **INFRA-01** — Add GitHub Actions build workflow
+- [x] **INFRA-01** — Add GitHub Actions build workflow
   References: REQ-101, tech-stack.md §7
   Tag: INFRA
   Description: Create `.github/workflows/build.yml` running `./gradlew test shadowJar` on push and PR for JDK 21.
@@ -35,13 +35,13 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
   ./gradlew test --tests "net.badgersmc.em.architecture.LayerRulesTest" → BUILD SUCCESSFUL
   ```
 
-- [ ] **INFRA-03** — Extend `config.yml` to full spec
+- [x] **INFRA-03** — Extend `config.yml` to full spec
   References: REQ-003, REQ-004, REQ-007, REQ-008, REQ-009, REQ-010, REQ-011, docs/config.md
   Tag: INFRA
   Description: Replace `src/main/resources/config.yml` with the full key set in `docs/config.md` (rent, auction, shop, lumaguilds, bedrock, debug sections) including documented defaults. Confirm `Database.open` and `EnthusiaMarket.onEnable` continue to read existing keys without regression.
   Evidence: ` `
 
-- [ ] **INFRA-04** — Add permissions block to `plugin.yml`
+- [x] **INFRA-04** — Add permissions block to `plugin.yml`
   References: REQ-022, docs/permissions.md
   Tag: INFRA
   Description: Copy the `permissions:` block from `docs/permissions.md` into `src/main/resources/plugin.yml`. No code wiring yet — perms are checked per-command as they land.
@@ -49,7 +49,7 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
 
 ### DOC tasks
 
-- [ ] **DOC-01** — Snapshot pinned external schemas
+- [x] **DOC-01** — Snapshot pinned external schemas
   References: tech-stack.md §4
   Tag: DOC
   Description: Create `docs/refs/` and snapshot WorldGuard 7.0.9, Vault 1.7, Cumulus 2.0, and LumaGuilds public API surface so breaking upstream changes surface in review.
@@ -61,37 +61,37 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
 
 ### TDD tasks
 
-- [ ] **TDD-10** — Persist ShopSign via SignRepositorySql
+- [x] **TDD-10** — Persist ShopSign via SignRepositorySql
   References: REQ-005, REQ-020, implementation.md §3.3
   Tag: TDD
   Description: Write a failing test in `src/test/kotlin/net/badgersmc/em/infrastructure/persistence/SignRepositorySqlTest.kt` asserting upsert + findById round-trip against an in-memory SQLite Hikari pool. Run, confirm red.
   Evidence: ` `
 
-- [ ] **TDD-11** — Implement SignRepositorySql + migration V002
+- [x] **TDD-11** — Implement SignRepositorySql + migration V002
   References: REQ-005, REQ-020, REQ-042
   Tag: TDD
   Description: Add migration `V002__shop_signs.sql` and `SignRepositorySql` to flip TDD-10 green. No behaviour not asserted by the test.
   Evidence: ` `
 
-- [ ] **TDD-12** — Sign placement listener registers sign
+- [x] **TDD-12** — Sign placement listener registers sign
   References: REQ-005, implementation.md §3.3
   Tag: TDD
   Description: Failing MockBukkit test placing a shop-format sign inside a stall region triggers `SignRepository.upsert`. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-13** — Implement SignPlaceListener
+- [x] **TDD-13** — Implement SignPlaceListener
   References: REQ-005
   Tag: TDD
   Description: Add `infrastructure/listeners/SignPlaceListener` and register in `EnthusiaMarket.onEnable`. Green.
   Evidence: ` `
 
-- [ ] **TDD-14** — Atomic shop trade rollback on item failure
+- [x] **TDD-14** — Atomic shop trade rollback on item failure
   References: REQ-006, REQ-040, REQ-043
   Tag: TDD
   Description: Failing test: buyer with insufficient inventory triggers debit then rollback, leaving balance unchanged. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-15** — Implement ShopTradeService with rollback
+- [x] **TDD-15** — Implement ShopTradeService with rollback
   References: REQ-006, REQ-040
   Tag: TDD
   Description: Add `application/ShopTradeService` invoking `EconomyProvider` then item swap, with reverse-on-failure. Green.
@@ -103,37 +103,37 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
 
 ### TDD tasks
 
-- [ ] **TDD-20** — Compute rent due per stall
+- [x] **TDD-20** — Compute rent due per stall
   References: REQ-003, implementation.md §4.2
   Tag: TDD
   Description: Failing unit test on `RentTerms.amountFor(stall)` covering formula and flat-rate variants. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-21** — Extend RentTerms if needed and pass tests
+- [x] **TDD-21** — Extend RentTerms if needed and pass tests
   References: REQ-003
   Tag: TDD
   Description: Minimal change to `domain/stall/RentTerms.kt` to satisfy TDD-20. Green.
   Evidence: ` `
 
-- [ ] **TDD-22** — RentCollectionService debits owners
+- [x] **TDD-22** — RentCollectionService debits owners
   References: REQ-003, REQ-021
   Tag: TDD
   Description: Failing test: scheduler tick on N rented stalls calls `EconomyProvider.withdraw` N times with correct amounts. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-23** — Implement RentCollectionService
+- [x] **TDD-23** — Implement RentCollectionService
   References: REQ-003
   Tag: TDD
   Description: Add `application/RentCollectionService` and Bukkit-scheduler wiring. Green.
   Evidence: ` `
 
-- [ ] **TDD-24** — Default + eviction on insufficient balance
+- [x] **TDD-24** — Default + eviction on insufficient balance
   References: REQ-004
   Tag: TDD
   Description: Failing test: owner balance < rent → stall marked default; after grace period, `Stall.evict()` called and persisted. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-25** — Implement default + grace handling
+- [x] **TDD-25** — Implement default + grace handling
   References: REQ-004
   Tag: TDD
   Description: Add default/grace logic to `RentCollectionService` and `Stall`. Green.
@@ -157,55 +157,55 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
 
 ### TDD tasks
 
-- [ ] **TDD-30** — AuctionRepositorySql round-trip
+- [x] **TDD-30** — AuctionRepositorySql round-trip
   References: REQ-007, REQ-020
   Tag: TDD
   Description: Failing test for upsert + findOpen with serialized item. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-31** — Implement AuctionRepositorySql + migration V003
+- [x] **TDD-31** — Implement AuctionRepositorySql + migration V003
   References: REQ-007, REQ-020, REQ-042
   Tag: TDD
   Description: Add migration and repo to flip TDD-30 green.
   Evidence: ` `
 
-- [ ] **TDD-32** — Auction start escrows item
+- [x] **TDD-32** — Auction start escrows item
   References: REQ-007
   Tag: TDD
   Description: Failing MockBukkit test: `/em auction start` removes item from inventory and persists auction. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-33** — Implement AuctionLifecycleService.start
+- [x] **TDD-33** — Implement AuctionLifecycleService.start
   References: REQ-007
   Tag: TDD
   Description: Add service + ACF subcommand. Green.
   Evidence: ` `
 
-- [ ] **TDD-34** — Anti-snipe extends end time
+- [x] **TDD-34** — Anti-snipe extends end time
   References: REQ-008
   Tag: TDD
   Description: Failing test on `Auction.placeBid` within anti-snipe window extends `endsAt`. Confirm red. (Note: domain `Auction` already has anti-snipe rule scaffolded; verify and harden.)
   Evidence: ` `
 
-- [ ] **TDD-35** — Bid command + persistence
+- [x] **TDD-35** — Bid command + persistence
   References: REQ-008
   Tag: TDD
   Description: Failing MockBukkit test: `/em bid` validates funds and writes new bid. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-36** — Implement bid command + persistence
+- [x] **TDD-36** — Implement bid command + persistence
   References: REQ-008
   Tag: TDD
   Description: Add `BidCommand` + service call + repository update. Green.
   Evidence: ` `
 
-- [ ] **TDD-37** — Auction settlement on expiry
+- [x] **TDD-37** — Auction settlement on expiry
   References: REQ-009, REQ-040
   Tag: TDD
   Description: Failing test: expired auction with winning bid transfers item to bidder, pays seller minus fee, atomically. Confirm red.
   Evidence: ` `
 
-- [ ] **TDD-38** — Implement settlement tick
+- [x] **TDD-38** — Implement settlement tick
   References: REQ-009
   Tag: TDD
   Description: Add scheduler tick to settle expired auctions with rollback on failure. Green.
