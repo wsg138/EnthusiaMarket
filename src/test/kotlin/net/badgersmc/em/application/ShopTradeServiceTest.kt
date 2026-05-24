@@ -274,4 +274,114 @@ class ShopTradeServiceTest {
         assertIs<ShopTradeService.TradeResult.RolledBack>(result)
         verify { economy.deposit(player, 100L) }
     }
+
+    // ===== Compensation failure scenarios =====
+
+    @Test
+    fun `BUY deposit fails and owner refund fails returns CompensationFailed`() {
+        val sign = sampleSign.copy(direction = SignDirection.BUY, price = 100L)
+        val signRepo = mockk<SignRepository>()
+        every { signRepo.findById(sign.id) } returns sign
+
+        val stallRepo = mockk<StallRepository>()
+        every { stallRepo.findById(stallId) } returns sampleStall
+
+        val economy = mockk<EconomyProvider>()
+        every { economy.balance(player) } returns 1000L
+        every { economy.balance(ownerUuid) } returns 1000L
+        every { economy.withdraw(ownerUuid, any()) } returns true
+        every { economy.deposit(player, any()) } returns false  // deposit fails
+        every { economy.deposit(ownerUuid, any()) } returns false // rollback refund also fails!
+
+        val items = mockk<ItemProvider>()
+        every { items.playerHasItem(player, any(), any()) } returns true
+        every { items.takeItemFromPlayer(player, any(), any()) } returns true
+        every { items.giveItemToPlayer(player, any(), any()) } returns true
+
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config())
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.CompensationFailed>(result)
+    }
+
+    @Test
+    fun `BUY deposit fails and item return fails returns CompensationFailed`() {
+        val sign = sampleSign.copy(direction = SignDirection.BUY, price = 100L)
+        val signRepo = mockk<SignRepository>()
+        every { signRepo.findById(sign.id) } returns sign
+
+        val stallRepo = mockk<StallRepository>()
+        every { stallRepo.findById(stallId) } returns sampleStall
+
+        val economy = mockk<EconomyProvider>()
+        every { economy.balance(player) } returns 1000L
+        every { economy.balance(ownerUuid) } returns 1000L
+        every { economy.withdraw(ownerUuid, any()) } returns true
+        every { economy.deposit(player, any()) } returns false  // deposit fails
+        every { economy.deposit(ownerUuid, any()) } returns true  // owner refund ok
+        // items.giveItemToPlayer NOT mocked = returns false by default, so item return fails
+
+        val items = mockk<ItemProvider>()
+        every { items.playerHasItem(player, any(), any()) } returns true
+        every { items.takeItemFromPlayer(player, any(), any()) } returns true
+        every { items.giveItemToPlayer(player, any(), any()) } returns false  // item return fails
+
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config())
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.CompensationFailed>(result)
+    }
+
+    @Test
+    fun `SELL item give fails and player refund fails returns CompensationFailed`() {
+        val sign = sampleSign.copy(direction = SignDirection.SELL, price = 100L)
+        val signRepo = mockk<SignRepository>()
+        every { signRepo.findById(sign.id) } returns sign
+
+        val stallRepo = mockk<StallRepository>()
+        every { stallRepo.findById(stallId) } returns sampleStall
+
+        val economy = mockk<EconomyProvider>()
+        every { economy.balance(player) } returns 1000L
+        every { economy.balance(ownerUuid) } returns 1000L
+        every { economy.withdraw(player, any()) } returns true
+        every { economy.deposit(ownerUuid, any()) } returns true
+        every { economy.deposit(player, any()) } returns false  // rollback refund fails!
+        every { economy.withdraw(ownerUuid, any()) } returns true
+
+        val items = mockk<ItemProvider>()
+        every { items.giveItemToPlayer(player, any(), any()) } returns false
+
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config())
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.CompensationFailed>(result)
+    }
+
+    // ===== Invalid tax percentage =====
+
+    @Test
+    fun `negative tax percentage returns Failure`() {
+        val sign = sampleSign.copy(direction = SignDirection.BUY)
+        val (svc, _, _, _, _) = buildService(sign = sign, taxPct = -0.1)
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.Failure>(result)
+        assertTrue { (result as ShopTradeService.TradeResult.Failure).reason.contains("tax", ignoreCase = true) }
+    }
+
+    @Test
+    fun `tax percentage over 100 returns Failure`() {
+        val sign = sampleSign.copy(direction = SignDirection.SELL)
+        val (svc, _, _, _, _) = buildService(sign = sign, taxPct = 1.5)
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.Failure>(result)
+        assertTrue { (result as ShopTradeService.TradeResult.Failure).reason.contains("tax", ignoreCase = true) }
+    }
 }

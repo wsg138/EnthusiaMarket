@@ -46,14 +46,14 @@ open class SignPlaceListener(
 
         // 2. Parse the first line of sign text for [BUY] or [SELL]
         val lines = event.lines()
-        val firstLine = PlainTextComponentSerializer.plainText().serialize(lines[0])
+        val firstLine = PlainTextComponentSerializer.plainText().serialize(lines[0]).trim()
         val direction = parseDirection(firstLine) ?: return
 
         // 3. Parse the other sign lines for item, price, amount
-        val itemKey = PlainTextComponentSerializer.plainText().serialize(lines.getOrElse(1) { AdventureComponent.empty() })
+        val itemKey = PlainTextComponentSerializer.plainText().serialize(lines.getOrElse(1) { AdventureComponent.empty() }).trim()
         if (itemKey.isBlank()) return
 
-        val priceText = PlainTextComponentSerializer.plainText().serialize(lines.getOrElse(2) { AdventureComponent.empty() })
+        val priceText = PlainTextComponentSerializer.plainText().serialize(lines.getOrElse(2) { AdventureComponent.empty() }).trim()
         val price = priceText.toLongOrNull() ?: return
         if (price <= 0) return
 
@@ -100,8 +100,8 @@ open class SignPlaceListener(
     private fun parseDirection(text: String): SignDirection? {
         val upper = text.uppercase().trim()
         return when {
-            upper.startsWith("[BUY]") || upper.startsWith("BUY") -> SignDirection.BUY
-            upper.startsWith("[SELL]") || upper.startsWith("SELL") -> SignDirection.SELL
+            upper == "[BUY]" || upper == "BUY" -> SignDirection.BUY
+            upper == "[SELL]" || upper == "SELL" -> SignDirection.SELL
             else -> null
         }
     }

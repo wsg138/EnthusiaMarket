@@ -35,6 +35,8 @@ class ShopTradeService(
         data class Failure(val reason: String) : TradeResult()
         /** Trade failed mid-flight and was rolled back. */
         data class RolledBack(val originalError: String) : TradeResult()
+        /** Trade failed mid-flight AND compensation rollback also failed — state may be inconsistent. */
+        data class CompensationFailed(val originalError: String, val compensationError: String) : TradeResult()
     }
 
     companion object {
@@ -63,17 +65,19 @@ class ShopTradeService(
             return TradeResult.Failure("Cannot trade with your own shop sign (no self-trade)")
         }
 
-        // Determine the player's and owner's UUIDs
-        val ownerUuid = when (stall.owner.type) {
-            OwnerType.SOLO -> UUID.fromString(stall.owner.id)
-            OwnerType.GUILD -> playerUuid  // guild trades use player as proxy
-            OwnerType.NONE -> return TradeResult.Failure("Stall has no owner")
-        }
+        // 4. Resolve owner UUID — handle malformed input gracefully
+        val ownerUuid = resolveOwnerUuid(stall) ?: return TradeResult.Failure("Malformed owner UUID on stall ${stall.id.value}")
 
         val itemKey = sign.itemKey
         val price = sign.price
         val amount = DEFAULT_AMOUNT
         val taxPct = config.shop.taxPct
+
+        // 5. Validate tax percentage range
+        if (taxPct < 0.0 || taxPct > 1.0) {
+            return TradeResult.Failure("Invalid tax percentage: $taxPct — must be between 0.0 and 1.0")
+        }
+
         val taxAmount = (price * taxPct).toLong()
         val sellerProceeds = price - taxAmount
 
@@ -83,8 +87,21 @@ class ShopTradeService(
         }
     }
 
+    private fun resolveOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? {
+        return when (stall.owner.type) {
+            OwnerType.SOLO -> try {
+                UUID.fromString(stall.owner.id)
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+            OwnerType.GUILD -> null // guild trades use player as proxy, resolved at call site
+            OwnerType.NONE -> null
+        }
+    }
+
     /**
      * BUY: player sells item to the stall owner.
+     *
      * Steps:
      *   1. Check player has the item
      *   2. Check owner has sufficient balance
@@ -120,15 +137,29 @@ class ShopTradeService(
         // Step 2: Withdraw price from owner
         if (!economy.withdraw(ownerUuid, price)) {
             // ROLLBACK: give item back to player
-            items.giveItemToPlayer(playerUuid, itemKey, amount)
+            if (!items.giveItemToPlayer(playerUuid, itemKey, amount)) {
+                return TradeResult.CompensationFailed(
+                    originalError = "Economy withdrawal from shop owner failed",
+                    compensationError = "Failed to return item to player during rollback"
+                )
+            }
             return TradeResult.RolledBack("Economy withdrawal from shop owner failed")
         }
 
         // Step 3: Deposit proceeds to player
         if (!economy.deposit(playerUuid, sellerProceeds)) {
             // ROLLBACK: refund owner + give item back to player
-            economy.deposit(ownerUuid, price)
-            items.giveItemToPlayer(playerUuid, itemKey, amount)
+            val ownerRefunded = economy.deposit(ownerUuid, price)
+            val itemReturned = items.giveItemToPlayer(playerUuid, itemKey, amount)
+            if (!ownerRefunded || !itemReturned) {
+                val failures = mutableListOf<String>()
+                if (!ownerRefunded) failures.add("failed to refund owner")
+                if (!itemReturned) failures.add("failed to return item")
+                return TradeResult.CompensationFailed(
+                    originalError = "Economy deposit to player failed",
+                    compensationError = failures.joinToString("; ")
+                )
+            }
             return TradeResult.RolledBack("Economy deposit to player failed")
         }
 
@@ -139,6 +170,7 @@ class ShopTradeService(
 
     /**
      * SELL: player buys item from the stall owner.
+     *
      * Steps:
      *   1. Check player has sufficient balance
      *   2. Withdraw price from player
@@ -168,15 +200,29 @@ class ShopTradeService(
         // Step 2: Deposit proceeds to owner
         if (!economy.deposit(ownerUuid, sellerProceeds)) {
             // ROLLBACK: refund player
-            economy.deposit(playerUuid, price)
+            if (!economy.deposit(playerUuid, price)) {
+                return TradeResult.CompensationFailed(
+                    originalError = "Failed to credit shop owner",
+                    compensationError = "Failed to refund player during rollback"
+                )
+            }
             return TradeResult.RolledBack("Failed to credit shop owner")
         }
 
         // Step 3: Give item to player
         if (!items.giveItemToPlayer(playerUuid, itemKey, amount)) {
             // ROLLBACK: refund player + take money back from owner
-            economy.deposit(playerUuid, price)
-            economy.withdraw(ownerUuid, sellerProceeds)
+            val playerRefunded = economy.deposit(playerUuid, price)
+            val ownerDebited = economy.withdraw(ownerUuid, sellerProceeds)
+            if (!playerRefunded || !ownerDebited) {
+                val failures = mutableListOf<String>()
+                if (!playerRefunded) failures.add("failed to refund player")
+                if (!ownerDebited) failures.add("failed to debit owner")
+                return TradeResult.CompensationFailed(
+                    originalError = "Failed to give item to player",
+                    compensationError = failures.joinToString("; ")
+                )
+            }
             return TradeResult.RolledBack("Failed to give item to player")
         }
 

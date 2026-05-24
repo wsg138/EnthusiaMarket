@@ -118,4 +118,106 @@ class SignPlaceListenerTest {
 
         verify(inverse = true) { signRepo.create(any()) }
     }
+
+    // ===== Parser edge-case tests =====
+
+    @Test
+    fun `BUYBACK prefix is NOT registered as BUY`() {
+        val event = signEvent("[BUYBACK]", "DIAMOND", "100", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify(inverse = true) { signRepo.create(any()) }
+    }
+
+    @Test
+    fun `BUYER prefix is NOT registered as BUY`() {
+        val event = signEvent("BUYER", "DIAMOND", "100", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify(inverse = true) { signRepo.create(any()) }
+    }
+
+    @Test
+    fun `SELLING prefix is NOT registered as SELL`() {
+        val event = signEvent("SELLING", "DIAMOND", "100", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify(inverse = true) { signRepo.create(any()) }
+    }
+
+    @Test
+    fun `trimmed whitespace around BUY directive is still parsed`() {
+        val event = signEvent("  [BUY]  ", "DIAMOND", "100", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify { signRepo.create(match { sign -> sign.direction == SignDirection.BUY }) }
+    }
+
+    @Test
+    fun `trimmed whitespace around price is still parsed`() {
+        val event = signEvent("[BUY]", "DIAMOND", "  100  ", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify { signRepo.create(match { sign -> sign.price == 100L }) }
+    }
+
+    @Test
+    fun `trimmed whitespace around item key is still parsed`() {
+        val event = signEvent("[BUY]", "  DIAMOND  ", "100", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify { signRepo.create(match { sign -> sign.itemKey == "DIAMOND" }) }
+    }
+
+    @Test
+    fun `zero price is NOT registered`() {
+        val event = signEvent("[BUY]", "DIAMOND", "0", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify(inverse = true) { signRepo.create(any()) }
+    }
+
+    @Test
+    fun `negative price is NOT registered`() {
+        val event = signEvent("[SELL]", "DIAMOND", "-5", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify(inverse = true) { signRepo.create(any()) }
+    }
+
+    @Test
+    fun `non-numeric price is NOT registered`() {
+        val event = signEvent("[BUY]", "DIAMOND", "free", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify(inverse = true) { signRepo.create(any()) }
+    }
+
+    @Test
+    fun `blank item key is NOT registered`() {
+        val event = signEvent("[BUY]", "", "100", "10")
+        val listener = listenerInStall()
+
+        listener.onSignPlace(event)
+
+        verify(inverse = true) { signRepo.create(any()) }
+    }
 }

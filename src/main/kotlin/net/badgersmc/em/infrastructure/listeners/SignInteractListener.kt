@@ -11,6 +11,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.plugin.java.JavaPlugin
 
 /**
@@ -32,6 +33,9 @@ open class SignInteractListener(
 
     @EventHandler
     fun onSignInteract(event: PlayerInteractEvent) {
+        // 0. Filter to main hand only to avoid duplicate processing from off-hand trigger
+        if (event.hand != EquipmentSlot.HAND) return
+
         // 1. Verify player interaction is a right-click
         if (event.action != Action.RIGHT_CLICK_BLOCK) return
 
@@ -51,13 +55,14 @@ open class SignInteractListener(
         val message = when (result) {
             is ShopTradeService.TradeResult.Success -> result.description
             is ShopTradeService.TradeResult.Failure -> "\u00A7c${result.reason}"
-            is ShopTradeService.TradeResult.RolledBack -> "\u00A74${result.originalError}"
+            is ShopTradeService.TradeResult.RolledBack -> "\u00A7e${result.originalError}"
+            is ShopTradeService.TradeResult.CompensationFailed -> "\u00A74[CRITICAL] ${result.originalError} (compensation: ${result.compensationError})"
         }
         event.player.sendMessage(message)
     }
 
-    private fun isSign(block: org.bukkit.block.Block): Boolean {
-        return block.state is org.bukkit.block.Sign
+    private fun isSign(block: Block): Boolean {
+        return block.state is Sign
     }
 
     private fun serializeLocation(loc: org.bukkit.Location): String =

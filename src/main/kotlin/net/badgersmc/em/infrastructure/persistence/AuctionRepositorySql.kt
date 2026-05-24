@@ -22,7 +22,7 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
     }
 
     override fun findOpenByStall(stallId: StallId): Auction? =
-        queryOne("SELECT * FROM auctions WHERE stall_id = ? AND state = 'OPEN' AND end_at > ?") {
+        queryOne("SELECT * FROM auctions WHERE stall_id = ? AND state = 'OPEN' AND end_at > ? ORDER BY start_at DESC LIMIT 1") {
             setString(1, stallId.value)
             setLong(2, Instant.now().toEpochMilli())
         }
@@ -41,7 +41,8 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
             ).use { ps ->
                 bind(ps, auction)
-                ps.executeUpdate()
+                val rows = ps.executeUpdate()
+                if (rows != 1) error("AuctionRepositorySql.create: expected 1 row, affected $rows")
             }
         }
     }
@@ -70,7 +71,8 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
                 }
                 ps.setLong(8, auction.antiSnipeWindow.toSeconds())
                 ps.setString(9, auction.id.value)
-                ps.executeUpdate()
+                val rows = ps.executeUpdate()
+                if (rows != 1) error("AuctionRepositorySql.save: expected 1 row, affected $rows")
             }
         }
     }
@@ -84,7 +86,8 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
         ds.connection.use { conn ->
             conn.prepareStatement("DELETE FROM auctions WHERE id = ?").use { ps ->
                 ps.setString(1, id.value)
-                ps.executeUpdate()
+                val rows = ps.executeUpdate()
+                if (rows != 1) error("AuctionRepositorySql.delete: expected 1 row, affected $rows")
             }
         }
     }
