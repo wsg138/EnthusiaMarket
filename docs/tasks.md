@@ -269,7 +269,7 @@ References: REQ-012 through REQ-023
   Description: Failing test: player left-clicks wall sign attached to container while sneaking inside owned stall → CreateShopMenu opens. Implement ShopCreateListener. Red before listener exists.
   Evidence: ` `
 
-- [ ] **TDD-52** — PurchaseMenu GUI (IFramework, right-click trade)
+- [x] **TDD-52** — PurchaseMenu GUI (IFramework, right-click trade)
   References: REQ-013, REQ-014
   Tag: TDD
   Description: Failing test: right-click registered shop sign → PurchaseMenu opens showing item, price, stock. Implement PurchaseMenu (ChestGui) + ShopInteractListener routing.
@@ -281,7 +281,7 @@ References: REQ-012 through REQ-023
   Description: Failing test: BUY/SELL trade takes item from container inventory (not virtual), updates container on success. Implement ShopTradeService replacement using container items.
   Evidence: ` `
 
-- [ ] **TDD-54** — Sign and container break protection
+- [x] **TDD-54** — Sign and container break protection
   References: REQ-015
   Tag: TDD
   Description: Failing test: breaking a shop sign → cancelled + owner gets edit menu. Breaking a linked container → all linked shops deleted. Implement BlockProtectionListener.
