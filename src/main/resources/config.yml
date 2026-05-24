@@ -1,8 +1,33 @@
 market:
   world: "world"
   region-prefix: "stall_"
+
+rent:
+  mode: formula           # formula | flat
+  formula-pct: 0.01       # 1% of winning-bid per period
+  flat-amount: 0          # used when mode=flat
+  collection-interval: P1D
+  grace-period: P3D
+
+auction:
+  default-duration: PT24H
+  min-duration: PT15M
+  max-duration: P7D
+  anti-snipe-sec: 30
+  fee-pct: 0.05           # 5% to system
+  min-starting-bid: 1
+
+shop:
+  tax-pct: 0.02           # 2% to system
+  allow-bedrock-edit: true
+
+lumaguilds:
+  enabled: true
+  manage-rank: officer
+  pay-from: bank          # bank | leader
+
 database:
-  type: sqlite        # sqlite | mariadb
+  type: sqlite            # sqlite | mariadb
   sqlite-file: "enthusiamarket.db"
   mariadb:
     host: localhost
@@ -10,3 +35,13 @@ database:
     database: enthusiamarket
     username: em
     password: ""
+  pool:
+    max-size: 10
+
+bedrock:
+  force-forms: false
+  form-timeout-sec: 60
+
+debug:
+  log-economy: false
+  log-migrations: true
