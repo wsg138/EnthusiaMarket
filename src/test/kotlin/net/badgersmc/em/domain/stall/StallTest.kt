@@ -1,10 +1,16 @@
 package net.badgersmc.em.domain.stall
 
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
+import net.badgersmc.em.domain.ports.GuildProvider
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class StallTest {
     private val baseStall = Stall(
@@ -44,5 +50,84 @@ class StallTest {
         assertFailsWith<IllegalArgumentException> {
             baseStall.awardTo(OwnerRef.solo(UUID.randomUUID()), winningBid = 0L, at = Instant.now())
         }
+    }
+
+    // --- canManage tests ---
+
+    @Test fun `solo owner can manage own stall`() {
+        val ownerUuid = UUID.randomUUID()
+        val stall = baseStall.copy(owner = OwnerRef.solo(ownerUuid))
+        val guildProvider = mockk<GuildProvider>(relaxed = true)
+
+        val result = stall.canManage(ownerUuid, guildProvider, "manage")
+
+        assertTrue(result)
+    }
+
+    @Test fun `solo owner cannot manage another player's stall`() {
+        val ownerUuid = UUID.randomUUID()
+        val otherUuid = UUID.randomUUID()
+        val stall = baseStall.copy(owner = OwnerRef.solo(ownerUuid))
+        val guildProvider = mockk<GuildProvider>(relaxed = true)
+
+        val result = stall.canManage(otherUuid, guildProvider, "manage")
+
+        assertFalse(result)
+    }
+
+    @Test fun `guild member with required rank can manage stall`() {
+        val playerUuid = UUID.randomUUID()
+        val guildId = "guild_01"
+        val stall = baseStall.copy(owner = OwnerRef.guild(guildId))
+        val guildProvider = mockk<GuildProvider>()
+
+        every { guildProvider.isMember(playerUuid, guildId) } returns true
+        every { guildProvider.hasPermission(playerUuid, guildId, "manage") } returns true
+
+        val result = stall.canManage(playerUuid, guildProvider, "manage")
+
+        assertTrue(result)
+        verify { guildProvider.isMember(playerUuid, guildId) }
+        verify { guildProvider.hasPermission(playerUuid, guildId, "manage") }
+    }
+
+    @Test fun `guild member with insufficient rank cannot manage stall`() {
+        val playerUuid = UUID.randomUUID()
+        val guildId = "guild_01"
+        val stall = baseStall.copy(owner = OwnerRef.guild(guildId))
+        val guildProvider = mockk<GuildProvider>()
+
+        every { guildProvider.isMember(playerUuid, guildId) } returns true
+        every { guildProvider.hasPermission(playerUuid, guildId, "manage") } returns false
+
+        val result = stall.canManage(playerUuid, guildProvider, "manage")
+
+        assertFalse(result)
+        verify { guildProvider.isMember(playerUuid, guildId) }
+        verify { guildProvider.hasPermission(playerUuid, guildId, "manage") }
+    }
+
+    @Test fun `non-member cannot manage guild stall`() {
+        val playerUuid = UUID.randomUUID()
+        val guildId = "guild_01"
+        val stall = baseStall.copy(owner = OwnerRef.guild(guildId))
+        val guildProvider = mockk<GuildProvider>()
+
+        every { guildProvider.isMember(playerUuid, guildId) } returns false
+
+        val result = stall.canManage(playerUuid, guildProvider, "manage")
+
+        assertFalse(result)
+        verify { guildProvider.isMember(playerUuid, guildId) }
+        verify(exactly = 0) { guildProvider.hasPermission(any(), any(), any()) }
+    }
+
+    @Test fun `unowned stall cannot be managed`() {
+        val playerUuid = UUID.randomUUID()
+        val guildProvider = mockk<GuildProvider>(relaxed = true)
+
+        val result = baseStall.canManage(playerUuid, guildProvider, "manage")
+
+        assertFalse(result)
     }
 }

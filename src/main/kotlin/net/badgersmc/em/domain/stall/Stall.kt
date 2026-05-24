@@ -1,6 +1,8 @@
 package net.badgersmc.em.domain.stall
 
+import net.badgersmc.em.domain.ports.GuildProvider
 import java.time.Instant
+import java.util.UUID
 
 data class Stall(
     val id: StallId,
@@ -21,5 +23,34 @@ data class Stall(
             ownerSince = at,
             winningBid = winningBid
         )
+    }
+
+    /**
+     * Checks whether [playerUuid] has management authority over this stall.
+     *
+     * - **SOLO**: the player must match the owner UUID.
+     * - **GUILD**: the player must be a guild member with the [manageRank] permission.
+     * - **NONE** (unowned): always returns false.
+     *
+     * @param playerUuid  the actor requesting management.
+     * @param guildProvider  port used to resolve guild membership & permissions.
+     * @param manageRank  the permission node required for guild-managed stalls (e.g. `"manage"`).
+     * @return `true` if the player is authorised, `false` otherwise.
+     */
+    fun canManage(playerUuid: UUID, guildProvider: GuildProvider, manageRank: String): Boolean {
+        return when (owner.type) {
+            OwnerType.NONE -> false
+            OwnerType.SOLO -> {
+                try {
+                    UUID.fromString(owner.id) == playerUuid
+                } catch (_: IllegalArgumentException) {
+                    false
+                }
+            }
+            OwnerType.GUILD -> {
+                guildProvider.isMember(playerUuid, owner.id) &&
+                    guildProvider.hasPermission(playerUuid, owner.id, manageRank)
+            }
+        }
     }
 }
