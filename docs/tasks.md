@@ -239,6 +239,88 @@ Tasks are ordered to honour state-machine and architectural dependencies. Indepe
   References: REQ-011
   Tag: TDD
   Description: Add `infrastructure/bedrock/UiDispatcher` checking `FloodgateApi`. Green.
+Evidence: ` `
+
+---
+
+## Milestone M5 — ItemShops port (container-linked GUI shops)
+
+References: REQ-012 through REQ-023
+
+### INFRA tasks
+
+- [ ] **INFRA-10** — Add IFramework + Cumulus compile dependencies
+  References: REQ-014, REQ-011
+  Tag: INFRA
+  Description: Add `com.github.stefvanschie.inventoryframework:IF:0.11.6` and `org.geysermc.cumulus:cumulus` as compileOnly deps. Create `Menu` interface + `MenuFactory` routing Java vs Bedrock.
+  Evidence: ` `
+
+### TDD tasks
+
+- [ ] **TDD-50** — Create shop_items db migration + ShopRepositorySql
+  References: REQ-020, docs/tech-stack.md §3
+  Tag: TDD
+  Description: Failing test for shop_items table round-trip: upsert + findById with sign pos, container pos, owner, sell/cost items (ItemStack serialized), trusted set, hopper flags, frozen flag. Implement V004 migration + ShopRepositorySql.
+  Evidence: ` `
+
+- [ ] **TDD-51** — Container-linked sign creation via left-click+sneak
+  References: REQ-012
+  Tag: TDD
+  Description: Failing test: player left-clicks wall sign attached to container while sneaking inside owned stall → CreateShopMenu opens. Implement ShopCreateListener. Red before listener exists.
+  Evidence: ` `
+
+- [ ] **TDD-52** — PurchaseMenu GUI (IFramework, right-click trade)
+  References: REQ-013, REQ-014
+  Tag: TDD
+  Description: Failing test: right-click registered shop sign → PurchaseMenu opens showing item, price, stock. Implement PurchaseMenu (ChestGui) + ShopInteractListener routing.
+  Evidence: ` `
+
+- [ ] **TDD-53** — Real inventory trade from container
+  References: REQ-013, REQ-017
+  Tag: TDD
+  Description: Failing test: BUY/SELL trade takes item from container inventory (not virtual), updates container on success. Implement ShopTradeService replacement using container items.
+  Evidence: ` `
+
+- [ ] **TDD-54** — Sign and container break protection
+  References: REQ-015
+  Tag: TDD
+  Description: Failing test: breaking a shop sign → cancelled + owner gets edit menu. Breaking a linked container → all linked shops deleted. Implement BlockProtectionListener.
+  Evidence: ` `
+
+- [ ] **TDD-55** — Explosion cleanup
+  References: REQ-016
+  Tag: TDD
+  Description: Failing test: EntityExplodeEvent destroys shop containers → shops cleaned up. Implement ExplodeCleanupListener.
+  Evidence: ` `
+
+- [ ] **TDD-56** — Container stock refresh on inventory change
+  References: REQ-017
+  Tag: TDD
+  Description: Failing test: InventoryClickEvent in linked container → sign text refreshes with trade count. Implement ContainerStockListener.
+  Evidence: ` `
+
+- [ ] **TDD-57** — Trust management GUI
+  References: REQ-018
+  Tag: TDD
+  Description: Failing test: owner opens trust menu → can add/remove trusted UUIDs. Implement TrustManageMenu.
+  Evidence: ` `
+
+- [ ] **TDD-58** — Hopper control
+  References: REQ-019
+  Tag: TDD
+  Description: Failing test: hopper attempting to insert/extract from container with hopperAllowIn/Out=false is blocked. Implement HopperControlListener.
+  Evidence: ` `
+
+- [ ] **TDD-59** — Shop freezing
+  References: REQ-023
+  Tag: TDD
+  Description: Failing test: frozen shop rejects all trades, shows frozen message. Implement freeze toggle in ShopEditMenu.
+  Evidence: ` `
+
+- [ ] **TDD-60** — Bedrock Cumulus menus for create/purchase/edit
+  References: REQ-011, REQ-012, REQ-013
+  Tag: TDD
+  Description: Failing test: Bedrock player creates/purchases/edits shop → Cumulus form used. Implement BedrockCreateShopMenu, BedrockPurchaseMenu, BedrockShopEditMenu extending BaseBedrockMenu.
   Evidence: ` `
 
 ---

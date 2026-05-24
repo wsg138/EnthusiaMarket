@@ -22,11 +22,13 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 ### REQ-004 — Default eviction
 **Unwanted.** IF a stall owner balance is insufficient to cover rent at collection time THEN THE SYSTEM SHALL mark the stall as in default and evict the owner after the grace period configured for that stall.
 
-### REQ-005 — Sign shop creation
-**Event-driven.** WHEN a player places a shop sign inside a stall they own or rent THE SYSTEM SHALL register the sign as a buy or sell endpoint scoped to that stall region.
+### REQ-005 — Sign shop creation (superseded 2026-05-24 by REQ-012)
+~~**Event-driven.** WHEN a player places a shop sign inside a stall they own or rent THE SYSTEM SHALL register the sign as a buy or sell endpoint scoped to that stall region.~~
+**Note:** Replaced by container-linked wall sign creation (REQ-012).
 
-### REQ-006 — Shop sign transaction
-**Event-driven.** WHEN a player interacts with a registered shop sign with a valid item and balance THE SYSTEM SHALL transfer the item and the price atomically between buyer and seller.
+### REQ-006 — Shop sign transaction (superseded 2026-05-24 by REQ-013)
+~~**Event-driven.** WHEN a player interacts with a registered shop sign with a valid item and balance THE SYSTEM SHALL transfer the item and the price atomically between buyer and seller.~~
+**Note:** Replaced by GUI-based shop trade with container inventory (REQ-013).
 
 ### REQ-007 — Auction creation
 **Event-driven.** WHEN a player runs the auction create command with a held item and a valid duration THE SYSTEM SHALL escrow the item and open an auction lot for that duration.
@@ -43,7 +45,34 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 ### REQ-011 — Bedrock player UI
 **Event-driven.** WHEN a Bedrock player opens a stall or auction menu THE SYSTEM SHALL render the interaction as a Cumulus form instead of a Java inventory GUI.
 
+### REQ-012 — Container-linked sign creation
+**Event-driven.** WHEN a player left-clicks a wall sign attached to a container block while sneaking within a stall they own or rent THE SYSTEM SHALL open a creation GUI to register the sign and link it to the container as a buy or sell endpoint.
+
+### REQ-013 — Shop trade via GUI
+**Event-driven.** WHEN a player right-clicks a registered shop sign THE SYSTEM SHALL open a trade GUI showing the item, price, and stock, and execute the transaction from the linked container's real inventory.
+
+### REQ-014 — IFramework GUI rendering
+**Ubiquitous.** THE SYSTEM SHALL render all Java player shop menus using the IFramework library (com.github.stefvanschie.inventoryframework:IF:0.11.6).
+
+### REQ-015 — Sign and container destruction
+**Unwanted.** IF a player attempts to break a sign linked to a shop or a container linked to a shop THEN THE SYSTEM SHALL cancel the break and either open the edit menu (for owners) or notify the player (for non-owners).
+
+### REQ-016 — Explosion cleanup
+**Event-driven.** WHEN an explosion destroys a container or sign linked to a shop THE SYSTEM SHALL delete the shop record to prevent orphaned data.
+
+### REQ-017 — Container stock tracking
+**Event-driven.** WHEN the inventory of a linked container changes THE SYSTEM SHALL update the shop sign's visible stock count.
+
+### REQ-018 — Shop trust system
+**Ubiquitous.** THE SYSTEM SHALL allow shop owners to add and remove trusted players who can edit the shop's item and price without owning the stall.
+
+### REQ-019 — Hopper control
+**Ubiquitous.** THE SYSTEM SHALL allow per-shop configuration of hopper input and output into the linked container.
+
 ---
+
+### REQ-023 — Shop freezing
+**Ubiquitous.** THE SYSTEM SHALL allow shop owners and admins to freeze a shop, preventing all trades until unfrozen.
 
 ## Interfaces & contracts
 
