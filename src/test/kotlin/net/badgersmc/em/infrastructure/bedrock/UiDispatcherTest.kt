@@ -2,6 +2,8 @@ package net.badgersmc.em.infrastructure.bedrock
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
+import io.mockk.verify
 import org.bukkit.entity.Player
 import java.util.UUID
 import kotlin.test.Test
@@ -78,5 +80,36 @@ class UiDispatcherTest {
 
         // Should not throw even though Floodgate is absent
         dispatcher.dispatch(player)
+    }
+
+    @Test
+    fun `dispatch sends fallback message for Bedrock player when Cumulus absent`() {
+        val dispatcher = spyk(UiDispatcher())
+        val player = mockk<Player>(relaxed = true) {
+            every { uniqueId } returns testUuid
+        }
+
+        // Force isBedrockPlayer to return true to enter the Bedrock code path
+        every { dispatcher.isBedrockPlayer(testUuid) } returns true
+
+        // Should send a fallback chat message instead of throwing
+        dispatcher.dispatch(player)
+
+        // Verify sendMessage was called with the fallback message
+        verify { player.sendMessage("§cBedrock forms are not available on this server") }
+    }
+
+    @Test
+    fun `dispatch does not send message for Java player`() {
+        val dispatcher = UiDispatcher()
+        val player = mockk<Player>(relaxed = true) {
+            every { uniqueId } returns javaUuid
+        }
+
+        // Java player path: no form, no message
+        dispatcher.dispatch(player)
+
+        // Verify sendMessage was never called with the fallback message
+        verify(exactly = 0) { player.sendMessage("§cBedrock forms are not available on this server") }
     }
 }
