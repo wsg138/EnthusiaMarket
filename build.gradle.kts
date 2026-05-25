@@ -25,6 +25,13 @@ dependencies {
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.9")
     compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
     compileOnly("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
+    testImplementation("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
+    testImplementation("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
+
+    // IFramework for Java GUIs
+    compileOnly("com.github.stefvanschie.inventoryframework:IF:0.11.6")
+    testImplementation("com.github.stefvanschie.inventoryframework:IF:0.11.6")
+    testImplementation("commons-lang:commons-lang:2.6")
 
     // Nexus DI + config + coroutines (shaded)
     implementation("net.badgersmc:nexus-core:1.6.0")
@@ -52,6 +59,13 @@ dependencies {
         exclude(group = "org.bukkit", module = "bukkit")
     }
     testImplementation("com.lemonappdev:konsist:0.17.3")
+
+    // LumaGuilds API for real GuildProvider implementation
+    // Path can be overridden via -Plumaguilds.jar=... or LUMAGUILDS_JAR env var
+    val lumaguildsJar = System.getenv("LUMAGUILDS_JAR") ?: project.findProperty("lumaguilds.jar")?.toString()
+        ?: "/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"
+    compileOnly(files(lumaguildsJar))
+    testImplementation(files(lumaguildsJar))
 }
 
 kotlin {

@@ -1,3 +1,4 @@
+
 # WorldGuard 7.0.9 — API Snapshot
 
 **Source:** enginehub/worldguarddocs (context7) + enginehub/worldguard 7.0.9
@@ -21,6 +22,7 @@
 ## Critical Signatures
 
 ### Accessing regions
+
 ```java
 RegionContainer container = WorldGuard.getInstance().getPlatform().getRegionContainer();
 RegionManager regions = container.get(BukkitAdapter.adapt(world));
@@ -28,16 +30,19 @@ RegionQuery query = container.createQuery();
 ```
 
 ### Listing all regions for a world
+
 ```java
 Map<String, ProtectedRegion> all = regions.getRegions(); // id → region
 ```
 
 ### Test if a named region exists
+
 ```java
 ProtectedRegion region = regions.getRegion("stall_001"); // null if absent
 ```
 
 ### Point query (is a location inside a region?)
+
 ```java
 Location Bukkit API → com.sk89q.worldedit.util.Location via BukkitAdapter.adapt(loc)
 ApplicableRegionSet set = query.getApplicableRegions(loc);
@@ -45,6 +50,7 @@ for (ProtectedRegion r : set) { /* ... */ }
 ```
 
 ### Overlap query (enumerate regions overlapping an area)
+
 ```java
 ProtectedRegion dummy = new ProtectedCuboidRegion("_snapshot_",
     BlockVector3.at(minX, minY, minZ),

@@ -16,6 +16,9 @@ class SignRepositorySql(private val ds: DataSource) : SignRepository {
     override fun bySignLocation(loc: String): ShopSign? =
         queryOne("SELECT * FROM signs WHERE sign_location = ?") { setString(1, loc) }
 
+    override fun findById(id: Long): ShopSign? =
+        queryOne("SELECT * FROM signs WHERE id = ?") { setLong(1, id) }
+
     override fun create(sign: ShopSign): Long {
         ds.connection.use { conn ->
             conn.prepareStatement(

@@ -4,8 +4,11 @@ import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.infrastructure.persistence.Database
 import net.badgersmc.em.infrastructure.persistence.Migrations
+import net.badgersmc.em.infrastructure.vault.VaultHealth
 import net.badgersmc.nexus.core.NexusContext
 import net.badgersmc.nexus.paper.registerPaperCommands
+import net.milkbowl.vault.economy.Economy
+import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 import javax.sql.DataSource
 
@@ -16,17 +19,28 @@ open class EnthusiaMarket : JavaPlugin() {
     override fun onEnable() {
         dataFolder.mkdirs()
 
-        // Phase 1: Create Nexus DI context — generates enthusiamarket.yaml with defaults
+        // Phase 1: Detect Vault availability before Nexus DI context is created,
+        // so that schedulers/listeners see the correct VaultHealth value (REQ-041).
+        val vaultHealth = VaultHealth()
+        val vaultRsp = Bukkit.getServicesManager().getRegistration(Economy::class.java)
+        if (vaultRsp == null) {
+            logger.severe("Vault Economy not found — rent collection, shop signs, and auctions disabled")
+            vaultHealth.isAvailable = false
+        } else {
+            vaultHealth.isAvailable = true
+        }
+
+        // Phase 2: Create Nexus DI context — generates enthusiamarket.yaml with defaults
         // if it doesn't exist yet (ConfigLoader handles this).
         nexus = NexusContext.create(
             basePackage = "net.badgersmc.em",
             classLoader = this::class.java.classLoader,
             configDirectory = dataFolder.toPath(),
             contextName = "EnthusiaMarket",
-            externalBeans = mapOf("plugin" to this)
+            externalBeans = mapOf("plugin" to this, "vaultHealth" to vaultHealth)
         )
 
-        // Phase 2: Read config from Nexus for database bootstrap
+        // Phase 3: Read config from Nexus for database bootstrap
         val cfg = nexus!!.getBean<EnthusiaMarketConfig>()
         val ds = Database.open(
             type = cfg.database.type,
@@ -40,7 +54,7 @@ open class EnthusiaMarket : JavaPlugin() {
         )
         Migrations.runAll(ds)
 
-        // Phase 3: Register DataSource bean so @Repository classes can resolve it
+        // Phase 4: Register DataSource bean so @Repository classes can resolve it
         nexus!!.registerBean("dataSource", DataSource::class, ds as DataSource)
 
         // Register defaultRent from config
@@ -51,7 +65,7 @@ open class EnthusiaMarket : JavaPlugin() {
         }
         nexus!!.registerBean("defaultRent", RentTerms::class, defaultRent)
 
-        // Phase 4: Register Paper commands (triggers bean creation via DI)
+        // Phase 5: Register Paper commands (triggers bean creation via DI)
         nexus!!.registerPaperCommands(
             basePackage = "net.badgersmc.em",
             classLoader = this::class.java.classLoader,

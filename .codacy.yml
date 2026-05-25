@@ -1,0 +1,5 @@
+---
+exclude_paths:
+  - "docs/**"
+  - "src/main/resources/migrations/**"
+  - "build.gradle.kts"
