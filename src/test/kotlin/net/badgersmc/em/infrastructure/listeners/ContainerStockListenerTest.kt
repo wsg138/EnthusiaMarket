@@ -18,10 +18,24 @@ import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryAction
 import org.bukkit.inventory.*
 import org.mockbukkit.mockbukkit.MockBukkit
+import org.junit.jupiter.api.AfterEach
 import java.util.UUID
 import kotlin.test.Test
 
 class ContainerStockListenerTest {
+
+    @AfterEach
+    fun cleanupMocks() {
+        // The helper methods in this class call mockkStatic(Bukkit::class) without
+        // an unmockkStatic — and mockk's static mocks are JVM-global. Without this
+        // teardown, the static mock leaks into the next test class's execution and
+        // breaks anything that relies on Bukkit.getPluginManager() being dispatched
+        // through MockBukkit's ServerMock (e.g. ShopDeletedEventTest's
+        // assertEventFired never sees fired events because callEvent is intercepted
+        // by the leaked relaxed mock instead).
+        unmockkAll()
+        if (MockBukkit.isMocked()) MockBukkit.unmock()
+    }
 
     /** Creates a shop with the given coordinates. */
     private fun shop(

@@ -3,6 +3,7 @@ package net.badgersmc.em.application
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
+import io.mockk.unmockkAll
 import io.mockk.verify
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -21,12 +22,24 @@ import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.PlayerInventory
 import org.mockbukkit.mockbukkit.MockBukkit
+import org.junit.jupiter.api.AfterEach
 import java.util.UUID
 import java.util.logging.Logger
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
 class ContainerTradeServiceTest {
+
+    @AfterEach
+    fun cleanupMocks() {
+        // Tests in this class call mockkStatic(Bukkit::class) ~20 times without an
+        // unmockkStatic. mockk's static mocks are JVM-global, so without this
+        // teardown the mock leaks into subsequent test classes and breaks anything
+        // relying on Bukkit.getPluginManager() being dispatched through MockBukkit's
+        // ServerMock (e.g. ShopDeletedEventTest's assertEventFired).
+        unmockkAll()
+        if (MockBukkit.isMocked()) MockBukkit.unmock()
+    }
 
     private val playerUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")
     private val ownerUuid = UUID.fromString("00000000-0000-0000-0000-000000000002")
