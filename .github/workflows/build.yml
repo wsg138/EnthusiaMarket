@@ -26,10 +26,23 @@ jobs:
           chmod +x gradlew
           ./gradlew :nexus-core:publishToMavenLocal :nexus-paper:publishToMavenLocal --no-daemon
 
+      - name: Build RoseChat (fork) shadowJar
+        run: |
+          git clone --depth 1 --branch master https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat"
+          cd "$RUNNER_TEMP/rosechat"
+          chmod +x gradlew
+          ./gradlew shadowJar --no-daemon
+          # Drop the RC-2 shadowJar somewhere stable for LumaGuilds to pick up
+          ROSE_JAR=$(ls "$RUNNER_TEMP/rosechat/build/libs/"RoseChat-RC-2*.jar | grep -v '\-sources\|-javadoc' | head -1)
+          mkdir -p "$RUNNER_TEMP/rosechat-out"
+          cp "$ROSE_JAR" "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar"
+
       - name: Build LumaGuilds shadowJar
         id: lg
         run: |
           git clone --depth 1 https://github.com/BadgersMC/LumaGuilds.git "$RUNNER_TEMP/lumaguilds"
+          mkdir -p "$RUNNER_TEMP/lumaguilds/libs"
+          cp "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar" "$RUNNER_TEMP/lumaguilds/libs/RoseChat-RC-2.jar"
           cd "$RUNNER_TEMP/lumaguilds"
           chmod +x gradlew
           ./gradlew shadowJar --no-daemon
