@@ -68,8 +68,6 @@ class EnthusiaMarketConfig {
     class LumaGuilds {
         @Comment("Enable LumaGuilds integration")
         var enabled: Boolean = true
-        @Comment("Minimum rank required to manage guild stalls")
-        var manageRank: String = "officer"
         @Comment("Source for guild rent payments: bank or leader")
         var payFrom: String = "bank"
     }

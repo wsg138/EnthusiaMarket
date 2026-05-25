@@ -6,6 +6,7 @@ import net.lumalyte.lg.application.services.BankService
 import net.lumalyte.lg.application.services.GuildService
 import net.lumalyte.lg.application.services.MemberService
 import net.lumalyte.lg.application.services.RankService
+import net.lumalyte.lg.domain.entities.RankPermission
 import org.koin.core.context.GlobalContext
 import java.util.UUID
 
@@ -65,6 +66,21 @@ class LumaGuildsGuildProvider(
         return resolvedMemberService.getMember(player, uuid) != null
     }
 
+    override fun hasShopPermission(player: UUID, guildId: String, permission: GuildProvider.GuildPermission): Boolean {
+        val guildUuid = try {
+            UUID.fromString(guildId)
+        } catch (_: IllegalArgumentException) {
+            return false
+        }
+        val lgPermission = permission.toRankPermission() ?: return false
+        return try {
+            resolvedMemberService.hasPermission(player, guildUuid, lgPermission)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @Deprecated("Use hasShopPermission with GuildPermission", replaceWith = ReplaceWith("hasShopPermission(player, guildId, permission)"))
     override fun hasPermission(player: UUID, guildId: String, node: String): Boolean {
         val guildUuid = try {
             UUID.fromString(guildId)
@@ -129,4 +145,15 @@ class LumaGuildsGuildProvider(
     companion object {
         private val SYSTEM_ACTOR_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
     }
+}
+
+/**
+ * Maps EM's [GuildProvider.GuildPermission] to LumaGuilds [RankPermission].
+ * Returns null if no direct mapping exists.
+ */
+private fun GuildProvider.GuildPermission.toRankPermission(): RankPermission? = when (this) {
+    GuildProvider.GuildPermission.MANAGE_SHOPS -> RankPermission.EDIT_SHOP_STOCK
+    GuildProvider.GuildPermission.ACCESS_SHOP_CHESTS -> RankPermission.ACCESS_SHOP_CHESTS
+    GuildProvider.GuildPermission.EDIT_SHOP_STOCK -> RankPermission.EDIT_SHOP_STOCK
+    GuildProvider.GuildPermission.MODIFY_SHOP_PRICES -> RankPermission.MODIFY_SHOP_PRICES
 }
