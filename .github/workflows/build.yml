@@ -19,5 +19,24 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
 
+      - name: Build & publish Nexus to mavenLocal
+        run: |
+          git clone --depth 1 https://github.com/BadgersMC/nexus.git "$RUNNER_TEMP/nexus"
+          cd "$RUNNER_TEMP/nexus"
+          chmod +x gradlew
+          ./gradlew :nexus-core:publishToMavenLocal :nexus-paper:publishToMavenLocal --no-daemon
+
+      - name: Build LumaGuilds shadowJar
+        id: lg
+        run: |
+          git clone --depth 1 https://github.com/BadgersMC/LumaGuilds.git "$RUNNER_TEMP/lumaguilds"
+          cd "$RUNNER_TEMP/lumaguilds"
+          chmod +x gradlew
+          ./gradlew shadowJar --no-daemon
+          JAR=$(ls "$RUNNER_TEMP/lumaguilds/build/libs/"LumaGuilds-*.jar | head -1)
+          echo "jar=$JAR" >> "$GITHUB_OUTPUT"
+
       - name: Test and shadowJar
+        env:
+          LUMAGUILDS_JAR: ${{ steps.lg.outputs.jar }}
         run: ./gradlew test shadowJar --no-daemon
