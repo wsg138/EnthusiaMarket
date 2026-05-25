@@ -339,7 +339,7 @@ class AuctionLifecycleServiceTest {
     }
 
     @Test
-    fun `settleExpired handles economy failure gracefully`() {
+    fun `settleExpired handles economy deposit failure gracefully`() {
         val winner = otherPlayer
         val bidAmount = 500L
         val expiredAuction = sampleAuction.copy(
@@ -353,7 +353,18 @@ class AuctionLifecycleServiceTest {
 
         val report = svc.service.settleExpired()
 
-        assertEquals(0, report.settled)
-        assertEquals(1, report.errors)
+        // Deposit failure is non-fatal: state is already persisted, seller funds held for manual resolution
+        assertEquals(1, report.settled)
+        assertEquals(0, report.errors)
+        // Winner was still charged
+        verify { svc.economy.withdraw(winner, bidAmount) }
+        // Stall was still awarded
+        verify { svc.stallRepo.save(match { stall ->
+            stall.owner == OwnerRef.solo(winner) && stall.state == StallState.OWNED
+        }) }
+        // Auction was still closed
+        verify { svc.auctionRepo.save(match { auction ->
+            auction.state == AuctionState.CLOSED
+        }) }
     }
 }

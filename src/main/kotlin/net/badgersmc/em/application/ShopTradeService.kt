@@ -10,6 +10,7 @@ import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.nexus.annotations.Service
 import java.util.UUID
+import java.util.logging.Logger
 
 /**
  * Application-layer service for atomic shop sign buy/sell transactions (REQ-006).
@@ -25,6 +26,8 @@ class ShopTradeService(
     private val items: ItemProvider,
     private val config: EnthusiaMarketConfig
 ) {
+    private val logger = Logger.getLogger(ShopTradeService::class.java.name)
+
     /**
      * Result of a shop trade execution.
      */
@@ -71,9 +74,15 @@ class ShopTradeService(
         val itemKey = sign.itemKey
         val price = sign.price
         val amount = DEFAULT_AMOUNT
+
+        // 5. Validate price is positive
+        if (price <= 0) {
+            return TradeResult.Failure("Invalid price: $price — must be positive")
+        }
+
         val taxPct = config.shop.taxPct
 
-        // 5. Validate tax percentage range
+        // 6. Validate tax percentage range
         if (taxPct < 0.0 || taxPct > 1.0) {
             return TradeResult.Failure("Invalid tax percentage: $taxPct — must be between 0.0 and 1.0")
         }
@@ -138,6 +147,7 @@ class ShopTradeService(
         if (!economy.withdraw(ownerUuid, price)) {
             // ROLLBACK: give item back to player
             if (!items.giveItemToPlayer(playerUuid, itemKey, amount)) {
+                logger.warning("Trade rollback compensation issue: Economy withdrawal from shop owner failed | Failed to return item to player during rollback")
                 return TradeResult.CompensationFailed(
                     originalError = "Economy withdrawal from shop owner failed",
                     compensationError = "Failed to return item to player during rollback"
@@ -155,6 +165,7 @@ class ShopTradeService(
                 val failures = mutableListOf<String>()
                 if (!ownerRefunded) failures.add("failed to refund owner")
                 if (!itemReturned) failures.add("failed to return item")
+                logger.warning("Trade rollback compensation issue: Economy deposit to player failed | ${failures.joinToString("; ")}")
                 return TradeResult.CompensationFailed(
                     originalError = "Economy deposit to player failed",
                     compensationError = failures.joinToString("; ")
@@ -201,6 +212,7 @@ class ShopTradeService(
         if (!economy.deposit(ownerUuid, sellerProceeds)) {
             // ROLLBACK: refund player
             if (!economy.deposit(playerUuid, price)) {
+                logger.warning("Trade rollback compensation issue: Failed to credit shop owner | Failed to refund player during rollback")
                 return TradeResult.CompensationFailed(
                     originalError = "Failed to credit shop owner",
                     compensationError = "Failed to refund player during rollback"
@@ -218,6 +230,7 @@ class ShopTradeService(
                 val failures = mutableListOf<String>()
                 if (!playerRefunded) failures.add("failed to refund player")
                 if (!ownerDebited) failures.add("failed to debit owner")
+                logger.warning("Trade rollback compensation issue: Failed to give item to player | ${failures.joinToString("; ")}")
                 return TradeResult.CompensationFailed(
                     originalError = "Failed to give item to player",
                     compensationError = failures.joinToString("; ")

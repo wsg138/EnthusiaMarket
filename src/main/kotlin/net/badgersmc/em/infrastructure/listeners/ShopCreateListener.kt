@@ -6,7 +6,6 @@ import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
-import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -21,6 +20,7 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.Event
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.plugin.java.JavaPlugin
+import java.util.logging.Logger
 
 /**
  * Listens for player left-click+sneak on wall signs attached to containers
@@ -34,7 +34,12 @@ open class ShopCreateListener(
 
     @PostConstruct
     fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin ?: return
+        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
+        if (plugin == null) {
+            Logger.getLogger(ShopCreateListener::class.java.name)
+                .warning("EnthusiaMarket plugin not found — ShopCreateListener will not be registered")
+            return
+        }
         Bukkit.getPluginManager().registerEvents(this, plugin)
     }
 
@@ -81,8 +86,7 @@ open class ShopCreateListener(
 
         event.setUseInteractedBlock(Event.Result.DENY)
 
-        // Fire creation event for external integration
-        Bukkit.getPluginManager().callEvent(ShopCreatedEvent(event.player.uniqueId))
+        // Note: ShopCreatedEvent is fired after successful persistence in the shop creation flow
 
         // Open CreateShopMenu — for now just a placeholder
         event.player.sendMessage("§e[Shop] Create menu would open here (TDD-52)")
@@ -105,7 +109,11 @@ open class ShopCreateListener(
         if (player.hasPermission("enthusiamarket.admin")) return true
         return when (stall.owner.type) {
             OwnerType.SOLO -> stall.owner.id == player.uniqueId.toString()
-            OwnerType.GUILD -> true // Guild check deferred to GuildProvider
+            OwnerType.GUILD -> {
+                // TODO: check guild membership/rank via GuildProvider
+                player.sendMessage("§cGuild shop management is not yet available")
+                false
+            }
             OwnerType.NONE -> false
         }
     }

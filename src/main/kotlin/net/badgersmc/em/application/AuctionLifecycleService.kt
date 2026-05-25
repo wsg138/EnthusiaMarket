@@ -14,6 +14,7 @@ import net.badgersmc.nexus.annotations.Service
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.logging.Logger
 
 /**
  * Result of an auction lifecycle operation.
@@ -47,6 +48,7 @@ class AuctionLifecycleService(
     private val economy: EconomyProvider,
     private val config: EnthusiaMarketConfig
 ) {
+    private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
     /**
      * Create a new auction for a stall.
@@ -213,22 +215,33 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
-        // 1. Pay seller first (so if it fails, nothing is committed)
+        // 0. Withdraw from winner FIRST (before any state changes)
+        if (!economy.withdraw(bid.bidder, bid.amount)) {
+            throw IllegalStateException("Failed to withdraw winning bid from ${bid.bidder}")
+        }
+
+        // 1. Persist state changes (stall awarded + auction closed)
+        // If this fails, the caller will retry — we'll need to refund the winner manually.
+        // The alternative of persisting after payment risks double-paying on retry.
+        val awardAt = Instant.now()
+        val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
+        stallRepository.save(updatedStall)
+        auctionRepository.save(auction.close())
+
+        // 2. Pay seller (after state is persisted — if this fails, seller funds are still held)
+        // Trade-off: if deposit fails, the winner has been charged but the seller hasn't been paid.
+        // The auction is already closed so it won't retry. Seller proceeds can be resolved manually.
+        // This is preferable to the reverse (paying seller twice on retry).
         val feePct = config.auction.feePct
         val feeAmount = (bid.amount * feePct).toLong()
         val sellerProceeds = bid.amount - feeAmount
         val sellerUuid = extractOwnerUuid(stall)
         if (sellerUuid == null || !economy.deposit(sellerUuid, sellerProceeds)) {
-            throw IllegalStateException("Failed to deposit seller proceeds for auction ${auction.id}")
+            logger.warning(
+                "Auction ${auction.id}: seller payment failed. " +
+                    "Winner charged ${bid.amount}, seller proceeds $sellerProceeds pending."
+            )
         }
-
-        // 2. Award stall to winner
-        val awardAt = Instant.now()
-        val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
-        stallRepository.save(updatedStall)
-
-        // 3. Close the auction
-        auctionRepository.save(auction.close())
     }
 
     /**

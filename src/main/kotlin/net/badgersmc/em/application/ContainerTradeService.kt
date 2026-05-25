@@ -88,7 +88,11 @@ open class ContainerTradeService(
         val containerInv = container.inventory
 
         // Step 1: Remove item from player
-        player.inventory.removeItem(sellStack.clone())
+        val removalResult = player.inventory.removeItem(sellStack.clone())
+        if (removalResult.isNotEmpty()) {
+            // Partial removal — item stack split across slots couldn't be fully removed
+            return ContainerTradeResult.Failure("Not enough items in inventory")
+        }
 
         // Step 2: Add item to container
         val remainder = containerInv.addItem(sellStack.clone())
@@ -106,27 +110,37 @@ open class ContainerTradeService(
         }
         if (!withdrawSuccess) {
             // ROLLBACK: remove item from container, return item to player
-            containerInv.removeItem(sellStack)
-            player.inventory.addItem(sellStack)
+            val containerLeftovers = containerInv.removeItem(sellStack)
+            val playerLeftovers = player.inventory.addItem(sellStack)
+            val compensation = if (containerLeftovers.isEmpty() && playerLeftovers.isEmpty()) {
+                "Item returned to container and player"
+            } else {
+                "Partial item return — state may be inconsistent"
+            }
             return ContainerTradeResult.CompensationFailed(
                 error = "Owner payment failed",
-                compensation = "Item returned"
+                compensation = compensation
             )
         }
 
         // Step 4: Deposit to player
         if (!economy.deposit(playerUuid, cost)) {
             // ROLLBACK: refund owner or guild bank, remove item from container, return item to player
-            if (guildId != null) {
-                guildProvider?.bankDeposit(guildId.toString(), cost)
+            val refundSuccess = if (guildId != null) {
+                guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
             } else {
                 economy.deposit(ownerUuid, cost)
             }
-            containerInv.removeItem(sellStack)
-            player.inventory.addItem(sellStack)
+            val containerLeftovers = containerInv.removeItem(sellStack)
+            val playerLeftovers = player.inventory.addItem(sellStack)
+            val compensation = if (refundSuccess && containerLeftovers.isEmpty() && playerLeftovers.isEmpty()) {
+                "Full rollback"
+            } else {
+                "Partial rollback — state may be inconsistent"
+            }
             return ContainerTradeResult.CompensationFailed(
                 error = "Player deposit failed",
-                compensation = "Full rollback"
+                compensation = compensation
             )
         }
 
@@ -197,10 +211,15 @@ open class ContainerTradeService(
         }
         if (!depositSuccess) {
             // ROLLBACK: refund player
-            economy.deposit(playerUuid, cost)
+            val refundLeftovers = economy.deposit(playerUuid, cost)
+            val compensation = if (refundLeftovers) {
+                "Player refunded"
+            } else {
+                "Player refund may have failed — state may be inconsistent"
+            }
             return ContainerTradeResult.CompensationFailed(
                 error = "Owner deposit failed",
-                compensation = "Player refunded"
+                compensation = compensation
             )
         }
 
@@ -211,16 +230,21 @@ open class ContainerTradeService(
         val remainder = player.inventory.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
             // ROLLBACK: return item to container, refund player, debit owner or guild bank
-            containerInv.addItem(sellStack)
-            if (guildId != null) {
-                guildProvider?.bankWithdraw(guildId.toString(), cost)
+            val containerLeftovers = containerInv.addItem(sellStack)
+            val ownerDebitSuccess = if (guildId != null) {
+                guildProvider?.bankWithdraw(guildId.toString(), cost) ?: false
             } else {
                 economy.withdraw(ownerUuid, cost)
             }
-            economy.deposit(playerUuid, cost)
+            val playerRefundLeftovers = economy.deposit(playerUuid, cost)
+            val compensation = if (containerLeftovers.isEmpty() && ownerDebitSuccess && playerRefundLeftovers) {
+                "Trade reversed"
+            } else {
+                "Partial trade reversal — state may be inconsistent"
+            }
             return ContainerTradeResult.CompensationFailed(
                 error = "Inventory full",
-                compensation = "Trade reversed"
+                compensation = compensation
             )
         }
 

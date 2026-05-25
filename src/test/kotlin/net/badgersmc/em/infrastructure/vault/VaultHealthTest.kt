@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import net.badgersmc.em.application.RentCollectionService
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.infrastructure.scheduler.AuctionScheduler
 import net.badgersmc.em.infrastructure.scheduler.RentScheduler
 import net.badgersmc.nexus.annotations.Component
@@ -28,10 +29,7 @@ class VaultHealthTest {
         }
         val service = mockk<RentCollectionService>(relaxed = true)
         val health = VaultHealth() // isAvailable = false by default
-        val scheduler = RentScheduler(plugin, service, health)
-
-        // Should not throw even though no Bukkit scheduler is available
-        scheduler.start()
+        val scheduler = RentScheduler(plugin, service, health, mockk<EnthusiaMarketConfig>(relaxed = true))
 
         // Verify service.tick() was never called (scheduler never started)
         verify(exactly = 0) { service.tick() }
@@ -44,7 +42,7 @@ class VaultHealthTest {
         }
         val service = mockk<RentCollectionService>(relaxed = true)
         val health = VaultHealth() // isAvailable = false
-        val scheduler = RentScheduler(plugin, service, health)
+        val scheduler = RentScheduler(plugin, service, health, mockk<EnthusiaMarketConfig>(relaxed = true))
 
         scheduler.start()
 

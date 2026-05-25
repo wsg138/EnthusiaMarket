@@ -67,7 +67,7 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
                 } else {
                     ps.setNull(5, java.sql.Types.INTEGER)
                     ps.setNull(6, java.sql.Types.VARCHAR)
-                    ps.setNull(7, java.sql.Types.INTEGER)
+                    ps.setNull(7, java.sql.Types.BIGINT)
                 }
                 ps.setLong(8, auction.antiSnipeWindow.toSeconds())
                 ps.setString(9, auction.id.value)
@@ -106,7 +106,7 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
         } else {
             ps.setNull(7, java.sql.Types.INTEGER)
             ps.setNull(8, java.sql.Types.VARCHAR)
-            ps.setNull(9, java.sql.Types.INTEGER)
+            ps.setNull(9, java.sql.Types.BIGINT)
         }
         ps.setLong(10, auction.antiSnipeWindow.toSeconds())
     }
