@@ -18,13 +18,16 @@ jobs:
           java-version: 21
 
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          gradle-version: "8.10.2"
 
       - name: Build & publish Nexus to mavenLocal
         run: |
           git clone --depth 1 https://github.com/BadgersMC/nexus.git "$RUNNER_TEMP/nexus"
           cd "$RUNNER_TEMP/nexus"
-          chmod +x gradlew
-          ./gradlew :nexus-core:publishToMavenLocal :nexus-paper:publishToMavenLocal --no-daemon
+          # nexus repo is missing gradle/wrapper/gradle-wrapper.jar, so invoke the
+          # installed gradle directly instead of ./gradlew.
+          gradle :nexus-core:publishToMavenLocal :nexus-paper:publishToMavenLocal --no-daemon
 
       - name: Build LumaGuilds shadowJar
         id: lg
