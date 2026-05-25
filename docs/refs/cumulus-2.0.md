@@ -1,3 +1,4 @@
+
 # Cumulus 2.0 — API Snapshot
 
 **Source:** geysermc/cumulus (context7)
@@ -18,6 +19,7 @@
 ## Critical Signatures — Form Builders
 
 ### SimpleForm
+
 ```java
 SimpleForm.builder()
     .title(String)
@@ -32,6 +34,7 @@ SimpleForm.builder()
 ```
 
 ### ModalForm
+
 ```java
 ModalForm.builder()
     .title(String)
@@ -43,6 +46,7 @@ ModalForm.builder()
 ```
 
 ### CustomForm
+
 ```java
 CustomForm.builder()
     .title(String)
