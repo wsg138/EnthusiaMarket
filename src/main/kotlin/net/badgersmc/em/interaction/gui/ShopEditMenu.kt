@@ -15,12 +15,15 @@ import org.bukkit.inventory.ItemStack
  * Owner can freeze/unfreeze, configure hopper, and manage trust.
  */
 class ShopEditMenu(
-    private val player: Player,
     private val shop: Shop,
     private val shopRepository: ShopRepository
 ) : Menu {
 
-    override fun open() {
+    override fun open(player: Player) {
+        if (player.uniqueId != shop.owner && !player.hasPermission("enthusiamarket.admin")) {
+            player.sendMessage("§cYou don't own this shop")
+            return
+        }
         val gui = ChestGui(3, "§8Edit Shop")
         val pane = StaticPane(9, 3)
         
@@ -45,7 +48,7 @@ class ShopEditMenu(
             val updated = shop.copy(frozen = !shop.frozen)
             shopRepository.upsert(updated)
             player.sendMessage(if (updated.frozen) "§cShop frozen" else "§aShop unfrozen")
-            ShopEditMenu(player, updated, shopRepository).open()
+            ShopEditMenu(updated, shopRepository).open(player)
         }), 2, 1)
         
         // Slot 13: Hopper In toggle
@@ -68,7 +71,7 @@ class ShopEditMenu(
             event.isCancelled = true
             val updated = shop.copy(hopperAllowIn = !shop.hopperAllowIn)
             shopRepository.upsert(updated)
-            ShopEditMenu(player, updated, shopRepository).open()
+            ShopEditMenu(updated, shopRepository).open(player)
         }), 4, 1)
         
         // Slot 15: Hopper Out toggle
@@ -91,7 +94,7 @@ class ShopEditMenu(
             event.isCancelled = true
             val updated = shop.copy(hopperAllowOut = !shop.hopperAllowOut)
             shopRepository.upsert(updated)
-            ShopEditMenu(player, updated, shopRepository).open()
+            ShopEditMenu(updated, shopRepository).open(player)
         }), 6, 1)
         
         // Slot 22: Trust management
@@ -103,7 +106,7 @@ class ShopEditMenu(
         }
         pane.addItem(GuiItem(trustStack, { event ->
             event.isCancelled = true
-            TrustManageMenu(player, shop, shopRepository).open()
+            TrustManageMenu(player, shop, shopRepository).open(player)
         }), 4, 2)
         
         gui.addPane(pane)

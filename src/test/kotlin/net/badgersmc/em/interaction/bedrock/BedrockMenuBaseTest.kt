@@ -24,7 +24,7 @@ class BedrockMenuBaseTest {
             override fun sendForm(form: Form) { formSent = true }
         }
 
-        menu.open()
+        menu.open(player)
 
         assert(formSent) { "sendForm() must be called on open()" }
     }
@@ -43,7 +43,7 @@ class BedrockMenuBaseTest {
         }
 
         // Should not throw
-        menu.open()
+        menu.open(player)
 
         verify { player.sendMessage("§cUnable to open menu. Please try again or use the Java interface.") }
     }
@@ -64,7 +64,7 @@ class BedrockMenuBaseTest {
             override fun sendForm(form: Form) { }
         }
 
-        menu.open()
+        menu.open(player)
 
         assert(buildCalled) { "buildForm() must be called on open()" }
     }

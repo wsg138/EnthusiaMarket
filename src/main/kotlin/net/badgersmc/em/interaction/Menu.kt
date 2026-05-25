@@ -7,5 +7,5 @@ import org.bukkit.entity.Player
  * Java players get IFramework ChestGui; Bedrock players get Cumulus forms.
  */
 interface Menu {
-    fun open()
+    fun open(player: Player)
 }

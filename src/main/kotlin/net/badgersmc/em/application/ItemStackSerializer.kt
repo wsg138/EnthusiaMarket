@@ -6,6 +6,7 @@ import org.bukkit.util.io.BukkitObjectOutputStream
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.Base64
+import java.util.logging.Logger
 
 /**
  * Serializes and deserializes ItemStacks to/from base64 strings.
@@ -23,6 +24,9 @@ object ItemStackSerializer {
             val bytes = Base64.getDecoder().decode(base64)
             val bais = ByteArrayInputStream(bytes)
             BukkitObjectInputStream(bais).use { it.readObject() as ItemStack }
-        } catch (_: Exception) { null }
+        } catch (e: Exception) {
+            Logger.getLogger(ItemStackSerializer::class.java.name).warning("ItemStack deserialization failed: ${e.message}")
+            null
+        }
     }
 }

@@ -1,5 +1,3 @@
--- Fix INTEGER overflow for timestamp columns (epoch millis exceed INT max 2147483647)
--- SQLite does not support ALTER COLUMN, so recreate the table.
 CREATE TABLE IF NOT EXISTS auctions_new (
     id TEXT PRIMARY KEY,
     stall_id TEXT NOT NULL,

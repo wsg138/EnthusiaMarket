@@ -23,7 +23,11 @@ class ExplodeCleanupListener(
 
     @PostConstruct
     fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin ?: return
+        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
+        if (plugin == null) {
+            logger.warning("EnthusiaMarket plugin not found — ExplodeCleanupListener will not be registered")
+            return
+        }
         Bukkit.getPluginManager().registerEvents(this, plugin)
     }
 

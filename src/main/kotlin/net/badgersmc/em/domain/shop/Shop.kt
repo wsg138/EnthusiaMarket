@@ -25,8 +25,8 @@ import java.util.UUID
  * @property hopperAllowOut Whether hoppers can extract items from the container.
  * @property frozen Whether the shop is frozen (trades blocked).
  * @property adminShop Whether this is an admin shop (unlimited stock).
- * @property guildId The Discord guild this shop belongs to (null for legacy shops).
- * @property creatorId The Discord user who created this shop (null for legacy shops).
+ * @property guildId The guild this shop belongs to (null for player-owned shops).
+ * @property creatorId The player who registered this shop (null for legacy shops).
  */
 data class Shop(
     val id: Long = 0,
@@ -51,4 +51,10 @@ data class Shop(
     val adminShop: Boolean = false,
     val guildId: UUID? = null,
     val creatorId: UUID? = null
-)
+) {
+    init {
+        require(sellAmount > 0) { "sellAmount must be positive, was $sellAmount" }
+        require(costAmount > 0) { "costAmount must be positive, was $costAmount" }
+        require(stallId.isNotBlank()) { "stallId must not be blank" }
+    }
+}

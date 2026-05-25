@@ -3,6 +3,8 @@ package net.badgersmc.em.interaction.gui
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import net.badgersmc.em.application.ContainerTradeResult
+import net.badgersmc.em.application.ContainerTradeService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.interaction.Menu
 import org.bukkit.Material
@@ -12,15 +14,14 @@ import org.bukkit.inventory.ItemStack
 /**
  * IFramework ChestGui showing the shop's sell/cost items and trade buttons (REQ-013).
  *
- * This is a simplified stub — the actual trade logic (TDD-53) and item
- * serialization will replace the placeholder materials.
+ * BUY executes an actual trade via [ContainerTradeService.executeBuy].
  */
 class PurchaseMenu(
-    private val player: Player,
-    private val shop: Shop
+    private val shop: Shop,
+    private val tradeService: ContainerTradeService
 ) : Menu {
 
-    override fun open() {
+    override fun open(player: Player) {
         // Create a 3-row GUI
         val gui = ChestGui(3, "§8Shop — ${shop.sellAmount}x Item")
 
@@ -57,7 +58,14 @@ class PurchaseMenu(
         pane.addItem(GuiItem(costStack), 6, 1) // slot 15
         pane.addItem(GuiItem(buyStack, { event ->
             event.isCancelled = true
-            player.sendMessage("§e[Shop] Trade would execute here (TDD-53)")
+            when (val result = tradeService.executeBuy(shop, player.uniqueId)) {
+                is ContainerTradeResult.Success -> player.sendMessage("§a[Shop] ${result.message}")
+                is ContainerTradeResult.Failure -> player.sendMessage("§c[Shop] ${result.reason}")
+                is ContainerTradeResult.CompensationFailed -> {
+                    player.sendMessage("§c[Shop] Trade failed: ${result.error}")
+                    player.sendMessage("§7  Compensation: ${result.compensation}")
+                }
+            }
         }), 4, 2) // slot 22
 
         gui.addPane(pane)

@@ -17,7 +17,7 @@ abstract class BedrockMenuBase(
 
     abstract fun buildForm(): Form
 
-    override fun open() {
+    override fun open(player: Player) {
         try {
             val form = buildForm()
             sendForm(form)

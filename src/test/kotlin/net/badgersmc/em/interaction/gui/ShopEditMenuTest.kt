@@ -16,8 +16,8 @@ class ShopEditMenuTest {
             containerWorld = "w", containerX = 4, containerY = 5, containerZ = 6,
             sellItem = "a", sellAmount = 1, costItem = "b", costAmount = 1,
             frozen = false, hopperAllowIn = true, hopperAllowOut = true)
-        
-        val menu = ShopEditMenu(mockk(relaxed = true), shop, mockk(relaxed = true))
+
+        val menu = ShopEditMenu(shop, mockk(relaxed = true))
         assertNotNull(menu)
     }
 
@@ -27,8 +27,26 @@ class ShopEditMenuTest {
             containerWorld = "w", containerX = 4, containerY = 5, containerZ = 6,
             sellItem = "a", sellAmount = 1, costItem = "b", costAmount = 1,
             frozen = true)
-        
-        val menu = ShopEditMenu(mockk(relaxed = true), shop, mockk(relaxed = true))
+
+        val menu = ShopEditMenu(shop, mockk(relaxed = true))
         assertNotNull(menu)
+    }
+
+    @Test fun `non-owner cannot open edit menu`() {
+        val ownerId = UUID.randomUUID()
+        val shop = Shop(id = 1L, stallId = "s1", owner = ownerId,
+            signWorld = "w", signX = 1, signY = 2, signZ = 3,
+            containerWorld = "w", containerX = 4, containerY = 5, containerZ = 6,
+            sellItem = "a", sellAmount = 1, costItem = "b", costAmount = 1)
+
+        val nonOwner = mockk<Player>(relaxed = true) {
+            every { uniqueId } returns UUID.randomUUID()
+            every { hasPermission("enthusiamarket.admin") } returns false
+        }
+
+        val menu = ShopEditMenu(shop, mockk(relaxed = true))
+        menu.open(nonOwner)
+
+        verify { nonOwner.sendMessage("§cYou don't own this shop") }
     }
 }

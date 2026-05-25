@@ -47,15 +47,20 @@ class ContainerStockListener(
         refreshShopsAt(containerBlock)
     }
 
+    private var previouslyDepletedShops: MutableSet<Long> = mutableSetOf()
+
     private fun containerBlockOf(view: org.bukkit.inventory.InventoryView): Block? {
         val top = view.topInventory
         val holder = top.holder
         return when {
             holder is Container -> holder.block
             holder is org.bukkit.block.DoubleChest -> {
-                val leftInv = (top as? DoubleChestInventory)?.leftSide ?: return null
-                val leftHolder = leftInv.holder
-                if (leftHolder is Container) leftHolder.block else null
+                // Check both halves of the double chest
+                val leftInv = (top as? DoubleChestInventory)?.leftSide
+                val rightInv = (top as? DoubleChestInventory)?.rightSide
+                val leftBlock = (leftInv?.holder as? Container)?.block
+                val rightBlock = (rightInv?.holder as? Container)?.block
+                leftBlock ?: rightBlock
             }
             else -> null
         }
@@ -85,9 +90,14 @@ class ContainerStockListener(
                 state.setLine(3, "§7Stock: $trades")
                 state.update(true)
 
-                // Fire event when stock reaches zero (REQ-026)
+                // Fire event only on transition to zero (REQ-026)
                 if (trades == 0) {
-                    Bukkit.getPluginManager()?.callEvent(ShopStockDepletedEvent(shop.owner))
+                    if (shop.id !in previouslyDepletedShops) {
+                        previouslyDepletedShops.add(shop.id)
+                        Bukkit.getPluginManager().callEvent(ShopStockDepletedEvent(shop.owner))
+                    }
+                } else {
+                    previouslyDepletedShops.remove(shop.id)
                 }
             }
         }
@@ -97,6 +107,7 @@ class ContainerStockListener(
         shop: net.badgersmc.em.domain.shop.Shop,
         container: Container
     ): Int {
+        if (shop.sellAmount <= 0) return 0
         val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
         sellStack.amount = shop.sellAmount
         var count = 0

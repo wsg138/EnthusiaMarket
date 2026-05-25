@@ -23,6 +23,7 @@ class ShopInteractListenerTest {
 
     private val repo: ShopRepository = mockk(relaxed = true)
     private val menuFactory: MenuFactory = mockk(relaxed = true)
+    private val tradeService: net.badgersmc.em.application.ContainerTradeService = mockk(relaxed = true)
 
     /** Create a mock Location at fixed coordinates. */
     private fun location(x: Int = 100, y: Int = 64, z: Int = 200): Location {
@@ -83,7 +84,7 @@ class ShopInteractListenerTest {
         val shop = sampleShop()
         every { repo.findBySign("world", 100, 64, 200) } returns shop
 
-        val listener = object : ShopInteractListener(repo, menuFactory) {
+        val listener = object : ShopInteractListener(repo, menuFactory, tradeService) {
             var purchaseMenuOpened = false
             override fun openPurchaseMenu(player: Player, shop: Shop) {
                 purchaseMenuOpened = true
@@ -104,7 +105,7 @@ class ShopInteractListenerTest {
         val block = signBlock(loc)
         every { repo.findBySign("world", 100, 64, 200) } returns null
 
-        val listener = ShopInteractListener(repo, menuFactory)
+        val listener = ShopInteractListener(repo, menuFactory, tradeService)
         val event = interactEvent(player, block = block)
         listener.onSignRightClick(event)
 
@@ -115,10 +116,9 @@ class ShopInteractListenerTest {
     fun `left-click does not trigger PurchaseMenu`() {
         val player: Player = mockk(relaxed = true)
         val block = signBlock()
-        val listener = ShopInteractListener(repo, menuFactory)
+        val listener = ShopInteractListener(repo, menuFactory, tradeService)
         val event = interactEvent(player, action = Action.LEFT_CLICK_BLOCK, block = block)
         listener.onSignRightClick(event)
-        // No exception should be thrown, event should remain uncancelled
         assert(!event.isCancelled) { "Left-click should not cancel event" }
     }
 
@@ -126,7 +126,7 @@ class ShopInteractListenerTest {
     fun `right-click on non-sign block does nothing`() {
         val player: Player = mockk(relaxed = true)
         val block = nonSignBlock()
-        val listener = ShopInteractListener(repo, menuFactory)
+        val listener = ShopInteractListener(repo, menuFactory, tradeService)
         val event = interactEvent(player, block = block)
         listener.onSignRightClick(event)
         assert(!event.isCancelled) { "Should not cancel for non-sign blocks" }
@@ -136,7 +136,7 @@ class ShopInteractListenerTest {
     fun `off-hand right-click does not trigger PurchaseMenu`() {
         val player: Player = mockk(relaxed = true)
         val block = signBlock()
-        val listener = ShopInteractListener(repo, menuFactory)
+        val listener = ShopInteractListener(repo, menuFactory, tradeService)
         val event = interactEvent(player, block = block, hand = EquipmentSlot.OFF_HAND)
         listener.onSignRightClick(event)
         assert(!event.isCancelled) { "Off-hand should not cancel event" }

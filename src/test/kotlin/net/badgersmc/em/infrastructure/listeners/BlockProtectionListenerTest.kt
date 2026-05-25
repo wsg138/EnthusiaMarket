@@ -168,7 +168,7 @@ class BlockProtectionListenerTest {
 
         // Event should NOT be cancelled for owner
         assert(!event.isCancelled) { "Owner container break should NOT be cancelled" }
-        verify { repo.delete(42L) }
+        verify { repo.deleteByContainer("world", 50, 64, 60) }
         verify { player.sendMessage("§aDeleted 1 shop(s) linked to this container") }
     }
 

@@ -67,11 +67,21 @@ class BlockProtectionListener(
             if (shops.isNotEmpty()) {
                 val isOwner = shops.all { it.owner == player.uniqueId } || player.hasPermission("enthusiamarket.admin")
                 if (isOwner) {
-                    // Delete all linked shops
-                    for (shop in shops) {
-                        shopRepository.delete(shop.id)
-                        Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
-                        logger.info("Shop ${shop.id} deleted due to container break by ${player.name}")
+                    val loc = block.location
+                    // Delete all linked shops atomically by container location
+                    try {
+                        shopRepository.deleteByContainer(
+                            loc.world?.name ?: "world",
+                            loc.blockX, loc.blockY, loc.blockZ
+                        )
+                        for (shop in shops) {
+                            Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
+                        }
+                        logger.info("Deleted ${shops.size} shop(s) at ${loc.world?.name}:${loc.blockX},${loc.blockY},${loc.blockZ} due to container break by ${player.name}")
+                    } catch (e: Exception) {
+                        logger.severe("Failed to delete shops at container break: ${e.message}")
+                        player.sendMessage("§cAn error occurred while deleting shops. Please contact an admin.")
+                        return
                     }
                     player.sendMessage("§aDeleted ${shops.size} shop(s) linked to this container")
                 } else {

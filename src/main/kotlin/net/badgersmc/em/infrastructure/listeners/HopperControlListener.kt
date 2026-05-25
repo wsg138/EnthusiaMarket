@@ -57,8 +57,10 @@ class HopperControlListener(
         val block = when (holder) {
             is Container -> holder.block
             is org.bukkit.block.DoubleChest -> {
-                val left = (holder as? org.bukkit.block.DoubleChest)?.leftSide ?: return null
-                if (left is Container) left.block else return null
+                // Check both halves of the double chest
+                val leftBlock = (holder.leftSide as? Container)?.block
+                val rightBlock = (holder.rightSide as? Container)?.block
+                leftBlock ?: rightBlock ?: return null
             }
             else -> return null
         }

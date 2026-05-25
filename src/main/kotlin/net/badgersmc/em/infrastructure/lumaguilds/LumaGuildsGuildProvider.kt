@@ -89,6 +89,7 @@ class LumaGuildsGuildProvider(
     }
 
     override fun bankWithdraw(guildId: String, amount: Long): Boolean {
+        if (amount <= 0 || amount > Int.MAX_VALUE) return false
         val uuid = try {
             UUID.fromString(guildId)
         } catch (_: IllegalArgumentException) {
@@ -98,6 +99,7 @@ class LumaGuildsGuildProvider(
     }
 
     override fun bankDeposit(guildId: String, amount: Long): Boolean {
+        if (amount <= 0 || amount > Int.MAX_VALUE) return false
         val uuid = try {
             UUID.fromString(guildId)
         } catch (_: IllegalArgumentException) {
@@ -115,7 +117,13 @@ class LumaGuildsGuildProvider(
      * is fired. Notifies all registered dissolve handlers.
      */
     internal fun handleDisbanded(guildId: String) {
-        dissolveHandlers.toList().forEach { it(guildId) }
+        dissolveHandlers.toList().forEach { handler ->
+            try {
+                handler(guildId)
+            } catch (e: Exception) {
+                // Isolate handler failures — one failing handler shouldn't prevent others
+            }
+        }
     }
 
     companion object {

@@ -14,25 +14,12 @@ import java.util.Base64
 import java.util.UUID
 import java.util.logging.Logger
 
-/**
- * Result of a container-based trade execution.
- */
 sealed class ContainerTradeResult {
-    /** Trade completed successfully. */
     data class Success(val message: String) : ContainerTradeResult()
-    /** Trade failed before any irreversible step. */
     data class Failure(val reason: String) : ContainerTradeResult()
-    /** Trade failed mid-flight and compensation also failed — state may be inconsistent. */
     data class CompensationFailed(val error: String, val compensation: String) : ContainerTradeResult()
 }
 
-/**
- * Application-layer service for container inventory trades (TDD-53).
- *
- * Executes BUY/SELL trades using a linked container's REAL inventory rather than
- * virtual items. Each trade moves physical ItemStacks between the player and the
- * container, with economy operations to transfer currency.
- */
 @Service
 open class ContainerTradeService(
     private val stallRepository: StallRepository,
@@ -40,20 +27,11 @@ open class ContainerTradeService(
     private val guildProvider: GuildProvider?,
     private val logger: Logger
 ) {
-    /**
-     * BUY: player sells item to the shop (player → container, owner pays player).
-     *
-     * Steps:
-     *   1. Validate shop is not frozen
-     *   2. Validate stall exists and resolve owner UUID
-     *   3. Check player is online and has the required item
-     *   4. Check owner has sufficient balance
-     *   5. Get container from shop coordinates
-     *   6. Remove item from player → add to container → pay player
-     *   7. Rollback on failure at any step
-     */
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) {
+            return ContainerTradeResult.Failure("Invalid trade amounts")
+        }
 
         val stall = stallRepository.findById(StallId(shop.stallId))
             ?: return ContainerTradeResult.Failure("Stall not found")
@@ -67,11 +45,9 @@ open class ContainerTradeService(
         val sellStack = deserializeStack(shop.sellItem)?.apply { amount = shop.sellAmount }
             ?: return ContainerTradeResult.Failure("Invalid item")
 
-        // Check player has the item
         if (!player.inventory.containsAtLeast(sellStack, shop.sellAmount))
             return ContainerTradeResult.Failure("You don't have the items to sell")
 
-        // Check owner has enough money (or guild bank for guild-owned)
         val cost = shop.costAmount.toLong()
         val guildId = shop.guildId
         if (guildId != null) {
@@ -82,7 +58,6 @@ open class ContainerTradeService(
                 return ContainerTradeResult.Failure("Shop owner can't afford this")
         }
 
-        // Get container
         val container = getContainer(shop)
             ?: return ContainerTradeResult.Failure("Container missing")
         val containerInv = container.inventory
@@ -90,14 +65,12 @@ open class ContainerTradeService(
         // Step 1: Remove item from player
         val removalResult = player.inventory.removeItem(sellStack.clone())
         if (removalResult.isNotEmpty()) {
-            // Partial removal — item stack split across slots couldn't be fully removed
             return ContainerTradeResult.Failure("Not enough items in inventory")
         }
 
         // Step 2: Add item to container
         val remainder = containerInv.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
-            // ROLLBACK: return item to player
             player.inventory.addItem(sellStack)
             return ContainerTradeResult.Failure("Container is full")
         }
@@ -109,7 +82,6 @@ open class ContainerTradeService(
             economy.withdraw(ownerUuid, cost)
         }
         if (!withdrawSuccess) {
-            // ROLLBACK: remove item from container, return item to player
             val containerLeftovers = containerInv.removeItem(sellStack)
             val playerLeftovers = player.inventory.addItem(sellStack)
             val compensation = if (containerLeftovers.isEmpty() && playerLeftovers.isEmpty()) {
@@ -125,7 +97,6 @@ open class ContainerTradeService(
 
         // Step 4: Deposit to player
         if (!economy.deposit(playerUuid, cost)) {
-            // ROLLBACK: refund owner or guild bank, remove item from container, return item to player
             val refundSuccess = if (guildId != null) {
                 guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
             } else {
@@ -157,20 +128,11 @@ open class ContainerTradeService(
         return ContainerTradeResult.Success("Sold ${shop.sellAmount}x for $cost")
     }
 
-    /**
-     * SELL: player buys item from the shop (container → player, player pays owner).
-     *
-     * Steps:
-     *   1. Validate shop is not frozen
-     *   2. Validate stall exists and resolve owner UUID
-     *   3. Check player is online
-     *   4. Check container has the item in stock
-     *   5. Check player has sufficient balance
-     *   6. Withdraw from player → deposit to owner → remove from container → give to player
-     *   7. Rollback on failure at any step
-     */
     fun executeSell(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) {
+            return ContainerTradeResult.Failure("Invalid trade amounts")
+        }
 
         val stall = stallRepository.findById(StallId(shop.stallId))
             ?: return ContainerTradeResult.Failure("Stall not found")
@@ -188,31 +150,26 @@ open class ContainerTradeService(
             ?: return ContainerTradeResult.Failure("Container missing")
         val containerInv = container.inventory
 
-        // Check container has the item in stock
         if (!containerInv.containsAtLeast(sellStack, shop.sellAmount))
             return ContainerTradeResult.Failure("Out of stock")
 
         val cost = shop.costAmount.toLong()
         val guildId = shop.guildId
 
-        // Check player has sufficient funds
         if (economy.balance(playerUuid) < cost)
             return ContainerTradeResult.Failure("Insufficient funds")
 
-        // Step 1: Withdraw from player
         if (!economy.withdraw(playerUuid, cost))
             return ContainerTradeResult.Failure("Withdraw failed")
 
-        // Step 2: Deposit to owner or guild bank
         val depositSuccess = if (guildId != null) {
             guildProvider?.bankDeposit(guildId.toString(), cost) ?: false
         } else {
             economy.deposit(ownerUuid, cost)
         }
         if (!depositSuccess) {
-            // ROLLBACK: refund player
-            val refundLeftovers = economy.deposit(playerUuid, cost)
-            val compensation = if (refundLeftovers) {
+            val refundResult = economy.deposit(playerUuid, cost)
+            val compensation = if (refundResult) {
                 "Player refunded"
             } else {
                 "Player refund may have failed — state may be inconsistent"
@@ -223,21 +180,18 @@ open class ContainerTradeService(
             )
         }
 
-        // Step 3: Remove item from container
         containerInv.removeItem(sellStack.clone())
 
-        // Step 4: Give item to player
         val remainder = player.inventory.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
-            // ROLLBACK: return item to container, refund player, debit owner or guild bank
             val containerLeftovers = containerInv.addItem(sellStack)
             val ownerDebitSuccess = if (guildId != null) {
                 guildProvider?.bankWithdraw(guildId.toString(), cost) ?: false
             } else {
                 economy.withdraw(ownerUuid, cost)
             }
-            val playerRefundLeftovers = economy.deposit(playerUuid, cost)
-            val compensation = if (containerLeftovers.isEmpty() && ownerDebitSuccess && playerRefundLeftovers) {
+            val playerRefundResult = economy.deposit(playerUuid, cost)
+            val compensation = if (containerLeftovers.isEmpty() && ownerDebitSuccess && playerRefundResult) {
                 "Trade reversed"
             } else {
                 "Partial trade reversal — state may be inconsistent"
@@ -261,10 +215,6 @@ open class ContainerTradeService(
         return ContainerTradeResult.Success("Bought ${shop.sellAmount}x for $cost")
     }
 
-    /**
-     * Resolves the owner UUID from a stall, handling SOLO ownership.
-     * Returns null for GUILD or NONE owners, or if the UUID is malformed.
-     */
     private fun resolveOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? {
         return when (stall.owner.type) {
             OwnerType.SOLO -> try {
@@ -277,20 +227,12 @@ open class ContainerTradeService(
         }
     }
 
-    /**
-     * Gets the container block at the shop's stored coordinates.
-     * Made [open] so tests can override without mocking Bukkit statics.
-     */
     open protected fun getContainer(shop: Shop): Container? {
         val world = Bukkit.getWorld(shop.containerWorld) ?: return null
         val block = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
         return block.state as? Container
     }
 
-    /**
-     * Deserializes a base64-encoded ItemStack.
-     * Made [open] so tests can override without needing a real Bukkit runtime.
-     */
     open protected fun deserializeStack(base64: String): ItemStack? {
         return try {
             val bytes = Base64.getDecoder().decode(base64)

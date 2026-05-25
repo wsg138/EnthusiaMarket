@@ -23,16 +23,20 @@ class TrustManageMenu(
     private val shopRepository: ShopRepository
 ) : Menu {
 
-    override fun open() {
+    override fun open(player: Player) {
         // Dynamic rows: 3 for header+add, then 1 per 9 trusted players
-        val rows = 3 + ((shop.trusted.size + 8) / 9).coerceAtLeast(1)
+        val rows = 3 + ((shop.trusted.size + 8) / 9).coerceAtMost(4) // cap to fit in 6-row inventory
         val gui = ChestGui(rows.coerceAtMost(6), "§8Manage Trusted Players")
 
         val pane = StaticPane(9, rows.coerceAtMost(6))
         var slot = 0
 
+        // Cap entries to prevent overflow — reserve last row for controls (add button + back)
+        val maxEntries = minOf(shop.trusted.size, rows * 9 - 9) // reserve last row for controls
+        val entries = shop.trusted.take(maxEntries)
+
         // Header: current trusted players
-        for (trustedUuid in shop.trusted) {
+        for (trustedUuid in entries) {
             val head = ItemStack(Material.PLAYER_HEAD)
             val meta = head.itemMeta as? SkullMeta
             meta?.setOwningPlayer(Bukkit.getOfflinePlayer(trustedUuid))
@@ -47,7 +51,7 @@ class TrustManageMenu(
                 shopRepository.upsert(updated)
                 player.sendMessage("§aRemoved trusted player")
                 // Reopen the menu
-                TrustManageMenu(player, updated, shopRepository).open()
+                TrustManageMenu(player, updated, shopRepository).open(player)
             }), slot % 9, slot / 9)
             slot++
         }
