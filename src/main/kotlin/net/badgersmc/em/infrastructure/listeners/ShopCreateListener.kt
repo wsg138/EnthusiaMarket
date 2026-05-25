@@ -6,6 +6,7 @@ import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -29,7 +30,8 @@ import java.util.logging.Logger
 @Component
 open class ShopCreateListener(
     private val stallRepository: StallRepository,
-    private val shopRepository: ShopRepository
+    private val shopRepository: ShopRepository,
+    private val guildProvider: GuildProvider? = null
 ) : Listener {
 
     @PostConstruct
@@ -110,9 +112,16 @@ open class ShopCreateListener(
         return when (stall.owner.type) {
             OwnerType.SOLO -> stall.owner.id == player.uniqueId.toString()
             OwnerType.GUILD -> {
-                // TODO: check guild membership/rank via GuildProvider
-                player.sendMessage("§cGuild shop management is not yet available")
-                false
+                val provider = guildProvider ?: run {
+                    player.sendMessage("§cLumaGuilds integration is not available")
+                    return false
+                }
+                provider.isMember(player.uniqueId, stall.owner.id) &&
+                    provider.hasShopPermission(
+                        player.uniqueId,
+                        stall.owner.id,
+                        GuildProvider.GuildPermission.MANAGE_SHOPS
+                    )
             }
             OwnerType.NONE -> false
         }

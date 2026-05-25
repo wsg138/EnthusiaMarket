@@ -15,7 +15,6 @@ import kotlin.test.assertTrue
 class StallTest {
 
     companion object {
-        private const val MANAGE_PERM = "manage"
         private const val TEST_GUILD = "guild_01"
         private const val TEST_STALL = "stall_01"
     }
@@ -65,7 +64,7 @@ class StallTest {
         val stall = baseStall.copy(owner = OwnerRef.solo(ownerUuid))
         val guildProvider = mockk<GuildProvider>(relaxed = true)
 
-        val result = stall.canManage(ownerUuid, guildProvider, MANAGE_PERM)
+        val result = stall.canManage(ownerUuid, guildProvider)
 
         assertTrue(result)
     }
@@ -76,41 +75,49 @@ class StallTest {
         val stall = baseStall.copy(owner = OwnerRef.solo(ownerUuid))
         val guildProvider = mockk<GuildProvider>(relaxed = true)
 
-        val result = stall.canManage(otherUuid, guildProvider, MANAGE_PERM)
+        val result = stall.canManage(otherUuid, guildProvider)
 
         assertFalse(result)
     }
 
-    @Test fun `guild member with required rank can manage stall`() {
+    @Test fun `guild member with MANAGE_SHOPS permission can manage stall`() {
         val playerUuid = UUID.randomUUID()
         val guildId = TEST_GUILD
         val stall = baseStall.copy(owner = OwnerRef.guild(guildId))
         val guildProvider = mockk<GuildProvider>()
 
         every { guildProvider.isMember(playerUuid, guildId) } returns true
-        every { guildProvider.hasPermission(playerUuid, guildId, MANAGE_PERM) } returns true
+        every {
+            guildProvider.hasShopPermission(playerUuid, guildId, GuildProvider.GuildPermission.MANAGE_SHOPS)
+        } returns true
 
-        val result = stall.canManage(playerUuid, guildProvider, MANAGE_PERM)
+        val result = stall.canManage(playerUuid, guildProvider)
 
         assertTrue(result)
         verify { guildProvider.isMember(playerUuid, guildId) }
-        verify { guildProvider.hasPermission(playerUuid, guildId, MANAGE_PERM) }
+        verify {
+            guildProvider.hasShopPermission(playerUuid, guildId, GuildProvider.GuildPermission.MANAGE_SHOPS)
+        }
     }
 
-    @Test fun `guild member with insufficient rank cannot manage stall`() {
+    @Test fun `guild member without MANAGE_SHOPS permission cannot manage stall`() {
         val playerUuid = UUID.randomUUID()
         val guildId = TEST_GUILD
         val stall = baseStall.copy(owner = OwnerRef.guild(guildId))
         val guildProvider = mockk<GuildProvider>()
 
         every { guildProvider.isMember(playerUuid, guildId) } returns true
-        every { guildProvider.hasPermission(playerUuid, guildId, MANAGE_PERM) } returns false
+        every {
+            guildProvider.hasShopPermission(playerUuid, guildId, GuildProvider.GuildPermission.MANAGE_SHOPS)
+        } returns false
 
-        val result = stall.canManage(playerUuid, guildProvider, MANAGE_PERM)
+        val result = stall.canManage(playerUuid, guildProvider)
 
         assertFalse(result)
         verify { guildProvider.isMember(playerUuid, guildId) }
-        verify { guildProvider.hasPermission(playerUuid, guildId, MANAGE_PERM) }
+        verify {
+            guildProvider.hasShopPermission(playerUuid, guildId, GuildProvider.GuildPermission.MANAGE_SHOPS)
+        }
     }
 
     @Test fun `non-member cannot manage guild stall`() {
@@ -121,18 +128,18 @@ class StallTest {
 
         every { guildProvider.isMember(playerUuid, guildId) } returns false
 
-        val result = stall.canManage(playerUuid, guildProvider, MANAGE_PERM)
+        val result = stall.canManage(playerUuid, guildProvider)
 
         assertFalse(result)
         verify { guildProvider.isMember(playerUuid, guildId) }
-        verify(exactly = 0) { guildProvider.hasPermission(any(), any(), any()) }
+        verify(exactly = 0) { guildProvider.hasShopPermission(any(), any(), any()) }
     }
 
     @Test fun `unowned stall cannot be managed`() {
         val playerUuid = UUID.randomUUID()
         val guildProvider = mockk<GuildProvider>(relaxed = true)
 
-        val result = baseStall.canManage(playerUuid, guildProvider, MANAGE_PERM)
+        val result = baseStall.canManage(playerUuid, guildProvider)
 
         assertFalse(result)
     }
