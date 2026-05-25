@@ -65,51 +65,23 @@ class AuctionLifecycleService(
         startingBid: Long,
         durationStr: String?
     ): AuctionResult {
-        // Validate stall exists
         val stall = stallRepository.findById(stallId)
             ?: return AuctionResult.Failure("Stall not found: ${stallId.value}")
 
-        // Validate player is stall owner
         if (stall.owner != OwnerRef.solo(playerUuid)) {
             return AuctionResult.Failure("You are not the owner of this stall")
         }
 
-        // Validate no open auction already exists for this stall
         val existing = auctionRepository.findOpenByStall(stallId)
         if (existing != null) {
             return AuctionResult.Failure("An open auction already exists for this stall")
         }
 
-        // Validate starting bid
-        if (startingBid < config.auction.minStartingBid) {
-            return AuctionResult.Failure(
-                "Starting bid must be at least ${config.auction.minStartingBid}"
-            )
-        }
+        val bidValidation = validateStartingBid(startingBid)
+        if (bidValidation != null) return bidValidation
 
-        // Parse and validate duration
-        val minDuration = Duration.parse(config.auction.minDuration)
-        val maxDuration = Duration.parse(config.auction.maxDuration)
-        val duration = if (durationStr != null) {
-            try {
-                Duration.parse(durationStr)
-            } catch (e: Exception) {
-                return AuctionResult.Failure("Invalid duration format: $durationStr")
-            }
-        } else {
-            Duration.parse(config.auction.defaultDuration)
-        }
-
-        if (duration < minDuration) {
-            return AuctionResult.Failure(
-                "Duration must be at least ${config.auction.minDuration}"
-            )
-        }
-        if (duration > maxDuration) {
-            return AuctionResult.Failure(
-                "Duration must be at most ${config.auction.maxDuration}"
-            )
-        }
+        val duration = resolveDuration(durationStr)
+            ?: return AuctionResult.Failure("Duration resolution failed — this should not happen")
 
         val now = Instant.now()
         val auction = Auction(
@@ -125,6 +97,25 @@ class AuctionLifecycleService(
 
         auctionRepository.create(auction)
         return AuctionResult.Success(auction)
+    }
+
+    private fun validateStartingBid(startingBid: Long): AuctionResult.Failure? {
+        if (startingBid < config.auction.minStartingBid) {
+            return AuctionResult.Failure("Starting bid must be at least ${config.auction.minStartingBid}")
+        }
+        return null
+    }
+
+    private fun resolveDuration(durationStr: String?): Duration? {
+        val minDuration = Duration.parse(config.auction.minDuration)
+        val maxDuration = Duration.parse(config.auction.maxDuration)
+        val duration = if (durationStr != null) {
+            try { Duration.parse(durationStr) } catch (e: Exception) { return null }
+        } else {
+            Duration.parse(config.auction.defaultDuration)
+        }
+        if (duration < minDuration || duration > maxDuration) return null
+        return duration
     }
 
     /**

@@ -20,6 +20,12 @@ import kotlin.test.assertTrue
 
 class LumaGuildsGuildProviderTest {
 
+    companion object {
+        private const val INVALID_UUID = "not-a-uuid"
+        private const val OFFICER_RANK = "Officer"
+        private const val MEMBER_RANK = "Member"
+    }
+
     private val guildId = UUID.randomUUID()
     private val playerId = UUID.randomUUID()
     private val guildService = mockk<GuildService>()
@@ -86,7 +92,7 @@ class LumaGuildsGuildProviderTest {
 
     @Test
     fun `guildById returns null for invalid UUID string`() {
-        assertNull(provider.guildById("not-a-uuid"))
+        assertNull(provider.guildById(INVALID_UUID))
     }
 
     @Test
@@ -116,7 +122,7 @@ class LumaGuildsGuildProviderTest {
 
     @Test
     fun `isMember returns false for invalid guild ID`() {
-        assertFalse(provider.isMember(playerId, "not-a-uuid"))
+        assertFalse(provider.isMember(playerId, INVALID_UUID))
     }
 
     // --- hasPermission ---
@@ -128,10 +134,10 @@ class LumaGuildsGuildProviderTest {
         every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
         every { rankService.listRanks(guildId) } returns setOf(
             Rank(id = playerRankId, guildId = guildId, name = "Owner", priority = 0),
-            Rank(id = officerRankId, guildId = guildId, name = "Officer", priority = 2),
+            Rank(id = officerRankId, guildId = guildId, name = OFFICER_RANK, priority = 2),
         )
 
-        assertTrue(provider.hasPermission(playerId, guildId.toString(), "Officer"))
+        assertTrue(provider.hasPermission(playerId, guildId.toString(), OFFICER_RANK))
     }
 
     @Test
@@ -139,10 +145,10 @@ class LumaGuildsGuildProviderTest {
         val playerRankId = UUID.randomUUID()
         every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
         every { rankService.listRanks(guildId) } returns setOf(
-            Rank(id = playerRankId, guildId = guildId, name = "Member", priority = 5),
+            Rank(id = playerRankId, guildId = guildId, name = MEMBER_RANK, priority = 5),
         )
 
-        assertTrue(provider.hasPermission(playerId, guildId.toString(), "Member"))
+        assertTrue(provider.hasPermission(playerId, guildId.toString(), MEMBER_RANK))
     }
 
     @Test
@@ -151,22 +157,22 @@ class LumaGuildsGuildProviderTest {
         val officerRankId = UUID.randomUUID()
         every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
         every { rankService.listRanks(guildId) } returns setOf(
-            Rank(id = officerRankId, guildId = guildId, name = "Officer", priority = 2),
-            Rank(id = playerRankId, guildId = guildId, name = "Member", priority = 5),
+            Rank(id = officerRankId, guildId = guildId, name = OFFICER_RANK, priority = 2),
+            Rank(id = playerRankId, guildId = guildId, name = MEMBER_RANK, priority = 5),
         )
 
-        assertFalse(provider.hasPermission(playerId, guildId.toString(), "Officer"))
+        assertFalse(provider.hasPermission(playerId, guildId.toString(), OFFICER_RANK))
     }
 
     @Test
     fun `hasPermission returns false when player has no rank`() {
         every { memberService.getPlayerRankId(playerId, guildId) } returns null
-        assertFalse(provider.hasPermission(playerId, guildId.toString(), "Officer"))
+        assertFalse(provider.hasPermission(playerId, guildId.toString(), OFFICER_RANK))
     }
 
     @Test
     fun `hasPermission returns false for invalid guild ID`() {
-        assertFalse(provider.hasPermission(playerId, "not-a-uuid", "Officer"))
+        assertFalse(provider.hasPermission(playerId, INVALID_UUID, OFFICER_RANK))
     }
 
     @Test
@@ -174,7 +180,7 @@ class LumaGuildsGuildProviderTest {
         val playerRankId = UUID.randomUUID()
         every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
         every { rankService.listRanks(guildId) } returns setOf(
-            Rank(id = playerRankId, guildId = guildId, name = "Member", priority = 5),
+            Rank(id = playerRankId, guildId = guildId, name = MEMBER_RANK, priority = 5),
         )
 
         assertFalse(provider.hasPermission(playerId, guildId.toString(), "NonExistentRank"))
@@ -203,7 +209,7 @@ class LumaGuildsGuildProviderTest {
 
     @Test
     fun `bankBalance returns zero for invalid guild ID`() {
-        assertEquals(0L, provider.bankBalance("not-a-uuid"))
+        assertEquals(0L, provider.bankBalance(INVALID_UUID))
     }
 
     // --- bankWithdraw ---
@@ -222,7 +228,7 @@ class LumaGuildsGuildProviderTest {
 
     @Test
     fun `bankWithdraw returns false for invalid guild ID`() {
-        assertFalse(provider.bankWithdraw("not-a-uuid", 1000L))
+        assertFalse(provider.bankWithdraw(INVALID_UUID, 1000L))
     }
 
     // --- bankDeposit ---
@@ -241,7 +247,7 @@ class LumaGuildsGuildProviderTest {
 
     @Test
     fun `bankDeposit returns false for invalid guild ID`() {
-        assertFalse(provider.bankDeposit("not-a-uuid", 500L))
+        assertFalse(provider.bankDeposit(INVALID_UUID, 500L))
     }
 
     // --- onDissolved / handleDisbanded ---

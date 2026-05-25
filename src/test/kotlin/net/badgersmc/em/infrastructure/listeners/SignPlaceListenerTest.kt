@@ -25,6 +25,13 @@ import kotlin.test.Test
 
 class SignPlaceListenerTest {
 
+    companion object {
+        private const val TEST_AMOUNT = "10"
+        private const val TEST_ITEM = "DIAMOND"
+        private const val TEST_PRICE = "100"
+        private const val BUY_PREFIX = "[BUY]"
+    }
+
     private val worldName = "world"
     private val world = mockk<World> {
         every { name } returns worldName
@@ -72,7 +79,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `sign with BUY text inside stall is registered via SignRepository`() {
-        val event = signEvent("[BUY]", "DIAMOND", "100", "10")
+        val event = signEvent(BUY_PREFIX, TEST_ITEM, TEST_PRICE, TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -87,7 +94,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `sign with SELL text inside stall is registered`() {
-        val event = signEvent("[SELL]", "DIAMOND", "100", "10")
+        val event = signEvent("[SELL]", TEST_ITEM, TEST_PRICE, TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -111,7 +118,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `sign placed outside any stall is NOT registered`() {
-        val event = signEvent("[BUY]", "DIAMOND", "100", "10")
+        val event = signEvent(BUY_PREFIX, TEST_ITEM, TEST_PRICE, TEST_AMOUNT)
         val listener = listenerInStall(stall = null)
 
         listener.onSignPlace(event)
@@ -123,7 +130,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `BUYBACK prefix is NOT registered as BUY`() {
-        val event = signEvent("[BUYBACK]", "DIAMOND", "100", "10")
+        val event = signEvent("[BUYBACK]", TEST_ITEM, TEST_PRICE, TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -133,7 +140,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `BUYER prefix is NOT registered as BUY`() {
-        val event = signEvent("BUYER", "DIAMOND", "100", "10")
+        val event = signEvent("BUYER", TEST_ITEM, TEST_PRICE, TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -143,7 +150,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `SELLING prefix is NOT registered as SELL`() {
-        val event = signEvent("SELLING", "DIAMOND", "100", "10")
+        val event = signEvent("SELLING", TEST_ITEM, TEST_PRICE, TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -153,7 +160,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `trimmed whitespace around BUY directive is still parsed`() {
-        val event = signEvent("  [BUY]  ", "DIAMOND", "100", "10")
+        val event = signEvent("  [BUY]  ", TEST_ITEM, TEST_PRICE, TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -163,7 +170,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `trimmed whitespace around price is still parsed`() {
-        val event = signEvent("[BUY]", "DIAMOND", "  100  ", "10")
+        val event = signEvent(BUY_PREFIX, TEST_ITEM, "  100  ", TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -173,17 +180,17 @@ class SignPlaceListenerTest {
 
     @Test
     fun `trimmed whitespace around item key is still parsed`() {
-        val event = signEvent("[BUY]", "  DIAMOND  ", "100", "10")
+        val event = signEvent(BUY_PREFIX, "  DIAMOND  ", TEST_PRICE, TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
 
-        verify { signRepo.create(match { sign -> sign.itemKey == "DIAMOND" }) }
+        verify { signRepo.create(match { sign -> sign.itemKey == TEST_ITEM }) }
     }
 
     @Test
     fun `zero price is NOT registered`() {
-        val event = signEvent("[BUY]", "DIAMOND", "0", "10")
+        val event = signEvent(BUY_PREFIX, TEST_ITEM, "0", TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -193,7 +200,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `negative price is NOT registered`() {
-        val event = signEvent("[SELL]", "DIAMOND", "-5", "10")
+        val event = signEvent("[SELL]", TEST_ITEM, "-5", TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)
@@ -203,7 +210,7 @@ class SignPlaceListenerTest {
 
     @Test
     fun `non-numeric price is NOT registered`() {
-        val event = signEvent("[BUY]", "DIAMOND", "free", "10")
+        val event = signEvent(BUY_PREFIX, "DIAMOND", "free", TEST_AMOUNT)
         val listener = listenerInStall()
 
         listener.onSignPlace(event)

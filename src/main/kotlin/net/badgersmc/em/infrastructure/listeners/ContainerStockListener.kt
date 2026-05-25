@@ -73,33 +73,35 @@ class ContainerStockListener(
             loc.blockX, loc.blockY, loc.blockZ
         )
         for (shop in shops) {
-            // Find and update the sign block
             val signWorld = Bukkit.getWorld(shop.signWorld) ?: continue
             val signBlock = signWorld.getBlockAt(shop.signX, shop.signY, shop.signZ)
-            val state = signBlock.state
-            if (state is Sign) {
-                // Compute available trades
-                val containerBlock2 = Bukkit.getWorld(shop.containerWorld)
-                    ?.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
-                val containerState = containerBlock2?.state
-                val trades = if (containerState is Container) {
-                    computeTradesAvailable(shop, containerState)
-                } else 0
+            val state = signBlock.state as? Sign ?: continue
+            val trades = computeTradesForShop(shop)
+            updateSignStock(state, trades)
+            trackDepletion(shop, trades)
+        }
+    }
 
-                // Update line 3 of the sign with stock info
-                state.setLine(3, "§7Stock: $trades")
-                state.update(true)
+    private fun computeTradesForShop(shop: net.badgersmc.em.domain.shop.Shop): Int {
+        val containerBlock = Bukkit.getWorld(shop.containerWorld)
+            ?.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
+        val containerState = containerBlock?.state as? Container ?: return 0
+        return computeTradesAvailable(shop, containerState)
+    }
 
-                // Fire event only on transition to zero (REQ-026)
-                if (trades == 0) {
-                    if (shop.id !in previouslyDepletedShops) {
-                        previouslyDepletedShops.add(shop.id)
-                        Bukkit.getPluginManager().callEvent(ShopStockDepletedEvent(shop.owner))
-                    }
-                } else {
-                    previouslyDepletedShops.remove(shop.id)
-                }
+    private fun updateSignStock(state: Sign, trades: Int) {
+        state.setLine(3, "§7Stock: $trades")
+        state.update(true)
+    }
+
+    private fun trackDepletion(shop: net.badgersmc.em.domain.shop.Shop, trades: Int) {
+        if (trades == 0) {
+            if (shop.id !in previouslyDepletedShops) {
+                previouslyDepletedShops.add(shop.id)
+                Bukkit.getPluginManager().callEvent(ShopStockDepletedEvent(shop.owner))
             }
+        } else {
+            previouslyDepletedShops.remove(shop.id)
         }
     }
 

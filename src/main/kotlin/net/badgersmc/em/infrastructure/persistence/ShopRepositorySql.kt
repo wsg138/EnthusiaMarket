@@ -10,6 +10,7 @@ import java.util.UUID
 import javax.sql.DataSource
 
 @Repository
+@Suppress("TooManyFunctions")
 class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 
     override fun upsert(shop: Shop): Shop {

@@ -19,6 +19,11 @@ import kotlin.test.assertFalse
  */
 class UiDispatcherTest {
 
+    companion object {
+        private const val UI_DISPATCHER_CLASS = "net.badgersmc.em.infrastructure.bedrock.UiDispatcher"
+        private const val BEDROCK_UNAVAILABLE_MSG = "§cBedrock forms are not available on this server"
+    }
+
     private val testUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")
     private val javaUuid = UUID.fromString("00000000-0000-0000-0000-000000000002")
 
@@ -29,7 +34,7 @@ class UiDispatcherTest {
     @Test
     fun `UiDispatcher class exists`() {
         // RED: throws ClassNotFoundException because UiDispatcher doesn't exist yet
-        val cls = Class.forName("net.badgersmc.em.infrastructure.bedrock.UiDispatcher")
+        val cls = Class.forName(UI_DISPATCHER_CLASS)
         assertNotNull(cls)
     }
 
@@ -39,7 +44,7 @@ class UiDispatcherTest {
 
     @Test
     fun `UiDispatcher has isBedrockPlayer method`() {
-        val cls = Class.forName("net.badgersmc.em.infrastructure.bedrock.UiDispatcher")
+        val cls = Class.forName(UI_DISPATCHER_CLASS)
         val method = cls.getMethod("isBedrockPlayer", UUID::class.java)
         assertNotNull(method)
         assertTrue(method.returnType == Boolean::class.java)
@@ -47,7 +52,7 @@ class UiDispatcherTest {
 
     @Test
     fun `UiDispatcher has dispatch method taking Player`() {
-        val cls = Class.forName("net.badgersmc.em.infrastructure.bedrock.UiDispatcher")
+        val cls = Class.forName(UI_DISPATCHER_CLASS)
         val method = cls.getMethod("dispatch", Player::class.java)
         assertNotNull(method)
     }
@@ -94,7 +99,7 @@ class UiDispatcherTest {
         dispatcher.dispatch(player)
 
         // Verify sendMessage was called with the fallback message
-        verify { player.sendMessage("§cBedrock forms are not available on this server") }
+        verify { player.sendMessage(BEDROCK_UNAVAILABLE_MSG) }
     }
 
     @Test
@@ -108,6 +113,6 @@ class UiDispatcherTest {
         dispatcher.dispatch(player)
 
         // Verify sendMessage was never called with the fallback message
-        verify(exactly = 0) { player.sendMessage("§cBedrock forms are not available on this server") }
+        verify(exactly = 0) { player.sendMessage(BEDROCK_UNAVAILABLE_MSG) }
     }
 }
