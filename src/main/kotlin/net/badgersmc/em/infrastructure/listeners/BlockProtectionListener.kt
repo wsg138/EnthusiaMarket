@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.listeners
 
+import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.ShopDeletedEvent
 import net.badgersmc.nexus.annotations.Component
@@ -35,60 +36,68 @@ class BlockProtectionListener(
     @EventHandler(ignoreCancelled = true)
     fun onBlockBreak(event: BlockBreakEvent) {
         val block = event.block
-        val player = event.player
 
-        // Handle sign break
         if (block.state is Sign) {
-            val loc = block.location
-            val shop = shopRepository.findBySign(
-                loc.world?.name ?: "world",
-                loc.blockX, loc.blockY, loc.blockZ
-            )
+            val shop = findShopBySign(block)
             if (shop != null) {
-                event.isCancelled = true
-                val isOwner = player.uniqueId == shop.owner || player.hasPermission("enthusiamarket.admin")
-                val isTrusted = shop.trusted.contains(player.uniqueId)
-                if (isOwner || isTrusted) {
-                    player.sendMessage("§e[Shop] Use the edit menu to delete this shop (coming in TDD-57)")
-                } else {
-                    player.sendMessage("§cYou cannot break this shop sign")
-                }
-                return
+                cancelSignBreak(event, shop, event.player)
             }
+            return
         }
 
-        // Handle container break
         if (block.state is Container) {
-            val loc = block.location
-            val shops = shopRepository.findByContainer(
-                loc.world?.name ?: "world",
-                loc.blockX, loc.blockY, loc.blockZ
-            )
+            val shops = findShopsByContainer(block)
             if (shops.isNotEmpty()) {
-                val isOwner = shops.all { it.owner == player.uniqueId } || player.hasPermission("enthusiamarket.admin")
-                if (isOwner) {
-                    val loc = block.location
-                    // Delete all linked shops atomically by container location
-                    try {
-                        shopRepository.deleteByContainer(
-                            loc.world?.name ?: "world",
-                            loc.blockX, loc.blockY, loc.blockZ
-                        )
-                        for (shop in shops) {
-                            Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
-                        }
-                        logger.info("Deleted ${shops.size} shop(s) at ${loc.world?.name}:${loc.blockX},${loc.blockY},${loc.blockZ} due to container break by ${player.name}")
-                    } catch (e: Exception) {
-                        logger.severe("Failed to delete shops at container break: ${e.message}")
-                        player.sendMessage("§cAn error occurred while deleting shops. Please contact an admin.")
-                        return
-                    }
-                    player.sendMessage("§aDeleted ${shops.size} shop(s) linked to this container")
-                } else {
-                    event.isCancelled = true
-                    player.sendMessage("§cThis container has active shops. Only the owner can break it.")
-                }
+                handleContainerBreak(event, block, shops)
             }
+        }
+    }
+
+    private fun findShopBySign(block: org.bukkit.block.Block): Shop? {
+        val loc = block.location
+        return shopRepository.findBySign(
+            loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ
+        )
+    }
+
+    private fun findShopsByContainer(block: org.bukkit.block.Block): List<Shop> {
+        val loc = block.location
+        return shopRepository.findByContainer(
+            loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ
+        )
+    }
+
+    private fun cancelSignBreak(event: BlockBreakEvent, shop: Shop, player: org.bukkit.entity.Player) {
+        event.isCancelled = true
+        val isOwner = player.uniqueId == shop.owner || player.hasPermission("enthusiamarket.admin")
+        val isTrusted = shop.trusted.contains(player.uniqueId)
+        if (isOwner || isTrusted) {
+            player.sendMessage("§e[Shop] Use the edit menu to delete this shop (coming in TDD-57)")
+        } else {
+            player.sendMessage("§cYou cannot break this shop sign")
+        }
+    }
+
+    private fun handleContainerBreak(event: BlockBreakEvent, block: org.bukkit.block.Block, shops: List<Shop>) {
+        val player = event.player
+        val isOwner = shops.all { it.owner == player.uniqueId } || player.hasPermission("enthusiamarket.admin")
+        if (!isOwner) {
+            event.isCancelled = true
+            player.sendMessage("§cThis container has active shops. Only the owner can break it.")
+            return
+        }
+
+        val loc = block.location
+        try {
+            shopRepository.deleteByContainer(loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ)
+            for (shop in shops) {
+                Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
+            }
+            logger.info("Deleted ${shops.size} shop(s) at ${loc.world?.name}:${loc.blockX},${loc.blockY},${loc.blockZ}")
+            player.sendMessage("§aDeleted ${shops.size} shop(s) linked to this container")
+        } catch (e: Exception) {
+            logger.severe("Failed to delete shops at container break: ${e.message}")
+            player.sendMessage("§cAn error occurred while deleting shops. Please contact an admin.")
         }
     }
 }
