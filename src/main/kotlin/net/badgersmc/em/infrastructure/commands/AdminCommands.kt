@@ -50,6 +50,7 @@ class AdminCommands(
     }
 
     @Subcommand("bid")
+    @Permission("enthusiamarket.admin")
     fun bid(@Context sender: CommandSender, auction: String, amount: Long) {
         val result = auctionService.placeBid(AuctionId(auction), extractSenderUuid(sender), amount)
         val msg = when (result) {

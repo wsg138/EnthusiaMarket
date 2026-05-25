@@ -69,7 +69,8 @@ class ShopTradeService(
         }
 
         // 4. Resolve owner UUID — handle malformed input gracefully
-        val ownerUuid = resolveOwnerUuid(stall) ?: return TradeResult.Failure("Malformed owner UUID on stall ${stall.id.value}")
+        val ownerUuid = resolveOwnerUuid(stall, playerUuid)
+            ?: return TradeResult.Failure("Invalid or unsupported stall owner on ${stall.id.value}")
 
         val itemKey = sign.itemKey
         val price = sign.price
@@ -96,14 +97,14 @@ class ShopTradeService(
         }
     }
 
-    private fun resolveOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? {
+    private fun resolveOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall, playerUuid: UUID): UUID? {
         return when (stall.owner.type) {
             OwnerType.SOLO -> try {
                 UUID.fromString(stall.owner.id)
             } catch (_: IllegalArgumentException) {
                 null
             }
-            OwnerType.GUILD -> null // guild trades use player as proxy, resolved at call site
+            OwnerType.GUILD -> playerUuid
             OwnerType.NONE -> null
         }
     }

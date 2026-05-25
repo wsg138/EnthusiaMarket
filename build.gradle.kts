@@ -61,8 +61,11 @@ dependencies {
     testImplementation("com.lemonappdev:konsist:0.17.3")
 
     // LumaGuilds API for real GuildProvider implementation
-    compileOnly(files("/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"))
-    testImplementation(files("/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"))
+    // Path can be overridden via -Plumaguilds.jar=... or LUMAGUILDS_JAR env var
+    val lumaguildsJar = System.getenv("LUMAGUILDS_JAR") ?: project.findProperty("lumaguilds.jar")?.toString()
+        ?: "/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"
+    compileOnly(files(lumaguildsJar))
+    testImplementation(files(lumaguildsJar))
 }
 
 kotlin {
