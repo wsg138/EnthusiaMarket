@@ -38,6 +38,15 @@ public class EnthusiaMarketPluginLoader implements PluginLoader {
             ).build()
         );
 
+        // NOTE on `-jvm` suffixes:
+        // Kotlin Multiplatform libs (kaml, kotlinx-coroutines, kotlinx-serialization,
+        // snakeyaml-engine-kmp, okio) publish a parent artifact whose .pom is just a
+        // Gradle Module Metadata pointer to the actual JVM variant. Paper's
+        // MavenLibraryResolver only reads Maven POMs (no GMM), so requesting the
+        // parent coord yields an effectively empty classpath entry and you get a
+        // ClassNotFoundException at runtime. Always use the `-jvm` artifact for KMP
+        // libs here. Non-KMP libs (HikariCP, sqlite, mariadb, slf4j, kotlin-stdlib,
+        // kotlin-reflect) stay single-artifact.
         String[] coords = {
             "com.zaxxer:HikariCP:5.1.0",
             "org.xerial:sqlite-jdbc:3.45.1.0",
@@ -45,8 +54,8 @@ public class EnthusiaMarketPluginLoader implements PluginLoader {
             "org.slf4j:slf4j-nop:2.0.13",
             "org.jetbrains.kotlin:kotlin-stdlib:2.0.21",
             "org.jetbrains.kotlin:kotlin-reflect:2.0.21",
-            "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0",
-            "com.charleskorn.kaml:kaml:0.59.0"
+            "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0",
+            "com.charleskorn.kaml:kaml-jvm:0.59.0"
         };
 
         for (String coord : coords) {
