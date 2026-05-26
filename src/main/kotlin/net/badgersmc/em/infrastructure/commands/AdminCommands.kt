@@ -7,6 +7,7 @@ import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.stall.StallId
+import net.badgersmc.nexus.commands.annotations.Arg
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
 import net.badgersmc.nexus.paper.commands.annotations.Permission
@@ -39,7 +40,12 @@ class AdminCommands(
 
     @Subcommand("auction start")
     @Permission("enthusiamarket.admin")
-    fun auctionStart(@Context sender: CommandSender, stall: String, price: Long, duration: String? = null) {
+    fun auctionStart(
+        @Context sender: CommandSender,
+        @Arg("stall") stall: String,
+        @Arg("price") price: Long,
+        @Arg("duration") duration: String? = null
+    ) {
         val result = auctionService.createAuction(StallId(stall), extractSenderUuid(sender), price, duration)
         val msg = when (result) {
             is AuctionResult.Success -> "Auction created: ${result.auction.id} for stall ${result.auction.stallId} starting at ${result.auction.startingBid}"
@@ -51,7 +57,11 @@ class AdminCommands(
 
     @Subcommand("bid")
     @Permission("enthusiamarket.admin")
-    fun bid(@Context sender: CommandSender, auction: String, amount: Long) {
+    fun bid(
+        @Context sender: CommandSender,
+        @Arg("auction") auction: String,
+        @Arg("amount") amount: Long
+    ) {
         val result = auctionService.placeBid(AuctionId(auction), extractSenderUuid(sender), amount)
         val msg = when (result) {
             is AuctionResult.Success -> "Bid placed: ${result.auction.highBid?.amount ?: amount} on auction ${result.auction.id}"
@@ -63,7 +73,10 @@ class AdminCommands(
 
     @Subcommand("auction cancel")
     @Permission("enthusiamarket.admin")
-    fun auctionCancel(@Context sender: CommandSender, auction: String) {
+    fun auctionCancel(
+        @Context sender: CommandSender,
+        @Arg("auction") auction: String
+    ) {
         val result = auctionService.cancelAuction(AuctionId(auction), extractSenderUuid(sender))
         val msg = when (result) {
             is AuctionResult.Success -> "Auction cancelled: ${result.auction.id}"
