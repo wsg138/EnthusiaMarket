@@ -4,3 +4,7 @@ build/
 *.iml
 out/
 libs/
+
+
+#Ignore vscode AI rules
+.github\instructions\codacy.instructions.md
