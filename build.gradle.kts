@@ -14,7 +14,24 @@ repositories {
     maven("https://jitpack.io")
     maven("https://maven.enginehub.org/repo/") // WorldGuard
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
-    mavenLocal() // Nexus local build
+
+    // Nexus releases — GitHub Packages. Needs gpr.user + gpr.token in
+    // ~/.gradle/gradle.properties (or GITHUB_ACTOR + GITHUB_TOKEN env on CI).
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/BadgersMC/Nexus")
+        credentials {
+            username = providers.gradleProperty("gpr.user").orNull
+                ?: System.getenv("GITHUB_ACTOR")
+            password = providers.gradleProperty("gpr.token").orNull
+                ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+
+    // Opt-in to a locally-published Nexus snapshot: ./gradlew -PuseMavenLocal=true …
+    if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+        mavenLocal()
+    }
 }
 
 dependencies {
@@ -37,8 +54,17 @@ dependencies {
     // Paper's runtime library loader). Transitive kotlin-reflect, coroutines, and
     // kaml come along on compile/test classpath but are excluded from the shadowJar
     // below (Paper downloads them at runtime via the libraries: block in plugin.yml).
-    implementation("net.badgersmc:nexus-core:1.6.0")
-    implementation("net.badgersmc:nexus-paper:1.6.0")
+    implementation("net.badgersmc:nexus-core:2.1.1")
+    implementation("net.badgersmc:nexus-paper:2.1.1")
+    implementation("net.badgersmc:nexus-resources:2.1.1")
+    implementation("net.badgersmc:nexus-i18n:2.1.1")
+    implementation("net.badgersmc:nexus-persistence:2.1.1")
+    implementation("net.badgersmc:nexus-scheduler:2.1.1")
+    implementation("net.badgersmc:nexus-paper-gui:2.1.1")
+    implementation("net.badgersmc:nexus-paper-bedrock:2.1.1")
+    implementation("net.badgersmc:nexus-paper-listeners:2.1.1")
+    implementation("net.badgersmc:nexus-vault:2.1.1")
+    implementation("net.badgersmc:nexus-paper-loader:2.1.1")
 
     // Runtime-downloaded by Paper via plugin.yml `libraries:` — kept on compile +
     // test classpath but excluded from the shaded jar to shrink it from ~27 MB

@@ -1,12 +1,15 @@
 package net.badgersmc.em.interaction.gui
 
+import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ContainerTradeResult
 import net.badgersmc.em.application.ContainerTradeService
 import net.badgersmc.em.domain.shop.Shop
+import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
+import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -18,57 +21,60 @@ import org.bukkit.inventory.ItemStack
  */
 class PurchaseMenu(
     private val shop: Shop,
-    private val tradeService: ContainerTradeService
+    private val tradeService: ContainerTradeService,
+    private val lang: LangService
 ) : Menu {
 
     override fun open(player: Player) {
-        // Create a 3-row GUI
-        val gui = ChestGui(3, "§8Shop — ${shop.sellAmount}x Item")
-
+        val gui = ChestGui(
+            3,
+            ComponentHolder.of(lang.msg("gui.shop.title", "amount" to shop.sellAmount))
+        )
         val pane = StaticPane(9, 3)
 
-        // Sell item display (center-left, slot 11)
-        val sellStack = ItemStack(Material.DIAMOND) // placeholder — real item from TDD-53
-        val sellMeta = sellStack.itemMeta ?: return
-        sellMeta.setDisplayName("§e§lSELL: §f${shop.sellAmount}x Item")
-        sellMeta.lore = listOf("§7Price: §6${shop.costAmount}x per trade")
-        sellStack.itemMeta = sellMeta
+        pane.addItem(GuiItem(decorated(
+            Material.DIAMOND,
+            lang.msg("gui.shop.sell_name", "amount" to shop.sellAmount),
+            listOf(lang.msg("gui.shop.sell_lore_price", "cost" to shop.costAmount))
+        )), 2, 1)
 
-        // Arrow (center, slot 13)
-        val arrow = ItemStack(Material.ARROW)
-        val arrowMeta = arrow.itemMeta ?: return
-        arrowMeta.setDisplayName("§7→")
-        arrow.itemMeta = arrowMeta
+        pane.addItem(GuiItem(decorated(Material.ARROW, lang.msg("gui.shop.arrow_name"))), 4, 1)
 
-        // Cost item display (center-right, slot 15)
-        val costStack = ItemStack(Material.EMERALD) // placeholder — real cost item from TDD-53
-        val costMeta = costStack.itemMeta ?: return
-        costMeta.setDisplayName("§6§lCOST: §f${shop.costAmount}x per trade")
-        costStack.itemMeta = costMeta
+        pane.addItem(GuiItem(decorated(
+            Material.EMERALD,
+            lang.msg("gui.shop.cost_name", "cost" to shop.costAmount)
+        )), 6, 1)
 
-        // Buy button (bottom center, slot 22)
-        val buyStack = ItemStack(Material.LIME_STAINED_GLASS_PANE)
-        val buyMeta = buyStack.itemMeta ?: return
-        buyMeta.setDisplayName("§a§lBUY")
-        buyMeta.lore = listOf("§7Click to purchase")
-        buyStack.itemMeta = buyMeta
-
-        pane.addItem(GuiItem(sellStack), 2, 1) // slot 11
-        pane.addItem(GuiItem(arrow), 4, 1)     // slot 13
-        pane.addItem(GuiItem(costStack), 6, 1) // slot 15
-        pane.addItem(GuiItem(buyStack, { event ->
+        pane.addItem(GuiItem(decorated(
+            Material.LIME_STAINED_GLASS_PANE,
+            lang.msg("gui.shop.buy_name"),
+            listOf(lang.msg("gui.shop.buy_lore_click"))
+        )) { event ->
             event.isCancelled = true
             when (val result = tradeService.executeBuy(shop, player.uniqueId)) {
-                is ContainerTradeResult.Success -> player.sendMessage("§a[Shop] ${result.message}")
-                is ContainerTradeResult.Failure -> player.sendMessage("§c[Shop] ${result.reason}")
+                is ContainerTradeResult.Success -> player.sendMessage(
+                    lang.msg("shop.trade.success", "message" to result.message)
+                )
+                is ContainerTradeResult.Failure -> player.sendMessage(
+                    lang.msg("shop.trade.failure", "reason" to result.reason)
+                )
                 is ContainerTradeResult.CompensationFailed -> {
-                    player.sendMessage("§c[Shop] Trade failed: ${result.error}")
-                    player.sendMessage("§7  Compensation: ${result.compensation}")
+                    player.sendMessage(lang.msg("shop.trade.compensation_failed", "error" to result.error))
+                    player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to result.compensation))
                 }
             }
-        }), 4, 2) // slot 22
+        }, 4, 2)
 
         gui.addPane(pane)
         gui.show(player)
+    }
+
+    private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
+        val item = ItemStack(material)
+        val meta = item.itemMeta ?: return item
+        meta.displayName(name)
+        if (lore.isNotEmpty()) meta.lore(lore)
+        item.itemMeta = meta
+        return item
     }
 }

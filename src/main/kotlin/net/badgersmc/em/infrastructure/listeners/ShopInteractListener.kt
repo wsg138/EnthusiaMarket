@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.application.ContainerTradeService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.MenuFactory
 import net.badgersmc.em.interaction.gui.PurchaseMenu
 import net.badgersmc.nexus.annotations.Component
@@ -24,7 +25,8 @@ import org.bukkit.plugin.java.JavaPlugin
 open class ShopInteractListener(
     private val shopRepository: ShopRepository,
     private val menuFactory: MenuFactory,
-    private val tradeService: ContainerTradeService
+    private val tradeService: ContainerTradeService,
+    private val lang: LangService
 ) : Listener {
 
     @PostConstruct
@@ -54,7 +56,7 @@ open class ShopInteractListener(
         // Platform routing: Bedrock gets Cumulus form, Java gets IFramework
         if (menuFactory.shouldUseBedrockMenus(player)) {
             // TODO: Implement Bedrock form menu (TDD-60) — placeholder path
-            player.sendMessage("§e[Shop] Bedrock form would open here (TDD-60)")
+            player.sendMessage(lang.msg("shop.create.bedrock_placeholder"))
         } else {
             openPurchaseMenu(player, shop)
         }
@@ -65,6 +67,6 @@ open class ShopInteractListener(
      * Open for testability — override or spy in tests to verify invocation.
      */
     open fun openPurchaseMenu(player: Player, shop: Shop) {
-        PurchaseMenu(shop, tradeService).open(player)
+        PurchaseMenu(shop, tradeService, lang).open(player)
     }
 }

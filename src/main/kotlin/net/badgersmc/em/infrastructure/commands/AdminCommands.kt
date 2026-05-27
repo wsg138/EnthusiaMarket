@@ -1,19 +1,26 @@
 package net.badgersmc.em.infrastructure.commands
 
-import net.badgersmc.em.application.ImportStallsService
-import net.badgersmc.em.config.EnthusiaMarketConfig
-import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
+import net.badgersmc.em.application.ImportStallsService
+import net.badgersmc.em.application.MassAuctionResult
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionId
+import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.StallId
+import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.nexus.i18n.LangService
+import net.badgersmc.em.interaction.gui.AuctionBrowserMenu
 import net.badgersmc.nexus.commands.annotations.Arg
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
+import net.badgersmc.nexus.config.ConfigManager
 import net.badgersmc.nexus.paper.commands.annotations.Permission
 import net.badgersmc.nexus.paper.commands.annotations.Subcommand
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
+import net.badgersmc.nexus.scheduler.NexusScheduler
+import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
 @Command(name = "em", description = "EnthusiaMarket administrative commands", aliases = ["enthusiamarket"])
@@ -21,20 +28,59 @@ class AdminCommands(
     private val service: ImportStallsService,
     private val stalls: StallRepository,
     private val config: EnthusiaMarketConfig,
-    private val auctionService: AuctionLifecycleService
+    private val auctionService: AuctionLifecycleService,
+    private val configManager: ConfigManager,
+    private val auctions: AuctionRepository,
+    private val plugin: JavaPlugin,
+    private val lang: LangService,
+    private val nexusScheduler: NexusScheduler
 ) {
     @Subcommand("import")
     @Permission("enthusiamarket.admin.import")
     fun import(@Context sender: CommandSender) {
         val r = service.import(config.market.world, config.market.regionPrefix)
-        sender.sendMessage("[EnthusiaMarket] import: created=${r.created} skipped=${r.skipped}")
+        sender.sendMessage(
+            lang.msg(
+                "admin.import.result",
+                "created" to r.created,
+                "skipped" to r.skipped,
+                "world" to config.market.world,
+                "region_prefix" to config.market.regionPrefix
+            )
+        )
+    }
+
+    @Subcommand("reload")
+    @Permission("enthusiamarket.admin.reload")
+    fun reload(@Context sender: CommandSender) {
+        try {
+            configManager.reload(EnthusiaMarketConfig::class)
+            lang.reload()
+            sender.sendMessage(
+                lang.msg(
+                    "admin.reload.success",
+                    "world" to config.market.world,
+                    "region_prefix" to config.market.regionPrefix
+                )
+            )
+        } catch (e: Exception) {
+            sender.sendMessage(lang.msg("admin.reload.failure", "reason" to (e.message ?: "unknown error")))
+        }
     }
 
     @Subcommand("list")
     @Permission("enthusiamarket.admin.list")
     fun list(@Context sender: CommandSender) {
         for (s in stalls.all()) {
-            sender.sendMessage("  ${s.id} [${s.state}] region=${s.world}:${s.regionId}")
+            sender.sendMessage(
+                lang.msg(
+                    "admin.list.line",
+                    "id" to s.id,
+                    "state" to s.state,
+                    "world" to s.world,
+                    "region" to s.regionId
+                )
+            )
         }
     }
 
@@ -46,13 +92,19 @@ class AdminCommands(
         @Arg("price") price: Long,
         @Arg("duration") duration: String? = null
     ) {
-        val result = auctionService.createAuction(StallId(stall), extractSenderUuid(sender), price, duration)
-        val msg = when (result) {
-            is AuctionResult.Success -> "Auction created: ${result.auction.id} for stall ${result.auction.stallId} starting at ${result.auction.startingBid}"
-            is AuctionResult.Failure -> "Failed to create auction: ${result.reason}"
-            is AuctionResult.NotFound -> "Stall not found"
+        val component = when (val result = auctionService.createAuction(
+            StallId(stall), extractSenderUuid(sender), price, duration
+        )) {
+            is AuctionResult.Success -> lang.msg(
+                "admin.auction.start.success",
+                "id" to result.auction.id,
+                "stall" to result.auction.stallId,
+                "starting_bid" to result.auction.startingBid
+            )
+            is AuctionResult.Failure -> lang.msg("admin.auction.start.failure", "reason" to result.reason)
+            is AuctionResult.NotFound -> lang.msg("admin.auction.start.not_found")
         }
-        sender.sendMessage("[EnthusiaMarket] $msg")
+        sender.sendMessage(component)
     }
 
     @Subcommand("bid")
@@ -62,13 +114,45 @@ class AdminCommands(
         @Arg("auction") auction: String,
         @Arg("amount") amount: Long
     ) {
-        val result = auctionService.placeBid(AuctionId(auction), extractSenderUuid(sender), amount)
-        val msg = when (result) {
-            is AuctionResult.Success -> "Bid placed: ${result.auction.highBid?.amount ?: amount} on auction ${result.auction.id}"
-            is AuctionResult.Failure -> "Bid rejected: ${result.reason}"
-            is AuctionResult.NotFound -> "Auction not found"
+        val component = when (val result = auctionService.placeBid(AuctionId(auction), extractSenderUuid(sender), amount)) {
+            is AuctionResult.Success -> lang.msg(
+                "admin.bid.success",
+                "amount" to (result.auction.highBid?.amount ?: amount),
+                "id" to result.auction.id
+            )
+            is AuctionResult.Failure -> lang.msg("admin.bid.failure", "reason" to result.reason)
+            is AuctionResult.NotFound -> lang.msg("admin.bid.not_found")
         }
-        sender.sendMessage("[EnthusiaMarket] $msg")
+        sender.sendMessage(component)
+    }
+
+    @Subcommand("auction startall")
+    @Permission("enthusiamarket.admin")
+    fun auctionStartAll(
+        @Context sender: CommandSender,
+        @Arg("price") price: Long,
+        @Arg("duration") duration: String? = null
+    ) {
+        val component = when (val result = auctionService.startMassAuction(price, duration)) {
+            is MassAuctionResult.Report -> lang.msg(
+                "admin.auction.startall.result",
+                "created" to result.created,
+                "skipped" to result.skipped,
+                "errors" to result.errors
+            )
+            is MassAuctionResult.Invalid -> lang.msg("admin.auction.startall.failure", "reason" to result.reason)
+        }
+        sender.sendMessage(component)
+    }
+
+    @Subcommand("auctions")
+    @Permission("enthusiamarket.auction.list")
+    fun auctionsBrowse(@Context sender: CommandSender) {
+        if (sender !is Player) {
+            sender.sendMessage(lang.msg("command.players_only"))
+            return
+        }
+        AuctionBrowserMenu(auctions, stalls, nexusScheduler, lang).open(sender)
     }
 
     @Subcommand("auction cancel")
@@ -77,13 +161,12 @@ class AdminCommands(
         @Context sender: CommandSender,
         @Arg("auction") auction: String
     ) {
-        val result = auctionService.cancelAuction(AuctionId(auction), extractSenderUuid(sender))
-        val msg = when (result) {
-            is AuctionResult.Success -> "Auction cancelled: ${result.auction.id}"
-            is AuctionResult.Failure -> "Failed to cancel auction: ${result.reason}"
-            is AuctionResult.NotFound -> "Auction not found"
+        val component = when (val result = auctionService.cancelAuction(AuctionId(auction), extractSenderUuid(sender))) {
+            is AuctionResult.Success -> lang.msg("admin.auction.cancel.success", "id" to result.auction.id)
+            is AuctionResult.Failure -> lang.msg("admin.auction.cancel.failure", "reason" to result.reason)
+            is AuctionResult.NotFound -> lang.msg("admin.auction.cancel.not_found")
         }
-        sender.sendMessage("[EnthusiaMarket] $msg")
+        sender.sendMessage(component)
     }
 
     /** Extract sender UUID, preferring Player sender. */

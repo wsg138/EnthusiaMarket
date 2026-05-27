@@ -10,6 +10,7 @@ import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
 import java.time.Duration
 import java.time.Instant
@@ -35,6 +36,23 @@ data class SettlementReport(
     val settled: Int,
     val errors: Int
 )
+
+/**
+ * Outcome of [AuctionLifecycleService.startMassAuction]. Sealed so callers
+ * can exhaustively match on the two variants without an `else` branch.
+ */
+sealed class MassAuctionResult {
+    /** At least one stall was processed (created may still be 0 if all were skipped). */
+    data class Report(
+        val created: Int,
+        val skipped: Int,
+        val errors: Int,
+        val auctionIds: List<AuctionId>
+    ) : MassAuctionResult()
+
+    /** Input validation rejected the entire operation before any stall was touched. */
+    data class Invalid(val reason: String) : MassAuctionResult()
+}
 
 /**
  * Application-layer service managing the full auction lifecycle (REQ-007).
@@ -97,6 +115,79 @@ class AuctionLifecycleService(
 
         auctionRepository.create(auction)
         return AuctionResult.Success(auction)
+    }
+
+    /**
+     * Launch a system-initiated auction for every UNOWNED stall at once (REQ-028).
+     *
+     * Each created auction shares the same starting bid and end time. Stalls already
+     * holding an open auction are skipped. Affected stalls transition to AUCTIONING.
+     *
+     * @param startingBid starting bid applied to every created auction
+     * @param durationStr optional ISO-8601 duration string; null uses `auction.defaultDuration`
+     * @return [MassAuctionResult.Report] with counts and the new auction ids, or
+     *         [MassAuctionResult.Invalid] when inputs fail validation
+     */
+    fun startMassAuction(startingBid: Long, durationStr: String?): MassAuctionResult {
+        validateStartingBid(startingBid)?.let { return MassAuctionResult.Invalid(it.reason) }
+        val duration = resolveDuration(durationStr)
+            ?: return MassAuctionResult.Invalid("Invalid auction duration: '$durationStr'")
+
+        val now = Instant.now()
+        val endAt = now.plus(duration)
+        val antiSnipe = Duration.ofSeconds(config.auction.antiSnipeSec.toLong())
+
+        val candidates = stallRepository.byState(StallState.UNOWNED)
+        val created = mutableListOf<AuctionId>()
+        var skipped = 0
+        var errors = 0
+
+        for (stall in candidates) {
+            try {
+                if (auctionRepository.findOpenByStall(stall.id) != null) {
+                    skipped++
+                    continue
+                }
+                val auction = Auction(
+                    id = AuctionId(UUID.randomUUID().toString()),
+                    stallId = stall.id,
+                    state = AuctionState.OPEN,
+                    startAt = now,
+                    endAt = endAt,
+                    startingBid = startingBid,
+                    highBid = null,
+                    antiSnipeWindow = antiSnipe
+                )
+                // Persist auction first, then transition stall. If the stall save
+                // fails we compensate by closing the just-created auction so we
+                // never leave an OPEN auction pointing at a non-AUCTIONING stall.
+                auctionRepository.create(auction)
+                try {
+                    stallRepository.save(stall.copy(state = StallState.AUCTIONING))
+                } catch (stallErr: Exception) {
+                    try {
+                        auctionRepository.save(auction.close())
+                    } catch (compErr: Exception) {
+                        logger.warning(
+                            "startMassAuction: failed to compensate auction ${auction.id} " +
+                                "after stall save failed for ${stall.id}: ${compErr.message}"
+                        )
+                    }
+                    throw stallErr
+                }
+                created.add(auction.id)
+            } catch (e: Exception) {
+                logger.warning("startMassAuction: stall ${stall.id} failed — ${e.message}")
+                errors++
+            }
+        }
+
+        return MassAuctionResult.Report(
+            created = created.size,
+            skipped = skipped,
+            errors = errors,
+            auctionIds = created
+        )
     }
 
     private fun validateStartingBid(startingBid: Long): AuctionResult.Failure? {
@@ -189,7 +280,19 @@ class AuctionLifecycleService(
                 if (auction.highBid != null) {
                     settleWithWinner(auction)
                 } else {
-                    // No bids — just close
+                    // No bids. If this was a system-initiated mass auction
+                    // (UNOWNED stall transitioned to AUCTIONING), revert the
+                    // stall BEFORE closing the auction. If we closed the
+                    // auction first and the stall save then failed, the
+                    // auction would no longer appear in findExpired() and the
+                    // stall would stay stuck in AUCTIONING forever.
+                    val stall = stallRepository.findById(auction.stallId)
+                    if (stall != null
+                        && stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+                        && stall.state == StallState.AUCTIONING
+                    ) {
+                        stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                    }
                     auctionRepository.save(auction.close())
                 }
                 settled++

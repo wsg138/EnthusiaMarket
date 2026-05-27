@@ -23,7 +23,7 @@ jobs:
 
       - name: Build & publish Nexus to mavenLocal
         run: |
-          git clone --depth 1 https://github.com/BadgersMC/nexus.git "$RUNNER_TEMP/nexus"
+          git clone --depth 1 https://github.com/BadgersMC/Nexus.git "$RUNNER_TEMP/nexus"
           cd "$RUNNER_TEMP/nexus"
           # nexus repo is missing gradle/wrapper/gradle-wrapper.jar, so invoke the
           # installed gradle directly instead of ./gradlew.

@@ -2,6 +2,7 @@ package net.badgersmc.em.interaction.bedrock
 
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.nexus.i18n.LangService
 import org.bukkit.entity.Player
 import org.geysermc.cumulus.form.CustomForm
 import org.geysermc.cumulus.response.CustomFormResponse
@@ -16,16 +17,17 @@ class BedrockShopEditForm(
     player: Player,
     private val shop: Shop,
     private val shopRepository: ShopRepository,
-    logger: Logger
-) : BedrockMenuBase(player, logger) {
+    logger: Logger,
+    lang: LangService
+) : BedrockMenuBase(player, logger, lang) {
 
     override fun buildForm(): CustomForm {
         return CustomForm.builder()
-            .title("Edit Shop")
-            .label("§8Shop Settings")
-            .toggle("Freeze shop (block trades)", shop.frozen)
-            .toggle("Allow hopper input", shop.hopperAllowIn)
-            .toggle("Allow hopper output", shop.hopperAllowOut)
+            .title(lang.legacy("bedrock.edit.title"))
+            .label(lang.legacy("bedrock.edit.label"))
+            .toggle(lang.legacy("bedrock.edit.toggle_freeze"), shop.frozen)
+            .toggle(lang.legacy("bedrock.edit.toggle_hopper_in"), shop.hopperAllowIn)
+            .toggle(lang.legacy("bedrock.edit.toggle_hopper_out"), shop.hopperAllowOut)
             .validResultHandler { response: CustomFormResponse ->
                 val frozen = response.asToggle(1) // index 1 = first toggle
                 val hopperIn = response.asToggle(2)
@@ -37,7 +39,7 @@ class BedrockShopEditForm(
                     hopperAllowOut = hopperOut
                 )
                 shopRepository.upsert(updated)
-                player.sendMessage("§aShop updated")
+                player.sendMessage(lang.legacy("shop.edit.updated"))
             }
             .build()
     }

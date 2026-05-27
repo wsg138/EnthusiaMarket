@@ -1,7 +1,7 @@
 package net.badgersmc.em.infrastructure.scheduler
 
 import net.badgersmc.em.application.AuctionLifecycleService
-import net.badgersmc.em.infrastructure.vault.VaultHealth
+import net.badgersmc.nexus.vault.VaultHealth
 import net.badgersmc.nexus.annotations.Component
 import org.bukkit.plugin.Plugin
 import org.bukkit.scheduler.BukkitRunnable

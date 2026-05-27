@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.ShopStockDepletedEvent
+import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -26,7 +27,8 @@ import java.util.logging.Logger
 @Component
 class ContainerStockListener(
     private val shopRepository: ShopRepository,
-    private val logger: Logger
+    private val logger: Logger,
+    private val lang: LangService
 ) : Listener {
 
     @PostConstruct
@@ -90,7 +92,7 @@ class ContainerStockListener(
     }
 
     private fun updateSignStock(state: Sign, trades: Int) {
-        state.setLine(3, "§7Stock: $trades")
+        state.line(3, lang.msg("container_sign.stock_line", "trades" to trades))
         state.update(true)
     }
 

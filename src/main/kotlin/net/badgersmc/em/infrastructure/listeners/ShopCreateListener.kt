@@ -7,6 +7,7 @@ import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -31,6 +32,7 @@ import java.util.logging.Logger
 open class ShopCreateListener(
     private val stallRepository: StallRepository,
     private val shopRepository: ShopRepository,
+    private val lang: LangService,
     private val guildProvider: GuildProvider? = null
 ) : Listener {
 
@@ -60,7 +62,7 @@ open class ShopCreateListener(
         // Must not already be a registered shop
         val loc = block.location
         if (shopRepository.findBySign(loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ) != null) {
-            event.player.sendMessage("§cThis sign is already a shop")
+            event.player.sendMessage(lang.msg("shop.create.already_shop"))
             return
         }
 
@@ -70,19 +72,19 @@ open class ShopCreateListener(
         val attachedBlock = block.getRelative(facing.oppositeFace)
 
         if (attachedBlock.state !is Container) {
-            event.player.sendMessage("§cSign must be attached to a container (chest, barrel, shulker)")
+            event.player.sendMessage(lang.msg("shop.create.needs_container"))
             return
         }
 
         // Check the sign is inside an owned stall
         val stall = findStallAt(loc) ?: run {
-            event.player.sendMessage("§cSign must be inside a registered stall")
+            event.player.sendMessage(lang.msg("shop.create.not_in_stall"))
             return
         }
 
         // Check player can manage this stall
         if (!canManageStall(stall, event.player)) {
-            event.player.sendMessage("§cYou do not own or rent this stall")
+            event.player.sendMessage(lang.msg("shop.create.no_authority"))
             return
         }
 
@@ -91,7 +93,7 @@ open class ShopCreateListener(
         // Note: ShopCreatedEvent is fired after successful persistence in the shop creation flow
 
         // Open CreateShopMenu — for now just a placeholder
-        event.player.sendMessage("§e[Shop] Create menu would open here (TDD-52)")
+        event.player.sendMessage(lang.msg("shop.create.menu_placeholder"))
     }
 
     open fun findStallAt(location: Location): Stall? {
@@ -113,7 +115,7 @@ open class ShopCreateListener(
             OwnerType.SOLO -> stall.owner.id == player.uniqueId.toString()
             OwnerType.GUILD -> {
                 val provider = guildProvider ?: run {
-                    player.sendMessage("§cLumaGuilds integration is not available")
+                    player.sendMessage(lang.msg("shop.create.guild_unavailable"))
                     return false
                 }
                 provider.isMember(player.uniqueId, stall.owner.id) &&

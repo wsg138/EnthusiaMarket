@@ -1,0 +1,152 @@
+# EnthusiaMarket — en_US locale.
+#
+# All values are MiniMessage strings. See https://docs.advntr.dev/minimessage/format.html
+# Placeholders use <name> syntax and are populated at call site, e.g. <stall>, <count>.
+#
+# Bedrock/Cumulus paths render these to legacy §-codes via LegacyComponentSerializer.
+
+prefix: "<dark_gray>[<gold>EnthusiaMarket</gold>]</dark_gray> "
+
+common:
+  unknown_player: "Unknown"
+
+admin:
+  import:
+    result: "<prefix>import: created=<green><created></green> skipped=<yellow><skipped></yellow> <gray>(world=<world>, prefix=<region_prefix>)"
+  reload:
+    success: "<prefix>config reloaded <gray>(world=<world>, prefix=<region_prefix>)"
+    failure: "<prefix><red>reload failed: <reason>"
+  list:
+    line: "  <aqua><id></aqua> <gray>[<state>]</gray> region=<world>:<region>"
+  auction:
+    start:
+      success: "<prefix><green>Auction created:</green> <id> <gray>for stall</gray> <stall> <gray>starting at</gray> <gold><starting_bid>"
+      failure: "<prefix><red>Failed to create auction: <reason>"
+      not_found: "<prefix><red>Stall not found"
+    cancel:
+      success: "<prefix><green>Auction cancelled:</green> <id>"
+      failure: "<prefix><red>Failed to cancel auction: <reason>"
+      not_found: "<prefix><red>Auction not found"
+    startall:
+      result: "<prefix><green>mass auction:</green> created=<green><created></green> skipped=<yellow><skipped></yellow> errors=<red><errors></red>"
+      failure: "<prefix><red>mass auction failed: <reason>"
+  bid:
+    success: "<prefix><green>Bid placed:</green> <gold><amount></gold> <gray>on auction</gray> <id>"
+    failure: "<prefix><red>Bid rejected: <reason>"
+    not_found: "<prefix><red>Auction not found"
+
+command:
+  players_only: "<prefix><red>This command must be run by a player"
+
+shop:
+  trade:
+    success: "<gray>[<gold>Shop</gold>] <green><message>"
+    failure: "<gray>[<gold>Shop</gold>] <red><reason>"
+    compensation_failed: "<gray>[<gold>Shop</gold>] <red>Trade failed: <error>"
+    compensation_note: "<gray>  Compensation: <compensation>"
+  create:
+    already_shop: "<red>This sign is already a shop"
+    needs_container: "<red>Sign must be attached to a container (chest, barrel, shulker)"
+    not_in_stall: "<red>Sign must be inside a registered stall"
+    no_authority: "<red>You do not own or rent this stall"
+    menu_placeholder: "<yellow>[Shop] Create menu would open here (TDD-52)"
+    bedrock_placeholder: "<yellow>[Shop] Bedrock form would open here (TDD-60)"
+    guild_unavailable: "<red>LumaGuilds integration is not available"
+    success: "<green>Shop created!"
+    invalid_input: "<red>Invalid item or price"
+  edit:
+    not_owner: "<red>You don't own this shop"
+    frozen: "<red>Shop frozen"
+    unfrozen: "<green>Shop unfrozen"
+    updated: "<green>Shop updated"
+  protect:
+    use_edit_menu: "<yellow>[Shop] Use the edit menu to delete this shop (coming in TDD-57)"
+    cannot_break_sign: "<red>You cannot break this shop sign"
+    container_has_shops: "<red>This container has active shops. Only the owner can break it."
+    deleted: "<green>Deleted <count> shop(s) linked to this container"
+    delete_error: "<red>An error occurred while deleting shops. Please contact an admin."
+  trust:
+    open_chat_prompt: "<yellow>Type the name of the player to trust in chat"
+    removed: "<green>Removed trusted player"
+
+gui:
+  shop:
+    title: "<dark_gray>Shop — <amount>x Item"
+    sell_name: "<yellow><bold>SELL:</bold></yellow> <white><amount>x Item"
+    sell_lore_price: "<gray>Price: <gold><cost>x per trade"
+    arrow_name: "<gray>→"
+    cost_name: "<gold><bold>COST:</bold></gold> <white><cost>x per trade"
+    buy_name: "<green><bold>BUY</bold>"
+    buy_lore_click: "<gray>Click to purchase"
+  edit:
+    title: "<dark_gray>Edit Shop"
+    frozen_name: "<red><bold>SHOP FROZEN"
+    frozen_lore_blocked: "<gray>Trades are currently BLOCKED"
+    frozen_lore_click_unfreeze: "<yellow>Click to unfreeze"
+    active_name: "<green><bold>SHOP ACTIVE"
+    active_lore_allowed: "<gray>Trades are currently allowed"
+    active_lore_click_freeze: "<yellow>Click to freeze"
+    hopper_in_on: "<green>Hopper In: ON"
+    hopper_in_on_lore_1: "<gray>Hoppers can insert items"
+    hopper_in_on_lore_2: "<yellow>Click to disable"
+    hopper_in_off: "<red>Hopper In: OFF"
+    hopper_in_off_lore_1: "<gray>Hoppers cannot insert items"
+    hopper_in_off_lore_2: "<yellow>Click to enable"
+    hopper_out_on: "<green>Hopper Out: ON"
+    hopper_out_on_lore_1: "<gray>Hoppers can extract items"
+    hopper_out_on_lore_2: "<yellow>Click to disable"
+    hopper_out_off: "<red>Hopper Out: OFF"
+    hopper_out_off_lore_1: "<gray>Hoppers cannot extract items"
+    hopper_out_off_lore_2: "<yellow>Click to enable"
+    manage_trusted: "<yellow>Manage Trusted Players"
+    manage_trusted_lore_count: "<gray>Currently trusted: <count>"
+    manage_trusted_lore_click: "<yellow>Click to open"
+  trust:
+    title: "<dark_gray>Manage Trusted Players"
+    member_name: "<yellow><name>"
+    member_lore_uuid: "<gray>UUID: <uuid>"
+    member_lore_remove: "<red>Left-click to remove"
+    add_name: "<green><bold>ADD TRUSTED PLAYER"
+    add_lore: "<gray>Type a player name in chat to add"
+  auctions:
+    title: "<dark_gray>Auctions"
+    prev: "<yellow>← Previous Page"
+    next: "<yellow>Next Page →"
+    sort_name: "<aqua>Sort:</aqua> <white><mode>"
+    sort_lore_click: "<gray>Click to cycle sort modes"
+    page_indicator: "<gray>Page <white><current></white> / <white><total>"
+    page_lore_count: "<gray><count> open auction(s)"
+    close: "<red>Close"
+    entry_name: "<green><stall>"
+    entry_lore_region: "<gray>Region: <white><world>:<region>"
+    entry_lore_current_with_bidder: "<gray>Current bid: <gold><amount></gold> <gray>(<yellow><bidder><gray>)"
+    entry_lore_current_no_bids: "<gray>Current bid: <gold><amount></gold> <gray>(<dark_gray>no bids<gray>)"
+    entry_lore_starting: "<gray>Starting bid: <white><amount>"
+    entry_lore_time_left: "<gray>Time left: <white><time>"
+    entry_lore_id: "<dark_gray><id>"
+    sort_highest_bid: "Highest Bid"
+    sort_lowest_bid: "Lowest Bid"
+    sort_ending_soon: "Ending Soon"
+    sort_ending_latest: "Ending Latest"
+    time_ended: "ended"
+
+bedrock:
+  unavailable: "<red>Bedrock forms are not available on this server"
+  menu_error: "<red>Unable to open menu. Please try again or use the Java interface."
+  purchase:
+    title: "Shop"
+    content: "Item: <amount>x\nPrice: <price> each\nOwner: <owner>\nStatus: <status>"
+    status_frozen: "<red>Frozen"
+    status_active: "<green>Active"
+    button_buy: "<green><bold>BUY"
+    button_sell: "<yellow><bold>SELL"
+    button_back: "<gray>Back"
+  edit:
+    title: "Shop Settings"
+    label: "<dark_gray>Shop Settings"
+    toggle_freeze: "Freeze shop (block trades)"
+    toggle_hopper_in: "Allow hopper input"
+    toggle_hopper_out: "Allow hopper output"
+
+container_sign:
+  stock_line: "<gray>Stock: <trades>"

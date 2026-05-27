@@ -1,5 +1,6 @@
 package net.badgersmc.em.interaction.bedrock
 
+import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import org.bukkit.entity.Player
 import org.geysermc.cumulus.form.Form
@@ -12,7 +13,8 @@ import java.util.logging.Logger
  */
 abstract class BedrockMenuBase(
     protected val player: Player,
-    protected val logger: Logger
+    protected val logger: Logger,
+    protected val lang: LangService
 ) : Menu {
 
     abstract fun buildForm(): Form
@@ -24,7 +26,7 @@ abstract class BedrockMenuBase(
             logger.fine("Opened ${this::class.simpleName} for ${player.name}")
         } catch (e: Exception) {
             logger.warning("Failed to open Bedrock menu for ${player.name}: ${e.message}")
-            player.sendMessage("§cUnable to open menu. Please try again or use the Java interface.")
+            player.sendMessage(lang.msg("bedrock.menu_error"))
         }
     }
 

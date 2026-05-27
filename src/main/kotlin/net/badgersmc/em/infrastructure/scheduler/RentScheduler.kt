@@ -2,7 +2,7 @@ package net.badgersmc.em.infrastructure.scheduler
 
 import net.badgersmc.em.application.RentCollectionService
 import net.badgersmc.em.config.EnthusiaMarketConfig
-import net.badgersmc.em.infrastructure.vault.VaultHealth
+import net.badgersmc.nexus.vault.VaultHealth
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.plugin.Plugin

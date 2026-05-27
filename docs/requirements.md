@@ -127,6 +127,14 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 **Ubiquitous.** THE SYSTEM SHALL expose administrative subcommands under `/enthusiamarket` (alias `/em`) gated by the `enthusiamarket.admin` permission.
 
+### REQ-028 — Mass auction launch
+
+**Event-driven.** WHEN an administrator executes `/em auction startall <startingBid> [duration]` THE SYSTEM SHALL create a single open auction with the same starting bid and end time for every stall currently in the `UNOWNED` state, transition each affected stall to `AUCTIONING`, skip stalls that already have an open auction, and report the counts of created, skipped, and errored stalls.
+
+### REQ-029 — Live auction browser menu
+
+**Event-driven.** WHEN a player executes `/em auctions` THE SYSTEM SHALL open a paginated GUI listing every open auction with its stall id, current high bid, time remaining, and a sort toggle cycling through `HIGHEST_BID`, `LOWEST_BID`, `ENDING_SOON`, and `ENDING_LATEST`, refreshing its contents at least once per second while the menu remains open.
+
 ---
 
 ## Non-functional
@@ -146,6 +154,144 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 ### REQ-043 — Server thread safety
 
 **Ubiquitous.** THE SYSTEM SHALL execute all Bukkit world, inventory, and entity mutations on the main server thread.
+
+---
+
+## ARM-inspired feature set (Phase 5)
+
+Reference: study of `advanced-region-market` (ARM) plugin. Eight features selected for adoption: member system, limit groups, entity limits, region info, particle border, sign click actions, sell offers, schematic-based reset.
+
+### Member system
+
+#### REQ-200 — Stall member roster
+
+**Ubiquitous.** THE SYSTEM SHALL maintain a per-stall member list (set of player UUIDs) distinct from the owner, persisted alongside the stall record.
+
+#### REQ-201 — Member cap by region kind
+
+**Ubiquitous.** THE SYSTEM SHALL enforce a configurable `maxMembers` value per stall (-1 = unlimited) and reject member additions that would exceed it.
+
+#### REQ-202 — Member commands
+
+**Event-driven.** WHEN the owner executes `/em stall members add|remove|list <player>` THE SYSTEM SHALL mutate the roster, sync the change to the underlying WorldGuard region's member list, and persist.
+
+#### REQ-203 — Member permission inheritance
+
+**State-driven.** WHILE a player is a member of a stall THE SYSTEM SHALL grant them WorldGuard build/interact permissions inside the stall region (delegated to WorldGuard via region member assignment).
+
+### Limit groups
+
+#### REQ-210 — Limit group config block
+
+**Ubiquitous.** THE SYSTEM SHALL load named limit groups from `enthusiamarket.yaml` under `limits.<group-name>` with fields `total: Int` and `regionkinds: Map<String, Int>` where -1 means unlimited.
+
+#### REQ-211 — Limit group assignment via permission
+
+**Ubiquitous.** THE SYSTEM SHALL resolve a player's effective limit by intersecting every limit group whose permission node (`enthusiamarket.limit.<group-name>`) the player holds and taking the best value per dimension.
+
+#### REQ-212 — Limit enforcement on stall acquisition
+
+**Unwanted.** IF a player would exceed their effective total or kind-specific limit by acquiring a stall THE SYSTEM SHALL reject the acquisition with a translated lang message.
+
+#### REQ-213 — Admin bypass
+
+**Ubiquitous.** THE SYSTEM SHALL grant unlimited stall ownership to any player holding `enthusiamarket.admin.bypasslimit`.
+
+### Entity limits
+
+#### REQ-220 — Entity limit groups by region kind
+
+**Ubiquitous.** THE SYSTEM SHALL associate each region kind with an entity limit group declaring per-entity caps (e.g. `villager: 5`, `armor_stand: 10`, `_total: 50`).
+
+#### REQ-221 — Entity limit enforcement
+
+**Unwanted.** IF a mob/entity spawn or item-frame placement inside a stall would exceed the active entity limit group's per-type or total cap THE SYSTEM SHALL cancel the event.
+
+#### REQ-222 — Per-stall entity-limit override
+
+**Optional.** THE SYSTEM SHALL allow admins to grant individual stalls extra entity allowance (`extraEntities[<type>]`, `extraTotal`) via `/em stall entitylimit set`.
+
+### Region info command
+
+#### REQ-230 — Player-facing region info
+
+**Event-driven.** WHEN a player executes `/em stall info <stall>` THE SYSTEM SHALL send the player a translated info card showing: stall id, region kind, owner, member count, current rent, time until next rent collection, dimensions in blocks, state, and whether the stall is currently available to claim.
+
+#### REQ-231 — Region info from sign right-click
+
+**Event-driven.** WHEN a player right-clicks a stall purchase sign while not currently the owner THE SYSTEM SHALL invoke the same info card displayed by REQ-230.
+
+### Particle border preview
+
+#### REQ-240 — Particle outline on stall selection
+
+**Event-driven.** WHEN a player executes `/em stall outline <stall>` THE SYSTEM SHALL render a particle border tracing the stall's WorldGuard region for a configurable duration (default 10s) visible only to that player.
+
+#### REQ-241 — Particle outline performance bound
+
+**Ubiquitous.** THE SYSTEM SHALL emit at most `particles.maxPerTick` particles per server tick across all active outlines (default 200) and degrade by reducing particle density rather than dropping outlines entirely.
+
+### Sign click actions
+
+#### REQ-250 — Stall purchase signs
+
+**Ubiquitous.** THE SYSTEM SHALL support placing physical signs in the world linked to a stall such that right-clicking the sign triggers a claim/extend/buy action appropriate to the stall's state, and the sign's text is auto-rendered from a translated template.
+
+#### REQ-251 — Sign creation workflow
+
+**Event-driven.** WHEN an admin (or stall owner where permitted) creates a sign whose first line matches the configured trigger token (e.g. `[em]`) and whose second line names an existing stall THE SYSTEM SHALL register the sign as a linked purchase sign, sync its text on creation, and persist the binding.
+
+#### REQ-252 — Sign auto-refresh on state change
+
+**Event-driven.** WHEN a stall's owner, price, or remaining-rent state changes THE SYSTEM SHALL re-render every linked sign for that stall within one tick.
+
+#### REQ-253 — Sign destruction tracking
+
+**Event-driven.** WHEN a linked purchase sign is broken THE SYSTEM SHALL remove the persisted binding and emit a Bukkit event so other plugins can react.
+
+### Sell offers
+
+#### REQ-260 — Owner-listed sell offers
+
+**Event-driven.** WHEN a stall owner executes `/em stall offer <price>` THE SYSTEM SHALL create a public offer to transfer ownership of the stall to any buyer who pays the listed price plus the configured tax percentage.
+
+#### REQ-261 — Offer acceptance
+
+**Event-driven.** WHEN a player executes `/em stall buy <stall>` against a stall with an open offer THE SYSTEM SHALL withdraw `price * (1 + tax)` from the buyer, deposit `price` to the seller, deposit `price * tax` to the system sink (or configured account), reassign stall ownership, and close the offer atomically.
+
+#### REQ-262 — Offer cancellation
+
+**Event-driven.** WHEN the owning seller executes `/em stall offer cancel` THE SYSTEM SHALL close the open offer without transferring ownership.
+
+#### REQ-263 — Offer mutual exclusion with auction
+
+**Unwanted.** IF a stall has an open auction THE SYSTEM SHALL reject any attempt to create a sell offer on it, and vice versa.
+
+#### REQ-264 — Offer tax routing
+
+**Ubiquitous.** THE SYSTEM SHALL apply the same `shop.taxPct` config value to offer transactions as to shop trades, and route the tax to the same destination configured for shop tax.
+
+### Schematic-based reset
+
+#### REQ-270 — Stall schematic snapshot on claim
+
+**Event-driven.** WHEN a stall transitions from `UNOWNED` to any `OWNED`/`AUCTIONING`/`RENTED` state for the first time THE SYSTEM SHALL save a WorldEdit schematic of the stall's WorldGuard region to `plugins/EnthusiaMarket/schematics/<stallId>.schem` before ownership is finalised.
+
+#### REQ-271 — Schematic restore on unclaim
+
+**Event-driven.** WHEN a stall transitions back to `UNOWNED` (eviction, owner-sell, lease expiry, admin reset) THE SYSTEM SHALL paste the stored schematic over the stall region, restoring the original geometry before the stall is marked available.
+
+#### REQ-272 — WorldEdit/FAWE compatibility
+
+**Ubiquitous.** THE SYSTEM SHALL use FastAsyncWorldEdit's API when the `FastAsyncWorldEdit` plugin is loaded and fall back to vanilla WorldEdit otherwise, performing pastes asynchronously when FAWE is available.
+
+#### REQ-273 — Snapshot disabled fallback
+
+**Optional.** THE SYSTEM SHALL allow operators to disable schematic snapshots via `schematics.enabled: false`, in which case stall transitions occur without geometry capture or restore.
+
+#### REQ-274 — Snapshot failure handling
+
+**Unwanted.** IF a snapshot capture fails THE SYSTEM SHALL log the failure, abort the ownership transition, refund any economy charge incurred during the attempt, and emit a Bukkit event so operators can be notified.
 
 ---
 
