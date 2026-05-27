@@ -19,7 +19,7 @@ repositories {
     // ~/.gradle/gradle.properties (or GITHUB_ACTOR + GITHUB_TOKEN env on CI).
     maven {
         name = "GitHubPackages"
-        url = uri("https://maven.pkg.github.com/BadgersMC/nexus")
+        url = uri("https://maven.pkg.github.com/BadgersMC/Nexus")
         credentials {
             username = providers.gradleProperty("gpr.user").orNull
                 ?: System.getenv("GITHUB_ACTOR")
