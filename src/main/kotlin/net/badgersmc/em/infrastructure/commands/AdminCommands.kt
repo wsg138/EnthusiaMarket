@@ -19,6 +19,7 @@ import net.badgersmc.nexus.paper.commands.annotations.Permission
 import net.badgersmc.nexus.paper.commands.annotations.Subcommand
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
+import net.badgersmc.nexus.scheduler.NexusScheduler
 import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
@@ -31,7 +32,8 @@ class AdminCommands(
     private val configManager: ConfigManager,
     private val auctions: AuctionRepository,
     private val plugin: JavaPlugin,
-    private val lang: LangService
+    private val lang: LangService,
+    private val nexusScheduler: NexusScheduler
 ) {
     @Subcommand("import")
     @Permission("enthusiamarket.admin.import")
@@ -150,7 +152,7 @@ class AdminCommands(
             sender.sendMessage(lang.msg("command.players_only"))
             return
         }
-        AuctionBrowserMenu(auctions, stalls, plugin, lang).open(sender)
+        AuctionBrowserMenu(auctions, stalls, nexusScheduler, lang).open(sender)
     }
 
     @Subcommand("auction cancel")
