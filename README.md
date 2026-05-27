@@ -23,7 +23,7 @@ Built for the BadgersMC production network. Java + Bedrock clients both supporte
 | Language | Kotlin 2.0.0 on JDK 21 |
 | Server API | Paper 1.21.11 (compileOnly) |
 | Build | Gradle 8.10.2 + Shadow 8.3.6 |
-| DI / config / commands / i18n / persistence / scheduler / vault | [Nexus](https://github.com/BadgersMC/Nexus) 2.0.0 (shaded, relocated under `net.badgersmc.em.libs.nexus.*`) |
+| DI / config / commands / i18n / persistence / scheduler / vault | [Nexus](https://github.com/BadgersMC/Nexus) v2.1.1 (shaded, relocated under `net.badgersmc.em.libs.nexus.*`) |
 | Persistence | HikariCP + SQLite (default) or MariaDB; migrations in `src/main/resources/migrations/` |
 | Integrations | WorldGuard 7.0.9, VaultAPI 1.7, Floodgate / Cumulus 2.x, LumaGuilds |
 | Tests | JUnit 5, MockK 1.13.11, MockBukkit 4.107.0, Konsist 0.17.3 |
@@ -42,14 +42,9 @@ Produces `build/libs/EnthusiaMarket-0.1.0.jar`.
 
 EnthusiaMarket depends on two artifacts that aren't on Maven Central and need to be wired before a local build:
 
-1. **Nexus 2.0.0** — published to [BadgersMC GitHub Packages](https://github.com/orgs/BadgersMC/packages?repo_name=Nexus). Add the credentials once to `~/.gradle/gradle.properties`:
+1. **Nexus v2.1.1** — served via [JitPack](https://jitpack.io) from the public [BadgersMC/Nexus](https://github.com/BadgersMC/Nexus) repo. No token, no credentials. Gradle resolves every `com.github.BadgersMC.Nexus:nexus-*:v2.1.1` artifact directly.
 
-   ```properties
-   gpr.user=<your-github-username>
-   gpr.token=<personal-access-token-with-read:packages>
-   ```
-
-   Gradle will resolve every `net.badgersmc:nexus-*` artifact automatically. If you're hacking on Nexus locally and want to pick up your in-progress changes, publish with `-PuseMavenLocal=true` instead:
+   If you're hacking on Nexus locally and want to pick up in-progress changes that aren't tagged yet:
 
    ```bash
    git clone https://github.com/BadgersMC/Nexus.git
@@ -57,7 +52,7 @@ EnthusiaMarket depends on two artifacts that aren't on Maven Central and need to
    ./gradlew -PuseMavenLocal=true publishToMavenLocal
    ```
 
-   Then run EM's Gradle with the same flag: `./gradlew -PuseMavenLocal=true build`.
+   Then run EM's Gradle with the same flag: `./gradlew -PuseMavenLocal=true build`. The `mavenLocal()` repo is gated behind that property so CI never picks up stale local jars.
 
 2. **LumaGuilds jar** — point the build at it via either:
    - `-Plumaguilds.jar=/abs/path/to/LumaGuilds-2.1.0.jar`, or
@@ -67,7 +62,7 @@ EnthusiaMarket depends on two artifacts that aren't on Maven Central and need to
 
    LumaGuilds itself needs `libs/RoseChat-RC-2.jar` to compile — build it from [BadgersMC/Enthusia-RoseChat](https://github.com/BadgersMC/Enthusia-RoseChat) (`./gradlew shadowJar`) and drop the resulting jar into `LumaGuilds/libs/`.
 
-CI uses the auto-provided `GITHUB_TOKEN` for the Nexus repo, so no extra secrets are needed on the EM workflow — see [`.github/workflows/build.yml`](.github/workflows/build.yml) for the full chain.
+CI needs no extra secrets — JitPack is public. See [`.github/workflows/build.yml`](.github/workflows/build.yml) for the full chain.
 
 ## Test
 
