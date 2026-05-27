@@ -9,6 +9,7 @@ import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
+import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
@@ -103,8 +104,14 @@ class AuctionLifecycleServiceTest {
 
         val cfg = config()
 
+        // Default: no open sell offer on the stall. Explicit stub because
+        // mockk's value-class handling can return non-null defaults for
+        // relaxed mocks on inline-class-keyed lookups (StallId is @JvmInline).
+        val sellOffers = mockk<SellOfferRepository>(relaxed = true)
+        every { sellOffers.findByStall(any()) } returns null
+
         return ServiceWithMocks(
-            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg),
+            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, sellOffers),
             auctionRepo = auctionRepo,
             stallRepo = stallRepo,
             economy = economy,
@@ -138,7 +145,7 @@ class AuctionLifecycleServiceTest {
         val auctionRepo = mockk<AuctionRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg)
+        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null })
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
 
@@ -168,6 +175,35 @@ class AuctionLifecycleServiceTest {
         assertTrue { failure.reason.contains("open auction", ignoreCase = true) }
     }
 
+    /** REQ-263 — auction creation also refuses when a sell offer is open. */
+    @Test
+    fun `createAuction returns Failure when an open sell offer exists`() {
+        val auctionRepo = mockk<AuctionRepository>(relaxUnitFun = true)
+        every { auctionRepo.findOpenByStall(stallId) } returns null
+
+        val stallRepo = mockk<StallRepository>()
+        every { stallRepo.findById(stallId) } returns sampleStall
+
+        val sellOffers = mockk<SellOfferRepository>()
+        every { sellOffers.findByStall(stallId) } returns
+            net.badgersmc.em.domain.offer.SellOffer(
+                stallId = stallId,
+                sellerUuid = playerUuid,
+                price = 500L,
+                createdAt = now,
+            )
+
+        val svc = AuctionLifecycleService(
+            auctionRepo, stallRepo, mockk(relaxed = true), config(), sellOffers,
+        )
+
+        val result = svc.createAuction(stallId, playerUuid, 100L, null)
+        val failure = assertIs<AuctionResult.Failure>(result)
+        assertTrue { failure.reason.contains("sell offer", ignoreCase = true) }
+
+        verify(exactly = 0) { auctionRepo.create(any()) }
+    }
+
     @Test
     fun `createAuction returns Failure when starting bid below minimum`() {
         val cfg = config(minStartingBid = 200L)
@@ -176,7 +212,7 @@ class AuctionLifecycleServiceTest {
         val stallRepo = mockk<StallRepository>()
         every { stallRepo.findById(stallId) } returns sampleStall
         val economy = mockk<EconomyProvider>()
-        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg)
+        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null })
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
 
@@ -226,7 +262,7 @@ class AuctionLifecycleServiceTest {
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg)
+        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null })
 
         val result = svc.placeBid(auctionId, otherPlayer, 200L)
 
@@ -284,7 +320,7 @@ class AuctionLifecycleServiceTest {
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg)
+        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null })
 
         val result = svc.cancelAuction(auctionId, playerUuid)
 

@@ -4,6 +4,7 @@ import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
 import net.badgersmc.em.application.MassAuctionResult
+import net.badgersmc.em.application.SellOfferService
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
@@ -33,7 +34,8 @@ class AdminCommands(
     private val auctions: AuctionRepository,
     private val plugin: JavaPlugin,
     private val lang: LangService,
-    private val nexusScheduler: NexusScheduler
+    private val nexusScheduler: NexusScheduler,
+    private val sellOffers: SellOfferService,
 ) {
     @Subcommand("import")
     @Permission("enthusiamarket.admin.import")
@@ -167,6 +169,75 @@ class AdminCommands(
             is AuctionResult.NotFound -> lang.msg("admin.auction.cancel.not_found")
         }
         sender.sendMessage(component)
+    }
+
+    // ----- Sell offers (REQ-260..264) -----
+
+    @Subcommand("stall offer")
+    @Permission("enthusiamarket.stall.offer")
+    fun stallOffer(
+        @Context sender: Player,
+        @Arg("stall") stall: String,
+        @Arg("price") price: Long,
+    ) {
+        val msg = when (val r = sellOffers.create(StallId(stall), sender.uniqueId, price)) {
+            is SellOfferService.Result.Created ->
+                lang.msg("offer.created", "stall" to stall, "price" to r.offer.price)
+            is SellOfferService.Result.NotFound ->
+                lang.msg("offer.stall_not_found", "stall" to stall)
+            is SellOfferService.Result.NotAuthorised ->
+                lang.msg("offer.not_authorised", "stall" to stall)
+            is SellOfferService.Result.AuctionOpen ->
+                lang.msg("offer.auction_open", "stall" to stall)
+            is SellOfferService.Result.Rejected ->
+                lang.msg("offer.rejected", "reason" to r.reason)
+            else -> lang.msg("offer.rejected", "reason" to "unknown")
+        }
+        sender.sendMessage(msg)
+    }
+
+    @Subcommand("stall offer cancel")
+    @Permission("enthusiamarket.stall.offer")
+    fun stallOfferCancel(
+        @Context sender: Player,
+        @Arg("stall") stall: String,
+    ) {
+        val msg = when (val r = sellOffers.cancel(StallId(stall), sender.uniqueId)) {
+            is SellOfferService.Result.Cancelled ->
+                lang.msg("offer.cancelled", "stall" to stall)
+            is SellOfferService.Result.NotFound ->
+                lang.msg("offer.not_found", "stall" to stall)
+            is SellOfferService.Result.NotAuthorised ->
+                lang.msg("offer.not_authorised", "stall" to stall)
+            else -> lang.msg("offer.rejected", "reason" to "unknown")
+        }
+        sender.sendMessage(msg)
+    }
+
+    @Subcommand("stall buy")
+    @Permission("enthusiamarket.stall.buy")
+    fun stallBuy(
+        @Context sender: Player,
+        @Arg("stall") stall: String,
+    ) {
+        val msg = when (val r = sellOffers.purchase(StallId(stall), sender.uniqueId)) {
+            is SellOfferService.Result.Purchased -> {
+                val total = r.offer.price + r.tax
+                lang.msg(
+                    "offer.purchased",
+                    "stall" to stall,
+                    "price" to r.offer.price,
+                    "tax" to r.tax,
+                    "total" to total,
+                )
+            }
+            is SellOfferService.Result.NotFound ->
+                lang.msg("offer.not_found", "stall" to stall)
+            is SellOfferService.Result.Rejected ->
+                lang.msg("offer.rejected", "reason" to r.reason)
+            else -> lang.msg("offer.rejected", "reason" to "unknown")
+        }
+        sender.sendMessage(msg)
     }
 
     /** Extract sender UUID, preferring Player sender. */

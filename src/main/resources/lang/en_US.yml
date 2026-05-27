@@ -35,6 +35,16 @@ admin:
     failure: "<prefix><red>Bid rejected: <reason>"
     not_found: "<prefix><red>Auction not found"
 
+offer:
+  created: "<prefix><green>Offer listed:</green> <aqua><stall></aqua> <gray>for</gray> <gold><price>"
+  cancelled: "<prefix><yellow>Offer cancelled on</yellow> <aqua><stall>"
+  purchased: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for</gray> <gold><total></gold> <gray>(price <price> + tax <tax>)"
+  not_found: "<prefix><red>No open offer on</red> <aqua><stall>"
+  stall_not_found: "<prefix><red>Stall not found:</red> <stall>"
+  not_authorised: "<prefix><red>You do not have permission to manage</red> <stall>"
+  auction_open: "<prefix><red>This stall has an open auction; close it first."
+  rejected: "<prefix><red>Offer rejected: <reason>"
+
 command:
   players_only: "<prefix><red>This command must be run by a player"
 
