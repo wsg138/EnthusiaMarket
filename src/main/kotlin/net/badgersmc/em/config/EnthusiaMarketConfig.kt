@@ -79,6 +79,12 @@ class EnthusiaMarketConfig {
         var taxPct: Double = 0.02
         @Comment("Allow Bedrock players to edit sign content via form")
         var allowBedrockEdit: Boolean = true
+        @Comment(
+            "Destination for shop / sell-offer tax. A UUID string deposits the " +
+                "tax to that account; any other value (including the default 'system') " +
+                "routes to a no-op sink — tax is collected but not paid out."
+        )
+        var taxDestination: String = "system"
     }
 
     class LumaGuilds {

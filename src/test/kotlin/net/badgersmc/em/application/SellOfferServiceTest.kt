@@ -1,0 +1,277 @@
+package net.badgersmc.em.application
+
+import io.mockk.confirmVerified
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import io.mockk.verify
+import net.badgersmc.em.application.SellOfferService.Result
+import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.auction.AuctionRepository
+import net.badgersmc.em.domain.offer.SellOffer
+import net.badgersmc.em.domain.offer.SellOfferRepository
+import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.RentTerms
+import net.badgersmc.em.domain.stall.Stall
+import net.badgersmc.em.domain.stall.StallId
+import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.stall.StallState
+import org.bukkit.Bukkit
+import org.bukkit.Server
+import org.bukkit.plugin.PluginManager
+import java.time.Instant
+import java.util.UUID
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+
+class SellOfferServiceTest {
+
+    private val seller = UUID.randomUUID()
+    private val buyer = UUID.randomUUID()
+    private val taxAccount = UUID.randomUUID()
+    private val stallId = StallId("s1")
+
+    private fun ownedStall(owner: UUID = seller) = Stall(
+        id = stallId,
+        regionId = "s1",
+        world = "world",
+        state = StallState.OWNED,
+        owner = OwnerRef.solo(owner),
+        ownerSince = Instant.now(),
+        winningBid = 100L,
+        rentTerms = RentTerms.formula(1.0),
+    )
+
+    private fun config(taxPct: Double = 0.10, taxDestination: String = "system") =
+        EnthusiaMarketConfig().apply {
+            shop.taxPct = taxPct
+            shop.taxDestination = taxDestination
+        }
+
+    @BeforeTest fun mockBukkit() {
+        mockkStatic(Bukkit::class)
+        val server = mockk<Server>(relaxed = true)
+        val pluginManager = mockk<PluginManager>(relaxed = true)
+        every { Bukkit.getServer() } returns server
+        every { server.pluginManager } returns pluginManager
+    }
+
+    @AfterTest fun unmockBukkit() = unmockkStatic(Bukkit::class)
+
+    // ===== create =====
+
+    @Test fun `create by owner persists offer and fires event`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val auctions = mockk<AuctionRepository>(relaxed = true)
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { auctions.findOpenByStall(stallId) } returns null
+
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
+        val r = svc.create(stallId, seller, price = 500L)
+
+        val ok = assertIs<Result.Created>(r)
+        assertEquals(500L, ok.offer.price)
+        verify { offers.save(match { it.stallId == stallId && it.sellerUuid == seller && it.price == 500L }) }
+    }
+
+    @Test fun `create by non-owner is NotAuthorised`() {
+        val offers = mockk<SellOfferRepository>()
+        val stalls = mockk<StallRepository>()
+        val auctions = mockk<AuctionRepository>()
+        every { stalls.findById(stallId) } returns ownedStall(owner = UUID.randomUUID())
+
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
+        val r = svc.create(stallId, seller, price = 500L)
+
+        assertEquals(Result.NotAuthorised, r)
+        verify(exactly = 0) { offers.save(any()) }
+    }
+
+    @Test fun `create on stall with open auction is rejected with AuctionOpen (REQ-263)`() {
+        val offers = mockk<SellOfferRepository>()
+        val stalls = mockk<StallRepository>()
+        val auctions = mockk<AuctionRepository>(relaxed = true)
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { auctions.findOpenByStall(stallId) } returns mockk(relaxed = true)
+
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
+        val r = svc.create(stallId, seller, price = 500L)
+
+        assertEquals(Result.AuctionOpen, r)
+        verify(exactly = 0) { offers.save(any()) }
+    }
+
+    @Test fun `create on missing stall is NotFound`() {
+        val stalls = mockk<StallRepository>()
+        every { stalls.findById(stallId) } returns null
+
+        val svc = SellOfferService(
+            mockk(relaxed = true), stalls, mockk(relaxed = true),
+            mockk(relaxed = true), config(), mockk(relaxed = true),
+        )
+        assertEquals(Result.NotFound, svc.create(stallId, seller, 500L))
+    }
+
+    @Test fun `create with non-positive price is Rejected`() {
+        val svc = SellOfferService(
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), config(), mockk(relaxed = true),
+        )
+        assertIs<Result.Rejected>(svc.create(stallId, seller, 0L))
+        assertIs<Result.Rejected>(svc.create(stallId, seller, -5L))
+    }
+
+    // ===== cancel =====
+
+    @Test fun `cancel by owning seller deletes offer`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        every { offers.findByStall(stallId) } returns
+            SellOffer(stallId, seller, 500L, Instant.now())
+
+        val svc = SellOfferService(
+            offers, mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), config(), mockk(relaxed = true),
+        )
+        val r = svc.cancel(stallId, seller)
+
+        assertIs<Result.Cancelled>(r)
+        verify { offers.delete(stallId) }
+    }
+
+    @Test fun `cancel by non-owner non-manager is NotAuthorised`() {
+        val offers = mockk<SellOfferRepository>()
+        val stalls = mockk<StallRepository>()
+        every { offers.findByStall(stallId) } returns
+            SellOffer(stallId, seller, 500L, Instant.now())
+        every { stalls.findById(stallId) } returns ownedStall(owner = seller)
+
+        val intruder = UUID.randomUUID()
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true),
+            mockk(relaxed = true), config(), mockk(relaxed = true),
+        )
+        val r = svc.cancel(stallId, intruder)
+
+        assertEquals(Result.NotAuthorised, r)
+        verify(exactly = 0) { offers.delete(any()) }
+    }
+
+    @Test fun `cancel on missing offer is NotFound`() {
+        val offers = mockk<SellOfferRepository>()
+        every { offers.findByStall(stallId) } returns null
+        val svc = SellOfferService(
+            offers, mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), config(), mockk(relaxed = true),
+        )
+        assertEquals(Result.NotFound, svc.cancel(stallId, seller))
+    }
+
+    // ===== purchase =====
+
+    @Test fun `purchase charges buyer total, pays seller, transfers ownership`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val economy = mockk<EconomyProvider>()
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { economy.withdraw(buyer, 1100L) } returns true
+        every { economy.deposit(any(), any()) } returns true
+
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true), economy,
+            config(taxPct = 0.10, taxDestination = "system"),
+            mockk(relaxed = true),
+        )
+        val r = svc.purchase(stallId, buyer)
+
+        val ok = assertIs<Result.Purchased>(r)
+        assertEquals(100L, ok.tax) // 10% of 1000
+
+        // Buyer charged TOTAL (price + tax).
+        verify { economy.withdraw(buyer, 1100L) }
+        // Seller paid price.
+        verify { economy.deposit(seller, 1000L) }
+        // System sink — no tax deposit.
+        verify(exactly = 0) { economy.deposit(taxAccount, any()) }
+        // Ownership transferred.
+        verify { stalls.save(match { it.owner == OwnerRef.solo(buyer) }) }
+        // Offer closed.
+        verify { offers.delete(stallId) }
+    }
+
+    @Test fun `purchase routes tax to configured destination UUID`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val economy = mockk<EconomyProvider>()
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { economy.withdraw(buyer, 1100L) } returns true
+        every { economy.deposit(any(), any()) } returns true
+
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true), economy,
+            config(taxPct = 0.10, taxDestination = taxAccount.toString()),
+            mockk(relaxed = true),
+        )
+        svc.purchase(stallId, buyer)
+
+        // Tax routed to the configured account.
+        verify { economy.deposit(taxAccount, 100L) }
+        verify { economy.deposit(seller, 1000L) }
+    }
+
+    @Test fun `purchase with insufficient buyer balance Rejected, nothing moves`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val economy = mockk<EconomyProvider>()
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { economy.withdraw(buyer, 1100L) } returns false
+
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true), economy,
+            config(taxPct = 0.10), mockk(relaxed = true),
+        )
+        val r = svc.purchase(stallId, buyer)
+
+        assertIs<Result.Rejected>(r)
+        verify(exactly = 0) { economy.deposit(any(), any()) }
+        verify(exactly = 0) { stalls.save(any()) }
+        verify(exactly = 0) { offers.delete(any()) }
+    }
+
+    @Test fun `purchase by the seller themselves is Rejected`() {
+        val offers = mockk<SellOfferRepository>()
+        val stalls = mockk<StallRepository>()
+        val economy = mockk<EconomyProvider>()
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns ownedStall()
+
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true), economy,
+            config(), mockk(relaxed = true),
+        )
+        val r = svc.purchase(stallId, seller)
+
+        assertIs<Result.Rejected>(r)
+        confirmVerified(economy)
+    }
+
+    @Test fun `purchase on missing offer is NotFound`() {
+        val offers = mockk<SellOfferRepository>()
+        every { offers.findByStall(stallId) } returns null
+
+        val svc = SellOfferService(
+            offers, mockk(relaxed = true), mockk(relaxed = true),
+            mockk(relaxed = true), config(), mockk(relaxed = true),
+        )
+        assertEquals(Result.NotFound, svc.purchase(stallId, buyer))
+    }
+}

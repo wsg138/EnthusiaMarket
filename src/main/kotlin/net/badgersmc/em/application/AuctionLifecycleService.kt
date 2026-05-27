@@ -6,6 +6,7 @@ import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
+import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.StallId
@@ -66,6 +67,7 @@ class AuctionLifecycleService(
     private val economy: EconomyProvider,
     private val config: EnthusiaMarketConfig,
     private val limits: LimitResolutionService,
+    private val sellOffers: SellOfferRepository,
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
@@ -94,6 +96,13 @@ class AuctionLifecycleService(
         val existing = auctionRepository.findOpenByStall(stallId)
         if (existing != null) {
             return AuctionResult.Failure("An open auction already exists for this stall")
+        }
+
+        // REQ-263 — reverse mutex with the sell-offer flow. If the
+        // stall is up for direct sale, refuse to wrap it in an
+        // auction; the seller must cancel the offer first.
+        if (sellOffers.findByStall(stallId) != null) {
+            return AuctionResult.Failure("An open sell offer already exists for this stall")
         }
 
         val bidValidation = validateStartingBid(startingBid)
