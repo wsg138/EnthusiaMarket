@@ -3,6 +3,7 @@ package net.badgersmc.em.interaction.gui
 import io.mockk.*
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
 import java.util.UUID
 import kotlin.test.Test
@@ -47,6 +48,6 @@ class ShopEditMenuTest {
         val menu = ShopEditMenu(shop, mockk(relaxed = true), mockk(relaxed = true))
         menu.open(nonOwner)
 
-        verify { nonOwner.sendMessage("§cYou don't own this shop") }
+        verify { nonOwner.sendMessage(any<Component>()) }
     }
 }

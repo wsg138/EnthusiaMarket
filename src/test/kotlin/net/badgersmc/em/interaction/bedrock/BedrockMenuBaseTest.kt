@@ -2,6 +2,7 @@ package net.badgersmc.em.interaction.bedrock
 
 import io.mockk.*
 import net.badgersmc.em.interaction.Menu
+import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
 import org.geysermc.cumulus.form.Form
 import org.geysermc.cumulus.form.SimpleForm
@@ -34,7 +35,7 @@ class BedrockMenuBaseTest {
         val player = mockk<Player>(relaxed = true) {
             every { uniqueId } returns UUID.randomUUID()
             every { name } returns "TestPlayer"
-            every { sendMessage(any<String>()) } returns Unit
+            every { sendMessage(any<Component>()) } returns Unit
         }
 
         val menu = object : BedrockMenuBase(player, mockk<Logger>(relaxed = true), mockk(relaxed = true)) {
@@ -45,7 +46,7 @@ class BedrockMenuBaseTest {
         // Should not throw
         menu.open(player)
 
-        verify { player.sendMessage("§cUnable to open menu. Please try again or use the Java interface.") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     @Test

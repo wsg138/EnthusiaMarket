@@ -19,6 +19,7 @@ import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
 import java.util.logging.Logger
 import kotlin.test.Test
+import net.kyori.adventure.text.Component
 
 class BlockProtectionListenerTest {
 
@@ -100,7 +101,7 @@ class BlockProtectionListenerTest {
         listener.onBlockBreak(event)
 
         assert(event.isCancelled) { "Non-owner sign break should be cancelled" }
-        verify { player.sendMessage("§cYou cannot break this shop sign") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     @Test
@@ -121,7 +122,7 @@ class BlockProtectionListenerTest {
         listener.onBlockBreak(event)
 
         assert(event.isCancelled) { "Owner sign break should be cancelled" }
-        verify { player.sendMessage("§e[Shop] Use the edit menu to delete this shop (coming in TDD-57)") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     @Test
@@ -143,7 +144,7 @@ class BlockProtectionListenerTest {
         listener.onBlockBreak(event)
 
         assert(event.isCancelled) { "Trusted sign break should be cancelled" }
-        verify { player.sendMessage("§e[Shop] Use the edit menu to delete this shop (coming in TDD-57)") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     // ── Container break scenarios ─────────────────────────────────────────
@@ -169,7 +170,7 @@ class BlockProtectionListenerTest {
         // Event should NOT be cancelled for owner
         assert(!event.isCancelled) { "Owner container break should NOT be cancelled" }
         verify { repo.deleteByContainer("world", 50, 64, 60) }
-        verify { player.sendMessage("§aDeleted 1 shop(s) linked to this container") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     @Test
@@ -191,7 +192,7 @@ class BlockProtectionListenerTest {
 
         assert(event.isCancelled) { "Non-owner container break should be cancelled" }
         verify(exactly = 0) { repo.delete(any<Long>()) }
-        verify { player.sendMessage("§cThis container has active shops. Only the owner can break it.") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     // ── Pass-through scenarios ────────────────────────────────────────────

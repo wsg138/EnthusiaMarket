@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.bedrock
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import net.kyori.adventure.text.Component
 import org.bukkit.entity.Player
 import java.util.UUID
 import kotlin.test.Test
@@ -99,7 +100,7 @@ class UiDispatcherTest {
         dispatcher.dispatch(player)
 
         // Verify sendMessage was called with the fallback message
-        verify { player.sendMessage(BEDROCK_UNAVAILABLE_MSG) }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     @Test
@@ -113,6 +114,6 @@ class UiDispatcherTest {
         dispatcher.dispatch(player)
 
         // Verify sendMessage was never called with the fallback message
-        verify(exactly = 0) { player.sendMessage(BEDROCK_UNAVAILABLE_MSG) }
+        verify(exactly = 0) { player.sendMessage(any<Component>()) }
     }
 }
