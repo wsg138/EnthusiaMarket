@@ -45,8 +45,10 @@ class RentCollectionService(
      * 4. If withdraw fails and stall is OWNED: mark as GRACE (default).
      * 5. If withdraw fails and stall is GRACE and grace period has elapsed: evict.
      * 6. GUILD owners are skipped (no guild bank integration yet).
+     *
+     * @param now the current instant (injectable for testability, defaults to system clock)
      */
-    fun tick(): RentReport {
+    fun tick(now: Instant = Instant.now()): RentReport {
         val stalls = stallRepository.all()
         var collected = 0
         var defaults = 0
@@ -57,7 +59,7 @@ class RentCollectionService(
             if (stall.state !in activeStates) continue
 
             try {
-                val result = processStall(stall)
+                val result = processStall(stall, now)
                 when (result) {
                     is ProcessResult.Collected -> collected++
                     is ProcessResult.Defaulted -> defaults++
@@ -77,7 +79,7 @@ class RentCollectionService(
         )
     }
 
-    private fun processStall(stall: Stall): ProcessResult {
+    private fun processStall(stall: Stall, now: Instant): ProcessResult {
         // Skip non-player-owned stalls (guild bank integration not yet available)
         if (stall.owner.type != OwnerType.SOLO) {
             return ProcessResult.Skipped
@@ -117,7 +119,7 @@ class RentCollectionService(
             StallState.GRACE -> {
                 // Already in GRACE — check if grace period has elapsed
                 val ownerSince = stall.ownerSince
-                if (ownerSince != null && isPastGrace(ownerSince)) {
+                if (ownerSince != null && isPastGrace(ownerSince, now)) {
                     // Evict the stall
                     stallRepository.save(
                         stall.copy(
@@ -137,7 +139,7 @@ class RentCollectionService(
         }
     }
 
-    private fun isPastGrace(ownerSince: Instant): Boolean {
+    private fun isPastGrace(ownerSince: Instant, now: Instant): Boolean {
         val graceDuration = try {
             Duration.parse(config.rent.gracePeriod)
         } catch (e: java.time.format.DateTimeParseException) {
@@ -145,7 +147,7 @@ class RentCollectionService(
             Duration.ofDays(3)
         }
         val deadline = ownerSince.plus(graceDuration)
-        return Instant.now().isAfter(deadline)
+        return now.isAfter(deadline)
     }
 
     private sealed class ProcessResult {

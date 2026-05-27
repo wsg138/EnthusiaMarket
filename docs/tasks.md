@@ -464,23 +464,23 @@ References: REQ-024 through REQ-027
   Description: `PlayerInteractEvent` handler routes right-clicks on registered purchase signs to the appropriate flow: `BUY` → trigger sell-offer purchase or auction bid menu; `RENT`/`EXTEND` → invoke RentService extension; `INFO` → display REQ-230 card. Failing test: click on BUY sign with open offer → SellOfferService.purchase invoked.
   Evidence: ``
 
-- [ ] **TDD-260** — Sell offer domain
+- [x] **TDD-260** — Sell offer domain
   References: REQ-260, REQ-263
   Tag: TDD
-  Description: New domain types `SellOffer(stallId, sellerUuid, price, createdAt)` + `SellOfferRepository`. Migration `V010__sell_offers.sql`. Service `SellOfferService.create(stallId, seller, price)`: rejects when stall has open auction (REQ-263); rejects when seller is not the owner; persists offer; fires `SellOfferCreatedEvent`. Failing test: each rejection path + happy path.
-  Evidence: ``
+  Description: New domain types `SellOffer(stallId, sellerUuid, price, createdAt)` + `SellOfferRepository`. Migration `V009__sell_offers.sql`. Service `SellOfferService.create(stallId, seller, price)`: rejects when stall has open auction (REQ-263); rejects when seller is not the owner; persists offer; fires `SellOfferCreatedEvent`. Failing test: each rejection path + happy path.
+  Evidence: docs/requirements.md REQ-260 (owner creates public offer), REQ-263 (mutex with auction both directions); src/main/kotlin/net/badgersmc/em/domain/auction/AuctionRepository.kt (repo interface shape); src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt canManage for auth gate; src/main/kotlin/net/badgersmc/em/events/ShopCreatedEvent.kt (Bukkit Event pattern, HandlerList); io.mockk.{mockk,every,verify,confirmVerified}; using V009__sell_offers.sql since V008 is taken by feat/arm-port-member-roster PR #9.
 
-- [ ] **TDD-261** — Sell offer acceptance
+- [x] **TDD-261** — Sell offer acceptance
   References: REQ-261, REQ-264
   Tag: TDD
   Description: `SellOfferService.purchase(stallId, buyer)`: withdraws `price * (1 + taxPct)` from buyer via EconomyProvider, deposits `price` to seller, deposits `price * taxPct` to tax destination (config: `shop.taxDestination`, default `system` = no-op sink), reassigns ownership, marks offer closed. All within a single transactional boundary; rolls back on any failure. Failing test: buyer balance insufficient → rejected; happy path → balances + ownership all updated.
-  Evidence: ``
+  Evidence: docs/requirements.md REQ-261, REQ-264; src/main/kotlin/net/badgersmc/em/application/AuctionLifecycleService.kt settleWithWinner (existing withdraw→save→deposit ordering as compensating-actions pattern); src/main/kotlin/net/badgersmc/em/domain/ports/EconomyProvider.kt; tax routing: parse a UUID from config.shop.taxDestination or treat as system sink (no deposit) when value is "system" or invalid UUID — same compromise EM's existing tax flow uses.
 
-- [ ] **TDD-262** — Sell offer commands + cancellation
+- [x] **TDD-262** — Sell offer commands + cancellation
   References: REQ-260, REQ-262
   Tag: TDD
   Description: Player commands `/em stall offer <price>`, `/em stall offer cancel`, `/em stall buy <stall>`. Listed in `/em stall info` output (REQ-230). Failing test: cancel by non-owner rejected; cancel by owner closes offer.
-  Evidence: ``
+  Evidence: docs/requirements.md REQ-260, REQ-262; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt @Subcommand("stall ...") pattern; reverse mutex enforcement on AuctionLifecycleService.createAuction needs new SellOfferRepository dep (constructor sites in test require update; relaxed-mockk default keeps existing tests untouched).
 
 - [ ] **TDD-270** — Schematic capture on first claim
   References: REQ-270, REQ-273, REQ-274

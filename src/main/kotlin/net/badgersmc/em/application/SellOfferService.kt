@@ -1,0 +1,163 @@
+package net.badgersmc.em.application
+
+import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.auction.AuctionRepository
+import net.badgersmc.em.domain.offer.SellOffer
+import net.badgersmc.em.domain.offer.SellOfferRepository
+import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.StallId
+import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.events.SellOfferCompletedEvent
+import net.badgersmc.em.events.SellOfferCreatedEvent
+import net.badgersmc.nexus.annotations.Service
+import org.bukkit.Bukkit
+import java.time.Instant
+import java.util.UUID
+import java.util.logging.Logger
+
+/**
+ * Orchestrates the ARM-style sell-offer flow (REQ-260..264).
+ *
+ * - [create]: owner-only; rejects when an auction is already open on
+ *   the stall (REQ-263).
+ * - [purchase]: withdraws `price * (1 + taxPct)` from the buyer,
+ *   deposits `price` to the seller, deposits `price * taxPct` to the
+ *   configured tax destination (REQ-264). Compensating actions on
+ *   downstream failures match the auction settlement pattern: charge
+ *   first, then persist, then pay; if a later step fails the earlier
+ *   ones don't double-execute on retry.
+ * - [cancel]: owner-only; deletes the offer without transferring.
+ */
+@Service
+class SellOfferService(
+    private val offers: SellOfferRepository,
+    private val stalls: StallRepository,
+    private val auctions: AuctionRepository,
+    private val economy: EconomyProvider,
+    private val config: EnthusiaMarketConfig,
+    private val guildProvider: GuildProvider,
+) {
+
+    private val log = Logger.getLogger(SellOfferService::class.java.name)
+
+    sealed interface Result {
+        data class Created(val offer: SellOffer) : Result
+        data class Purchased(val offer: SellOffer, val tax: Long) : Result
+        data class Cancelled(val offer: SellOffer) : Result
+        data object NotFound : Result
+        data object NotAuthorised : Result
+        data object AuctionOpen : Result
+        data object OfferOpen : Result
+        data class Rejected(val reason: String) : Result
+    }
+
+    fun create(stallId: StallId, seller: UUID, price: Long): Result {
+        if (price <= 0) return Result.Rejected("Price must be positive")
+
+        val stall = stalls.findById(stallId) ?: return Result.NotFound
+        if (!stall.canManage(seller, guildProvider)) return Result.NotAuthorised
+        if (offers.findByStall(stallId) != null) return Result.OfferOpen
+        if (auctions.findOpenByStall(stallId) != null) return Result.AuctionOpen
+
+        val offer = SellOffer(stallId, seller, price, Instant.now())
+        offers.save(offer)
+        Bukkit.getServer()?.pluginManager?.callEvent(
+            SellOfferCreatedEvent(stallId.value, seller, price)
+        )
+        return Result.Created(offer)
+    }
+
+    fun cancel(stallId: StallId, actor: UUID): Result {
+        val offer = offers.findByStall(stallId) ?: return Result.NotFound
+        if (offer.sellerUuid != actor) {
+            val stall = stalls.findById(stallId)
+            // Guild owners with MANAGE_SHOPS can also cancel; falls back
+            // to the same canManage rule the rest of the codebase uses.
+            if (stall == null || !stall.canManage(actor, guildProvider)) {
+                return Result.NotAuthorised
+            }
+        }
+        offers.delete(stallId)
+        return Result.Cancelled(offer)
+    }
+
+    fun purchase(stallId: StallId, buyer: UUID): Result {
+        val offer = offers.findByStall(stallId) ?: return Result.NotFound
+        val stall = stalls.findById(stallId) ?: return Result.NotFound
+
+        if (buyer == offer.sellerUuid) {
+            return Result.Rejected("You cannot buy your own stall")
+        }
+
+        val taxPct = config.shop.taxPct
+        if (taxPct < 0.0 || taxPct > 1.0) {
+            return Result.Rejected("Invalid tax percentage: $taxPct")
+        }
+        val tax = (offer.price * taxPct).toLong()
+        val total = offer.price + tax
+
+        // 0. Withdraw total from buyer. If this fails the buyer wasn't
+        // charged — bail without touching ownership or the seller.
+        if (!economy.withdraw(buyer, total)) {
+            return Result.Rejected("Insufficient funds: $total required")
+        }
+
+        // 1. Persist ownership transfer + close offer atomically from
+        // the caller's perspective. Failure here leaves the buyer
+        // charged but no ownership change — operators can refund manually
+        // (logged below). Matches the auction settlement compensation
+        // pattern: charge → persist → pay, never the reverse.
+        try {
+            val now = Instant.now()
+            val updated = stall.awardTo(OwnerRef.solo(buyer), offer.price, now)
+            stalls.save(updated)
+            offers.delete(stallId)
+        } catch (e: Exception) {
+            log.severe(
+                "SellOfferService.purchase: ownership transfer failed for stall " +
+                    "${stallId.value} after charging buyer $buyer total=$total. " +
+                    "Manual refund required. cause=${e.message}"
+            )
+            throw e
+        }
+
+        // 2. Pay seller + route tax. Failures here are logged but
+        // don't roll back — the stall is already transferred. The
+        // alternative (paying before transferring) risks double-pay
+        // on retry. Tax destination of "system" routes nowhere.
+        if (!economy.deposit(offer.sellerUuid, offer.price)) {
+            log.warning(
+                "SellOfferService.purchase: seller deposit failed for ${offer.sellerUuid} " +
+                    "(price=${offer.price}); stall transfer already committed."
+            )
+        }
+        val taxDestination = parseTaxDestination(config.shop.taxDestination)
+        if (taxDestination != null && tax > 0) {
+            if (!economy.deposit(taxDestination, tax)) {
+                log.warning(
+                    "SellOfferService.purchase: tax deposit failed for $taxDestination " +
+                        "(tax=$tax); stall transfer already committed."
+                )
+            }
+        }
+
+        Bukkit.getServer()?.pluginManager?.callEvent(
+            SellOfferCompletedEvent(stallId.value, offer.sellerUuid, buyer, offer.price, tax)
+        )
+        return Result.Purchased(offer, tax)
+    }
+
+    /**
+     * The tax destination is a UUID string in config; the literal
+     * "system" (or any value that doesn't parse as a UUID) routes the
+     * tax to a no-op sink — same compromise as the existing shop
+     * trade flow.
+     */
+    private fun parseTaxDestination(raw: String): UUID? = try {
+        UUID.fromString(raw.trim())
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+}

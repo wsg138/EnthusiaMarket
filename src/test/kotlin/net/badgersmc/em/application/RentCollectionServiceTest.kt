@@ -159,7 +159,7 @@ class RentCollectionServiceTest {
         // Stall has been in GRACE for 5 days, grace period is 7 days (not expired)
         val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = false, gracePeriod = "P7D")
 
-        val report = svc.service.tick()
+        val report = svc.service.tick(now)
 
         assertEquals(0, report.collected)
         assertEquals(0, report.defaults) // already in GRACE, not newly defaulted
