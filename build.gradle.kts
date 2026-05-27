@@ -14,7 +14,24 @@ repositories {
     maven("https://jitpack.io")
     maven("https://maven.enginehub.org/repo/") // WorldGuard
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
-    mavenLocal() // Nexus local build
+
+    // Nexus releases — GitHub Packages. Needs gpr.user + gpr.token in
+    // ~/.gradle/gradle.properties (or GITHUB_ACTOR + GITHUB_TOKEN env on CI).
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/BadgersMC/nexus")
+        credentials {
+            username = providers.gradleProperty("gpr.user").orNull
+                ?: System.getenv("GITHUB_ACTOR")
+            password = providers.gradleProperty("gpr.token").orNull
+                ?: System.getenv("GITHUB_TOKEN")
+        }
+    }
+
+    // Opt-in to a locally-published Nexus snapshot: ./gradlew -PuseMavenLocal=true …
+    if (providers.gradleProperty("useMavenLocal").orNull == "true") {
+        mavenLocal()
+    }
 }
 
 dependencies {
