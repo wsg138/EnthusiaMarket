@@ -374,7 +374,139 @@ References: REQ-024 through REQ-027
   Description: Failing test: `ShopGuildService.registerGuildShop(shopId, guildId, playerId)` sets guild ownership and returns updated Shop. Duplicate registration returns failure. Confirm red.
   Evidence: `ShopGuildService created with 4 operations, 11 tests, all pass`
 
+- [x] **TDD-77** — Mass auction launch service
+  References: REQ-028
+  Tag: TDD
+  Description: `AuctionLifecycleService.startMassAuction(startingBid, durationStr)` iterates `stallRepository.byState(UNOWNED)`, creates one OPEN auction per stall sharing `startAt`/`endAt`, transitions stall to `AUCTIONING`, skips stalls with existing open auction, returns `MassAuctionReport(created, skipped, errors, auctionIds)`. Validates startingBid + duration; returns `AuctionResult.Failure` on bad input. `settleExpired` reverts AUCTIONING+NONE-owner stalls to UNOWNED when auction closes with no bid.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/AuctionLifecycleService.kt:startMassAuction`
+
+- [x] **TDD-78** — Live auction browser GUI
+  References: REQ-029
+  Tag: TDD
+  Description: `AuctionBrowserMenu` (IFramework ChestGui, 6 rows). Top 5 rows = `PaginatedPane` of every `auctions.allOpen()` sorted by current `SortMode`. Bottom row = prev / sort cycle / page indicator / next / close. `BukkitTask` re-renders contents every 20 ticks while `player.openInventory.topInventory == gui.inventory`; cancels on close. Sort modes: HIGHEST_BID, LOWEST_BID, ENDING_SOON, ENDING_LATEST. `/em auctions` subcommand opens menu (permission `enthusiamarket.auction.list`).
+  Evidence: `src/main/kotlin/net/badgersmc/em/interaction/gui/AuctionBrowserMenu.kt`, `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt:auctionsBrowse`
+
+## Phase 5 — ARM-inspired features (planned, no code yet)
+
+### TDD tasks
+
+- [ ] **TDD-200** — Stall member roster domain model
+  References: REQ-200, REQ-201
+  Tag: TDD
+  Description: Add `members: Set<UUID>` and `maxMembers: Int` to the `Stall` aggregate. Operations: `addMember(uuid): Stall`, `removeMember(uuid): Stall`, both pure and total. Reject `addMember` when `maxMembers >= 0 && members.size >= maxMembers`. Persist via new columns on the stall table (migration `V008__stall_members.sql`). Failing test asserts maxMembers cap rejection.
+  Evidence: ``
+
+- [ ] **TDD-201** — Stall member commands
+  References: REQ-202, REQ-203
+  Tag: TDD
+  Description: `/em stall members add|remove|list <stall> [player]` in AdminCommands (player-callable on own stalls). On mutation, sync to WorldGuard region's member set via a new `RegionMemberSync` infrastructure port. Failing test: command rejected for non-owner; accepted for owner; WG sync invoked.
+  Evidence: ``
+
+- [ ] **TDD-210** — Limit group config + resolution
+  References: REQ-210, REQ-211, REQ-213
+  Tag: TDD
+  Description: Add `limits.<name>` block to `EnthusiaMarketConfig` (named groups with `total: Int` + `regionkinds: Map<String, Int>`). New `LimitResolutionService` resolves a player's effective limits by combining every `enthusiamarket.limit.<name>` permission they hold (best value wins per key). Admin bypass via `enthusiamarket.admin.bypasslimit`. Failing tests cover: single group, multi-group merge, admin bypass.
+  Evidence: ``
+
+- [ ] **TDD-211** — Limit enforcement on stall claim
+  References: REQ-212
+  Tag: TDD
+  Description: Gate stall acquisition paths (auction settlement, sell-offer purchase, `/em setowner`) on `LimitResolutionService.canClaim(player, stall)`. Reject with translated lang message `limits.exceeded`. Failing test: player at total cap rejected; player at kind cap rejected; admin always accepted.
+  Evidence: ``
+
+- [ ] **TDD-220** — Entity limit group domain
+  References: REQ-220, REQ-222
+  Tag: TDD
+  Description: New `EntityLimitGroup` value object: per-`EntityType` cap + total cap + extras. Attach to `RegionKind`. New `entitylimits.yml` resource + config-load path. Per-stall override stored on `Stall` (`extraEntities`, `extraTotal`). Failing test: group lookup by region kind name; per-stall override merged correctly.
+  Evidence: ``
+
+- [ ] **TDD-221** — Entity limit enforcement listener
+  References: REQ-221
+  Tag: TDD
+  Description: `EntityLimitListener` handles `CreatureSpawnEvent`, `EntityPlaceEvent`, `HangingPlaceEvent`. Looks up enclosing stall via WorldGuard, checks against `EntityLimitGroup` count of existing entities, cancels event when over cap. Failing test (MockBukkit): spawn at cap → cancelled; spawn under cap → allowed.
+  Evidence: ``
+
+- [ ] **TDD-230** — Region info card
+  References: REQ-230, REQ-231
+  Tag: TDD
+  Description: `/em stall info <stall>` subcommand renders multi-line MiniMessage info card via new lang keys `stall.info.*`. Sign right-click on a purchase sign by a non-owner invokes the same renderer. Failing test: info text contains all required fields (id, kind, owner, member count, rent, time left, dimensions, state, availability).
+  Evidence: ``
+
+- [ ] **TDD-240** — Particle border outline
+  References: REQ-240, REQ-241
+  Tag: TDD
+  Description: New `ParticleBorderService` (`@Component`). Tracks active outlines as `(player, stall, expiresAt)` triples. Bukkit repeat task at 4-tick interval traces WorldGuard region's bounding box with `Particle.END_ROD` visible only to the requesting player. Hard cap of `particles.maxPerTick` (default 200) — degrade by widening spacing rather than dropping outlines. Failing test: outline added/removed; particle count bound respected.
+  Evidence: ``
+
+- [ ] **TDD-250** — Stall purchase sign domain
+  References: REQ-250, REQ-253
+  Tag: TDD
+  Description: Domain type `PurchaseSign(stallId, world, x, y, z, kind: BUY|RENT|EXTEND|INFO)`. New `PurchaseSignRepository` port + JDBC impl. Migration `V009__purchase_signs.sql`. Domain operations: render text for current stall state. Failing test: sign render output matches expected lang template per stall state.
+  Evidence: ``
+
+- [ ] **TDD-251** — Sign creation listener
+  References: REQ-251
+  Tag: TDD
+  Description: `SignChangeEvent` handler: when line 1 == config trigger token and line 2 names an existing stall, register a `PurchaseSign` and re-render lines from lang template. Permission `enthusiamarket.sign.create` required. Failing test: valid sign → persisted + lines overwritten; invalid stall name → rejected with player message.
+  Evidence: ``
+
+- [ ] **TDD-252** — Sign auto-refresh on state change
+  References: REQ-252
+  Tag: TDD
+  Description: Emit a new `StallStateChangedEvent` from `AuctionLifecycleService.settleWithWinner`, `RentCollectionService.evict`, and `SellOfferService.complete`. Listener `PurchaseSignRefreshListener` finds all signs bound to the stall and re-renders within one tick (uses NexusScheduler.runOnMain). Failing test: state change fires event; signs in repo are re-rendered.
+  Evidence: ``
+
+- [ ] **TDD-253** — Sign click action
+  References: REQ-250
+  Tag: TDD
+  Description: `PlayerInteractEvent` handler routes right-clicks on registered purchase signs to the appropriate flow: `BUY` → trigger sell-offer purchase or auction bid menu; `RENT`/`EXTEND` → invoke RentService extension; `INFO` → display REQ-230 card. Failing test: click on BUY sign with open offer → SellOfferService.purchase invoked.
+  Evidence: ``
+
+- [ ] **TDD-260** — Sell offer domain
+  References: REQ-260, REQ-263
+  Tag: TDD
+  Description: New domain types `SellOffer(stallId, sellerUuid, price, createdAt)` + `SellOfferRepository`. Migration `V010__sell_offers.sql`. Service `SellOfferService.create(stallId, seller, price)`: rejects when stall has open auction (REQ-263); rejects when seller is not the owner; persists offer; fires `SellOfferCreatedEvent`. Failing test: each rejection path + happy path.
+  Evidence: ``
+
+- [ ] **TDD-261** — Sell offer acceptance
+  References: REQ-261, REQ-264
+  Tag: TDD
+  Description: `SellOfferService.purchase(stallId, buyer)`: withdraws `price * (1 + taxPct)` from buyer via EconomyProvider, deposits `price` to seller, deposits `price * taxPct` to tax destination (config: `shop.taxDestination`, default `system` = no-op sink), reassigns ownership, marks offer closed. All within a single transactional boundary; rolls back on any failure. Failing test: buyer balance insufficient → rejected; happy path → balances + ownership all updated.
+  Evidence: ``
+
+- [ ] **TDD-262** — Sell offer commands + cancellation
+  References: REQ-260, REQ-262
+  Tag: TDD
+  Description: Player commands `/em stall offer <price>`, `/em stall offer cancel`, `/em stall buy <stall>`. Listed in `/em stall info` output (REQ-230). Failing test: cancel by non-owner rejected; cancel by owner closes offer.
+  Evidence: ``
+
+- [ ] **TDD-270** — Schematic capture on first claim
+  References: REQ-270, REQ-273, REQ-274
+  Tag: TDD
+  Description: New `SchematicService` (`@Component`) with WE/FAWE adapter selection at construction time. `capture(stallId, region): Result` saves to `plugins/EnthusiaMarket/schematics/<stallId>.schem`. Hooked from `AuctionLifecycleService.settleWithWinner` BEFORE persisting ownership change. On failure: abort transition + refund + fire `SchematicCaptureFailedEvent`. Honour `schematics.enabled: false` (no-op). Failing test (with FAWE mock): capture invoked once per stall lifetime; capture failure aborts and refunds.
+  Evidence: ``
+
+- [ ] **TDD-271** — Schematic restore on unclaim
+  References: REQ-271, REQ-272
+  Tag: TDD
+  Description: `SchematicService.restore(stallId, region): Result` pastes the stored schematic. Hooked from rent-eviction, sell-offer-completion (only when going UNOWNED), and `/em stall reset <id>`. FAWE path runs async on the WE worker pool; non-FAWE path runs sync on main thread. Failing test: restore called → region contents replaced.
+  Evidence: ``
+
 ### INFRA tasks
+
+- [ ] **INFRA-20** — Schematics + entitylimits resource files
+  References: REQ-220, REQ-270
+  Tag: INFRA
+  Description: Ship `src/main/resources/entitylimits.yml` with default groups (`default`, `shop`, `farm`) and ensure `plugins/EnthusiaMarket/schematics/` is created on plugin enable. Update `EnthusiaMarketConfig` with a `schematics` block (`enabled`, `directory`) and a `particles` block (`enabled`, `maxPerTick`).
+  Evidence: ``
+
+- [ ] **INFRA-21** — WorldEdit + FAWE compile deps
+  References: REQ-272
+  Tag: INFRA
+  Description: Add `compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0")` and `compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.11.0")` to `build.gradle.kts`. Add corresponding `paper-plugin.yml` softdepends. Document in `docs/tech-stack.md`.
+  Evidence: ``
+
+### INFRA tasks (existing)
 
 - [x] **INFRA-11** — EM event classes for external integration
   References: REQ-026, REQ-027
