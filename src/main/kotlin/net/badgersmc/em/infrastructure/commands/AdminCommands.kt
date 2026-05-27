@@ -282,9 +282,13 @@ class AdminCommands(
                 lang.msg("offer.not_authorised", "stall" to stall)
             is SellOfferService.Result.AuctionOpen ->
                 lang.msg("offer.auction_open", "stall" to stall)
+            is SellOfferService.Result.OfferOpen ->
+                lang.msg("offer.rejected", "reason" to "offer already exists")
             is SellOfferService.Result.Rejected ->
                 lang.msg("offer.rejected", "reason" to r.reason)
-            else -> lang.msg("offer.rejected", "reason" to "unknown")
+            is SellOfferService.Result.Cancelled,
+            is SellOfferService.Result.Purchased ->
+                lang.msg("offer.rejected", "reason" to "unexpected")
         }
         sender.sendMessage(msg)
     }
@@ -302,7 +306,12 @@ class AdminCommands(
                 lang.msg("offer.not_found", "stall" to stall)
             is SellOfferService.Result.NotAuthorised ->
                 lang.msg("offer.not_authorised", "stall" to stall)
-            else -> lang.msg("offer.rejected", "reason" to "unknown")
+            is SellOfferService.Result.AuctionOpen,
+            is SellOfferService.Result.OfferOpen,
+            is SellOfferService.Result.Created,
+            is SellOfferService.Result.Purchased,
+            is SellOfferService.Result.Rejected ->
+                lang.msg("offer.rejected", "reason" to "unexpected")
         }
         sender.sendMessage(msg)
     }
@@ -326,9 +335,15 @@ class AdminCommands(
             }
             is SellOfferService.Result.NotFound ->
                 lang.msg("offer.not_found", "stall" to stall)
+            is SellOfferService.Result.NotAuthorised ->
+                lang.msg("offer.not_authorised", "stall" to stall)
             is SellOfferService.Result.Rejected ->
                 lang.msg("offer.rejected", "reason" to r.reason)
-            else -> lang.msg("offer.rejected", "reason" to "unknown")
+            is SellOfferService.Result.AuctionOpen,
+            is SellOfferService.Result.OfferOpen,
+            is SellOfferService.Result.Created,
+            is SellOfferService.Result.Cancelled ->
+                lang.msg("offer.rejected", "reason" to "unexpected")
         }
         sender.sendMessage(msg)
     }

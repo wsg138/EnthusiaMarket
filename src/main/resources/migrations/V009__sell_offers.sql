@@ -11,7 +11,7 @@
 CREATE TABLE IF NOT EXISTS sell_offers (
     stall_id     TEXT PRIMARY KEY,
     seller_uuid  TEXT NOT NULL,
-    price        INTEGER NOT NULL,
+    price        INTEGER NOT NULL CHECK (price > 0),
     created_at   INTEGER NOT NULL,
     FOREIGN KEY (stall_id) REFERENCES stalls(id) ON DELETE CASCADE
 );

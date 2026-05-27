@@ -58,6 +58,7 @@ class SellOfferService(
 
         val stall = stalls.findById(stallId) ?: return Result.NotFound
         if (!stall.canManage(seller, guildProvider)) return Result.NotAuthorised
+        if (offers.findByStall(stallId) != null) return Result.OfferOpen
         if (auctions.findOpenByStall(stallId) != null) return Result.AuctionOpen
 
         val offer = SellOffer(stallId, seller, price, Instant.now())
@@ -91,6 +92,9 @@ class SellOfferService(
         }
 
         val taxPct = config.shop.taxPct
+        if (taxPct < 0.0 || taxPct > 1.0) {
+            return Result.Rejected("Invalid tax percentage: $taxPct")
+        }
         val tax = (offer.price * taxPct).toLong()
         val total = offer.price + tax
 

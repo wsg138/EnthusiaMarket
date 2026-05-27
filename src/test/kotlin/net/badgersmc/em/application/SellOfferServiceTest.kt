@@ -108,6 +108,20 @@ class SellOfferServiceTest {
         verify(exactly = 0) { offers.save(any()) }
     }
 
+    @Test fun `create on stall with existing offer is rejected with OfferOpen`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>()
+        val auctions = mockk<AuctionRepository>()
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { offers.findByStall(stallId) } returns mockk(relaxed = true)
+
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
+        val r = svc.create(stallId, seller, price = 500L)
+
+        assertEquals(Result.OfferOpen, r)
+        verify(exactly = 0) { offers.save(any()) }
+    }
+
     @Test fun `create on missing stall is NotFound`() {
         val stalls = mockk<StallRepository>()
         every { stalls.findById(stallId) } returns null

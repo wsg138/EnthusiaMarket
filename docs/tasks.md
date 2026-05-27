@@ -467,7 +467,7 @@ References: REQ-024 through REQ-027
 - [x] **TDD-260** — Sell offer domain
   References: REQ-260, REQ-263
   Tag: TDD
-  Description: New domain types `SellOffer(stallId, sellerUuid, price, createdAt)` + `SellOfferRepository`. Migration `V010__sell_offers.sql`. Service `SellOfferService.create(stallId, seller, price)`: rejects when stall has open auction (REQ-263); rejects when seller is not the owner; persists offer; fires `SellOfferCreatedEvent`. Failing test: each rejection path + happy path.
+  Description: New domain types `SellOffer(stallId, sellerUuid, price, createdAt)` + `SellOfferRepository`. Migration `V009__sell_offers.sql`. Service `SellOfferService.create(stallId, seller, price)`: rejects when stall has open auction (REQ-263); rejects when seller is not the owner; persists offer; fires `SellOfferCreatedEvent`. Failing test: each rejection path + happy path.
   Evidence: docs/requirements.md REQ-260 (owner creates public offer), REQ-263 (mutex with auction both directions); src/main/kotlin/net/badgersmc/em/domain/auction/AuctionRepository.kt (repo interface shape); src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt canManage for auth gate; src/main/kotlin/net/badgersmc/em/events/ShopCreatedEvent.kt (Bukkit Event pattern, HandlerList); io.mockk.{mockk,every,verify,confirmVerified}; using V009__sell_offers.sql since V008 is taken by feat/arm-port-member-roster PR #9.
 
 - [x] **TDD-261** — Sell offer acceptance
