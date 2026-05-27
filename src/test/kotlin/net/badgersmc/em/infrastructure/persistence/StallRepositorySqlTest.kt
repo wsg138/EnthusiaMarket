@@ -7,6 +7,7 @@ import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallState
+import java.util.UUID
 import javax.sql.DataSource
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -70,5 +71,37 @@ class StallRepositorySqlTest {
         val found = repo.findById(StallId("s1"))!!
         assertEquals(StallState.OWNED, found.state)
         assertEquals(1234L, found.winningBid)
+    }
+
+    // --- REQ-200 / REQ-201 — members + maxMembers persistence ---
+
+    @Test fun `members and maxMembers round-trip through create + findById`() {
+        val a = UUID.randomUUID()
+        val b = UUID.randomUUID()
+        val s = newUnowned("s1").copy(members = setOf(a, b), maxMembers = 5)
+        repo.create(s)
+
+        val found = repo.findById(StallId("s1"))!!
+        assertEquals(setOf(a, b), found.members)
+        assertEquals(5, found.maxMembers)
+    }
+
+    @Test fun `default members is empty and default maxMembers is -1 after migration`() {
+        // Existing rows migrated forward should default to "" / -1.
+        val s = newUnowned("s1")
+        repo.create(s)
+        val found = repo.findById(StallId("s1"))!!
+        assertEquals(emptySet(), found.members)
+        assertEquals(-1, found.maxMembers)
+    }
+
+    @Test fun `save persists member roster mutations`() {
+        val s = newUnowned("s1")
+        repo.create(s)
+        val player = UUID.randomUUID()
+        repo.save(s.addMember(player))
+
+        val reloaded = repo.findById(StallId("s1"))!!
+        assertEquals(setOf(player), reloaded.members)
     }
 }

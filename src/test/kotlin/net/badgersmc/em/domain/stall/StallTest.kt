@@ -143,4 +143,62 @@ class StallTest {
 
         assertFalse(result)
     }
+
+    // --- member roster tests (REQ-200, REQ-201) ---
+
+    @Test fun `a fresh stall has an empty member roster and unlimited cap`() {
+        assertTrue(baseStall.members.isEmpty())
+        assertEquals(-1, baseStall.maxMembers)
+    }
+
+    @Test fun `addMember adds a uuid to the roster`() {
+        val player = UUID.randomUUID()
+        val updated = baseStall.addMember(player)
+        assertTrue(player in updated.members)
+        assertEquals(1, updated.members.size)
+    }
+
+    @Test fun `addMember is idempotent when the player is already a member`() {
+        val player = UUID.randomUUID()
+        val once = baseStall.addMember(player)
+        val twice = once.addMember(player)
+        assertEquals(1, twice.members.size)
+    }
+
+    @Test fun `removeMember drops a uuid from the roster`() {
+        val player = UUID.randomUUID()
+        val stall = baseStall.addMember(player)
+        val updated = stall.removeMember(player)
+        assertFalse(player in updated.members)
+        assertTrue(updated.members.isEmpty())
+    }
+
+    @Test fun `removeMember is a no-op when the player is not a member`() {
+        val player = UUID.randomUUID()
+        val updated = baseStall.removeMember(player)
+        assertTrue(updated.members.isEmpty())
+    }
+
+    @Test fun `addMember rejects when the roster is at its configured cap`() {
+        val capped = baseStall.copy(maxMembers = 2)
+            .addMember(UUID.randomUUID())
+            .addMember(UUID.randomUUID())
+        assertFailsWith<IllegalStateException> {
+            capped.addMember(UUID.randomUUID())
+        }
+    }
+
+    @Test fun `addMember allows unlimited members when maxMembers is negative`() {
+        var stall = baseStall // maxMembers = -1 by default
+        repeat(50) { stall = stall.addMember(UUID.randomUUID()) }
+        assertEquals(50, stall.members.size)
+    }
+
+    @Test fun `addMember at cap still accepts a uuid already in the roster (idempotent)`() {
+        val player = UUID.randomUUID()
+        val capped = baseStall.copy(maxMembers = 1).addMember(player)
+        // Re-adding the same player must not throw — capacity already accounts for them.
+        val result = capped.addMember(player)
+        assertEquals(1, result.members.size)
+    }
 }

@@ -390,17 +390,17 @@ References: REQ-024 through REQ-027
 
 ### TDD tasks
 
-- [ ] **TDD-200** — Stall member roster domain model
+- [x] **TDD-200** — Stall member roster domain model
   References: REQ-200, REQ-201
   Tag: TDD
   Description: Add `members: Set<UUID>` and `maxMembers: Int` to the `Stall` aggregate. Operations: `addMember(uuid): Stall`, `removeMember(uuid): Stall`, both pure and total. Reject `addMember` when `maxMembers >= 0 && members.size >= maxMembers`. Persist via new columns on the stall table (migration `V008__stall_members.sql`). Failing test asserts maxMembers cap rejection.
-  Evidence: ``
+  Evidence: docs/requirements.md REQ-200 (per-stall member set distinct from owner, persisted), REQ-201 (configurable maxMembers, -1 = unlimited, reject overflow); src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt (existing data class — extend with default-valued fields to keep call sites compiling); src/main/kotlin/net/badgersmc/em/infrastructure/persistence/StallRepositorySql.kt (JDBC persistence pattern to extend); src/main/resources/migrations/V007__shop_constraints.sql (last migration — V008 is next); existing test src/test/kotlin/net/badgersmc/em/domain/stall/StallTest.kt (asserts/require pattern); java.util.UUID; kotlin.test.assertEquals, assertFailsWith, assertTrue, assertFalse.
 
-- [ ] **TDD-201** — Stall member commands
+- [x] **TDD-201** — Stall member commands
   References: REQ-202, REQ-203
   Tag: TDD
   Description: `/em stall members add|remove|list <stall> [player]` in AdminCommands (player-callable on own stalls). On mutation, sync to WorldGuard region's member set via a new `RegionMemberSync` infrastructure port. Failing test: command rejected for non-owner; accepted for owner; WG sync invoked.
-  Evidence: ``
+  Evidence: docs/requirements.md REQ-202 (member commands sync to WG + persist), REQ-203 (member grants WG build/interact via region membership); src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvider.kt (WG adapter pattern: WorldGuard.getInstance().platform.regionContainer + BukkitAdapter.adapt(world)); src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt addMember/removeMember from TDD-200; com.sk89q.worldguard.protection.regions.ProtectedRegion getMembers; com.sk89q.worldguard.domains.DefaultDomain addPlayer/removePlayer; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt (existing @Subcommand pattern); src/test/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommandsTest.kt (MockK ctor-injection pattern); io.mockk.{mockk,every,verify,confirmVerified}.
 
 - [ ] **TDD-210** — Limit group config + resolution
   References: REQ-210, REQ-211, REQ-213

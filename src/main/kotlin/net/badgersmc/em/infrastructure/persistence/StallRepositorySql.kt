@@ -5,6 +5,7 @@ import net.badgersmc.nexus.annotations.Repository
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.time.Instant
+import java.util.UUID
 import javax.sql.DataSource
 
 @Repository
@@ -29,8 +30,8 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             conn.prepareStatement(
                 """INSERT INTO stalls
                    (id, region_id, world, state, owner_type, owner_id, owner_since,
-                    winning_bid, rent_mode, rent_pct, rent_flat)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                    winning_bid, rent_mode, rent_pct, rent_flat, members, max_members)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
             ).use { ps ->
                 bind(ps, stall)
                 ps.executeUpdate()
@@ -43,7 +44,8 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             conn.prepareStatement(
                 """UPDATE stalls SET
                      region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
-                     owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?
+                     owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
+                     members = ?, max_members = ?
                    WHERE id = ?"""
             ).use { ps ->
                 ps.setString(1, stall.regionId)
@@ -57,7 +59,9 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                 ps.setString(8, stall.rentTerms.mode.name)
                 ps.setDouble(9, stall.rentTerms.pct)
                 ps.setLong(10, stall.rentTerms.flatAmount)
-                ps.setString(11, stall.id.value)
+                ps.setString(11, encodeMembers(stall.members))
+                ps.setInt(12, stall.maxMembers)
+                ps.setString(13, stall.id.value)
                 ps.executeUpdate()
             }
         }
@@ -76,6 +80,20 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         ps.setString(9, stall.rentTerms.mode.name)
         ps.setDouble(10, stall.rentTerms.pct)
         ps.setLong(11, stall.rentTerms.flatAmount)
+        ps.setString(12, encodeMembers(stall.members))
+        ps.setInt(13, stall.maxMembers)
+    }
+
+    private fun encodeMembers(members: Set<UUID>): String =
+        members.joinToString(",") { it.toString() }
+
+    private fun decodeMembers(raw: String?): Set<UUID> {
+        if (raw.isNullOrEmpty()) return emptySet()
+        return raw.split(',')
+            .asSequence()
+            .filter { it.isNotBlank() }
+            .map { UUID.fromString(it.trim()) }
+            .toSet()
     }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Stall? {
@@ -117,7 +135,9 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             owner = owner,
             ownerSince = ownerSinceMs?.let { Instant.ofEpochMilli(it) },
             winningBid = rs.getLong("winning_bid"),
-            rentTerms = rentTerms
+            rentTerms = rentTerms,
+            members = decodeMembers(rs.getString("members")),
+            maxMembers = rs.getInt("max_members"),
         )
     }
 }
