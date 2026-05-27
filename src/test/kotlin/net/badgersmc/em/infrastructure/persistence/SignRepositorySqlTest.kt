@@ -22,7 +22,7 @@ class SignRepositorySqlTest {
             jdbcUrl = "jdbc:sqlite::memory:"
             maximumPoolSize = 1
         })
-        Migrations.runAll(ds)
+        net.badgersmc.nexus.persistence.MigrationRunner(ds, "migrations", this::class.java.classLoader).runAll()
         repo = SignRepositorySql(ds)
     }
 
