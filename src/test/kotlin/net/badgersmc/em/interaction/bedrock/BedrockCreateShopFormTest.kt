@@ -29,7 +29,8 @@ class BedrockCreateShopFormTest {
             signLoc,
             containerLoc,
             mockk<ShopRepository>(relaxed = true),
-            mockk<Logger>(relaxed = true)
+            mockk<Logger>(relaxed = true),
+            mockk(relaxed = true)
         )
         assertNotNull(form)
     }
@@ -46,7 +47,8 @@ class BedrockCreateShopFormTest {
             signLoc,
             containerLoc,
             mockk<ShopRepository>(relaxed = true),
-            mockk<Logger>(relaxed = true)
+            mockk<Logger>(relaxed = true),
+            mockk(relaxed = true)
         )
         val built = form.buildForm()
         assertNotNull(built)

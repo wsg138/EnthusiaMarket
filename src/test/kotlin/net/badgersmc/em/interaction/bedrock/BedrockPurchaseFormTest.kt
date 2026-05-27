@@ -27,7 +27,8 @@ class BedrockPurchaseFormTest {
             testShop,
             {},
             {},
-            mockk<Logger>(relaxed = true)
+            mockk<Logger>(relaxed = true),
+            mockk(relaxed = true)
         )
         assertNotNull(form)
     }

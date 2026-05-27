@@ -17,7 +17,7 @@ class TrustManageMenuTest {
             sellItem = "a", sellAmount = 1, costItem = "b", costAmount = 1,
             trusted = setOf(UUID.randomUUID(), UUID.randomUUID()))
 
-        val menu = TrustManageMenu(mockk(relaxed = true), shop, mockk(relaxed = true))
+        val menu = TrustManageMenu(mockk(relaxed = true), shop, mockk(relaxed = true), mockk(relaxed = true))
         assertNotNull(menu)
     }
 
@@ -28,7 +28,7 @@ class TrustManageMenuTest {
             sellItem = "a", sellAmount = 1, costItem = "b", costAmount = 1,
             trusted = emptySet())
 
-        val menu = TrustManageMenu(mockk(relaxed = true), shop, mockk(relaxed = true))
+        val menu = TrustManageMenu(mockk(relaxed = true), shop, mockk(relaxed = true), mockk(relaxed = true))
         assertNotNull(menu)
     }
 }

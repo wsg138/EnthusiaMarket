@@ -19,7 +19,7 @@ class BedrockMenuBaseTest {
         }
 
         var formSent = false
-        val menu = object : BedrockMenuBase(player, mockk<Logger>(relaxed = true)) {
+        val menu = object : BedrockMenuBase(player, mockk<Logger>(relaxed = true), mockk(relaxed = true)) {
             override fun buildForm() = SimpleForm.builder().title("Test").content("test").button("OK").build()
             override fun sendForm(form: Form) { formSent = true }
         }
@@ -37,7 +37,7 @@ class BedrockMenuBaseTest {
             every { sendMessage(any<String>()) } returns Unit
         }
 
-        val menu = object : BedrockMenuBase(player, mockk<Logger>(relaxed = true)) {
+        val menu = object : BedrockMenuBase(player, mockk<Logger>(relaxed = true), mockk(relaxed = true)) {
             override fun buildForm() = SimpleForm.builder().title("Test").content("test").button("OK").build()
             override fun sendForm(form: Form) { throw RuntimeException("Floodgate not found") }
         }
@@ -56,7 +56,7 @@ class BedrockMenuBaseTest {
         }
 
         var buildCalled = false
-        val menu = object : BedrockMenuBase(player, mockk<Logger>(relaxed = true)) {
+        val menu = object : BedrockMenuBase(player, mockk<Logger>(relaxed = true), mockk(relaxed = true)) {
             override fun buildForm(): SimpleForm {
                 buildCalled = true
                 return SimpleForm.builder().title("Test").content("test").button("OK").build()
