@@ -24,6 +24,20 @@ class EnthusiaMarketConfig {
     var debug: Debug = Debug()
     @Comment("Localisation / language file selection")
     var lang: Lang = Lang()
+    @Comment(
+        "ARM-style ownership limit groups (REQ-210). Players gain a group by holding the " +
+            "permission enthusiamarket.limit.<group-name>. Effective limits merge by taking the " +
+            "best value per dimension across all granted groups (REQ-211). -1 means unlimited."
+    )
+    var limits: MutableMap<String, LimitGroup> = mutableMapOf()
+
+    class LimitGroup {
+        @Comment("Maximum total stalls a player in this group may own. -1 = unlimited.")
+        var total: Int = 0
+
+        @Comment("Per-region-kind caps. Key is the region kind name; value -1 = unlimited.")
+        var regionkinds: MutableMap<String, Int> = mutableMapOf()
+    }
 
     class Market {
         @Comment("World name where stall regions exist")

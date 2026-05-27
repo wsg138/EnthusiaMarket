@@ -404,17 +404,17 @@ References: REQ-024 through REQ-027
 
 ### Pending tasks
 
-- [ ] **TDD-210** — Limit group config + resolution
+- [x] **TDD-210** — Limit group config + resolution
   References: REQ-210, REQ-211, REQ-213
   Tag: TDD
   Description: Add `limits.<name>` block to `EnthusiaMarketConfig` (named groups with `total: Int` + `regionkinds: Map<String, Int>`). New `LimitResolutionService` resolves a player's effective limits by combining every `enthusiamarket.limit.<name>` permission they hold (best value wins per key). Admin bypass via `enthusiamarket.admin.bypasslimit`. Failing tests cover: single group, multi-group merge, admin bypass.
-  Evidence: ``
+  Evidence: docs/requirements.md REQ-210 (limits.<name>.{total, regionkinds}; -1 = unlimited), REQ-211 (best value per dimension across permission-held groups), REQ-213 (enthusiamarket.admin.bypasslimit grants unlimited); src/main/kotlin/net/badgersmc/em/config/EnthusiaMarketConfig.kt (existing nested-class config pattern); kaml-jvm supports Map<String, Pojo> via Nexus ConfigManager; existing infrastructure permission pattern src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListener.kt:113 (player.hasPermission); new PermissionChecker port needed to keep LimitResolutionService out of the Bukkit dependency cone; io.mockk.{mockk,every,verify}; org.junit.jupiter.api.Test, kotlin.test.assertEquals.
 
-- [ ] **TDD-211** — Limit enforcement on stall claim
+- [x] **TDD-211** — Limit enforcement on stall claim
   References: REQ-212
   Tag: TDD
   Description: Gate stall acquisition paths (auction settlement, sell-offer purchase, `/em setowner`) on `LimitResolutionService.canClaim(player, stall)`. Reject with translated lang message `limits.exceeded`. Failing test: player at total cap rejected; player at kind cap rejected; admin always accepted.
-  Evidence: ``
+  Evidence: docs/requirements.md REQ-212; src/main/kotlin/net/badgersmc/em/application/AuctionLifecycleService.kt settleWithWinner at lines 307-329 (settlement entry — limit gate goes BEFORE economy.withdraw to avoid charging on rejection); LimitResolutionService.canClaim/ClaimDecision from TDD-210; existing no-bid branch (lines 282-296) is the right shape to fall through to on rejection (revert AUCTIONING→UNOWNED, close auction without paying). Sell-offer and /em setowner gates deferred: SellOfferService lands in TDD-261; no `setowner` subcommand exists in AdminCommands today. Region kind isn't a Stall field yet (lands with TDD-220) so settlement uses `kind = "default"` for now. io.mockk.{mockk,every,verify,confirmVerified}; org.junit.jupiter.api.Test; kotlin.test.{assertEquals,assertIs}.
 
 - [ ] **TDD-220** — Entity limit group domain
   References: REQ-220, REQ-222
