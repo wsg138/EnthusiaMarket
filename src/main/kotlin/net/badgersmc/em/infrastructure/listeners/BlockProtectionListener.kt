@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.ShopDeletedEvent
+import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
@@ -24,7 +25,8 @@ import java.util.logging.Logger
 @Component
 class BlockProtectionListener(
     private val shopRepository: ShopRepository,
-    private val logger: Logger
+    private val logger: Logger,
+    private val lang: LangService
 ) : Listener {
 
     @PostConstruct
@@ -72,9 +74,9 @@ class BlockProtectionListener(
         val isOwner = player.uniqueId == shop.owner || player.hasPermission("enthusiamarket.admin")
         val isTrusted = shop.trusted.contains(player.uniqueId)
         if (isOwner || isTrusted) {
-            player.sendMessage("§e[Shop] Use the edit menu to delete this shop (coming in TDD-57)")
+            player.sendMessage(lang.msg("shop.protect.use_edit_menu"))
         } else {
-            player.sendMessage("§cYou cannot break this shop sign")
+            player.sendMessage(lang.msg("shop.protect.cannot_break_sign"))
         }
     }
 
@@ -83,7 +85,7 @@ class BlockProtectionListener(
         val isOwner = shops.all { it.owner == player.uniqueId } || player.hasPermission("enthusiamarket.admin")
         if (!isOwner) {
             event.isCancelled = true
-            player.sendMessage("§cThis container has active shops. Only the owner can break it.")
+            player.sendMessage(lang.msg("shop.protect.container_has_shops"))
             return
         }
 
@@ -94,10 +96,10 @@ class BlockProtectionListener(
                 Bukkit.getPluginManager().callEvent(ShopDeletedEvent(shop.owner))
             }
             logger.info("Deleted ${shops.size} shop(s) at ${loc.world?.name}:${loc.blockX},${loc.blockY},${loc.blockZ}")
-            player.sendMessage("§aDeleted ${shops.size} shop(s) linked to this container")
+            player.sendMessage(lang.msg("shop.protect.deleted", "count" to shops.size))
         } catch (e: Exception) {
             logger.severe("Failed to delete shops at container break: ${e.message}")
-            player.sendMessage("§cAn error occurred while deleting shops. Please contact an admin.")
+            player.sendMessage(lang.msg("shop.protect.delete_error"))
         }
     }
 }

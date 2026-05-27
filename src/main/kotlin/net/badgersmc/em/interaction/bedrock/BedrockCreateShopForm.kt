@@ -2,6 +2,7 @@ package net.badgersmc.em.interaction.bedrock
 
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.nexus.i18n.LangService
 import org.bukkit.Location
 import org.bukkit.entity.Player
 import org.geysermc.cumulus.form.CustomForm
@@ -22,8 +23,9 @@ class BedrockCreateShopForm(
     private val signLoc: Location,
     private val containerLoc: Location,
     private val shopRepository: ShopRepository,
-    logger: Logger
-) : BedrockMenuBase(player, logger) {
+    logger: Logger,
+    lang: LangService
+) : BedrockMenuBase(player, logger, lang) {
 
     override fun buildForm(): CustomForm {
         return CustomForm.builder()
@@ -41,7 +43,7 @@ class BedrockCreateShopForm(
                 val amount = amountText.toIntOrNull() ?: 1
 
                 if (itemName.isBlank() || price == null || price <= 0) {
-                    player.sendMessage("§cInvalid item or price")
+                    player.sendMessage(lang.legacy("shop.create.invalid_input"))
                     return@validResultHandler
                 }
 
@@ -64,7 +66,7 @@ class BedrockCreateShopForm(
                     costAmount = price
                 )
                 shopRepository.upsert(shop)
-                player.sendMessage("§aShop created!")
+                player.sendMessage(lang.legacy("shop.create.success"))
             }
             .build()
     }

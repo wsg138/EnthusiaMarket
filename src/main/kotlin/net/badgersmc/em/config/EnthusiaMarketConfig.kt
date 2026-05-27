@@ -22,6 +22,8 @@ class EnthusiaMarketConfig {
     var bedrock: Bedrock = Bedrock()
     @Comment("Debug logging")
     var debug: Debug = Debug()
+    @Comment("Localisation / language file selection")
+    var lang: Lang = Lang()
 
     class Market {
         @Comment("World name where stall regions exist")
@@ -102,6 +104,11 @@ class EnthusiaMarketConfig {
         var forceForms: Boolean = false
         @Comment("Form timeout in seconds")
         var formTimeoutSec: Int = 60
+    }
+
+    class Lang {
+        @Comment("Locale id; loads lang/<locale>.yml from datafolder (en_US shipped)")
+        var locale: String = "en_US"
     }
 
     class Debug {

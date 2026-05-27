@@ -10,6 +10,7 @@ import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
 import java.time.Duration
 import java.time.Instant
@@ -34,6 +35,16 @@ sealed class AuctionResult {
 data class SettlementReport(
     val settled: Int,
     val errors: Int
+)
+
+/**
+ * Report from launching a mass auction across many stalls.
+ */
+data class MassAuctionReport(
+    val created: Int,
+    val skipped: Int,
+    val errors: Int,
+    val auctionIds: List<AuctionId>
 )
 
 /**
@@ -97,6 +108,64 @@ class AuctionLifecycleService(
 
         auctionRepository.create(auction)
         return AuctionResult.Success(auction)
+    }
+
+    /**
+     * Launch a system-initiated auction for every UNOWNED stall at once (REQ-028).
+     *
+     * Each created auction shares the same starting bid and end time. Stalls already
+     * holding an open auction are skipped. Affected stalls transition to AUCTIONING.
+     *
+     * @param startingBid starting bid applied to every created auction
+     * @param durationStr optional ISO-8601 duration string; null uses `auction.defaultDuration`
+     * @return [MassAuctionReport] with counts and the new auction ids, or
+     *         [AuctionResult.Failure] when inputs fail validation
+     */
+    fun startMassAuction(startingBid: Long, durationStr: String?): Any {
+        validateStartingBid(startingBid)?.let { return it }
+        val duration = resolveDuration(durationStr)
+            ?: return AuctionResult.Failure("Invalid auction duration: '$durationStr'")
+
+        val now = Instant.now()
+        val endAt = now.plus(duration)
+        val antiSnipe = Duration.ofSeconds(config.auction.antiSnipeSec.toLong())
+
+        val candidates = stallRepository.byState(StallState.UNOWNED)
+        val created = mutableListOf<AuctionId>()
+        var skipped = 0
+        var errors = 0
+
+        for (stall in candidates) {
+            try {
+                if (auctionRepository.findOpenByStall(stall.id) != null) {
+                    skipped++
+                    continue
+                }
+                val auction = Auction(
+                    id = AuctionId(UUID.randomUUID().toString()),
+                    stallId = stall.id,
+                    state = AuctionState.OPEN,
+                    startAt = now,
+                    endAt = endAt,
+                    startingBid = startingBid,
+                    highBid = null,
+                    antiSnipeWindow = antiSnipe
+                )
+                auctionRepository.create(auction)
+                stallRepository.save(stall.copy(state = StallState.AUCTIONING))
+                created.add(auction.id)
+            } catch (e: Exception) {
+                logger.warning("startMassAuction: stall ${stall.id} failed — ${e.message}")
+                errors++
+            }
+        }
+
+        return MassAuctionReport(
+            created = created.size,
+            skipped = skipped,
+            errors = errors,
+            auctionIds = created
+        )
     }
 
     private fun validateStartingBid(startingBid: Long): AuctionResult.Failure? {
@@ -189,8 +258,17 @@ class AuctionLifecycleService(
                 if (auction.highBid != null) {
                     settleWithWinner(auction)
                 } else {
-                    // No bids — just close
+                    // No bids — close the auction and, if it was a system-initiated mass
+                    // auction (UNOWNED stall transitioned to AUCTIONING), revert the stall
+                    // back to UNOWNED so it can be re-auctioned later.
                     auctionRepository.save(auction.close())
+                    val stall = stallRepository.findById(auction.stallId)
+                    if (stall != null
+                        && stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+                        && stall.state == StallState.AUCTIONING
+                    ) {
+                        stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                    }
                 }
                 settled++
             } catch (e: Exception) {

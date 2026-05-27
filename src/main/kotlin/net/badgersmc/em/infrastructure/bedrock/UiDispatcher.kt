@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.bedrock
 
+import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import org.bukkit.entity.Player
 import java.util.UUID
@@ -12,7 +13,9 @@ import java.util.UUID
  * when Floodgate is not installed on the server.
  */
 @Component
-open class UiDispatcher {
+open class UiDispatcher(
+    private val lang: LangService
+) {
 
     /**
      * Returns true if the given UUID belongs to a Bedrock/Floodgate player.
@@ -75,7 +78,7 @@ open class UiDispatcher {
                 .invoke(floodgateApi, player.uniqueId, form)
         } catch (e: Throwable) {
             // Cumulus or Floodgate not available at runtime — log and skip
-            player.sendMessage("§cBedrock forms are not available on this server")
+            player.sendMessage(lang.msg("bedrock.unavailable"))
         }
     }
 }

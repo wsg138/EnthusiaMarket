@@ -2,7 +2,7 @@ package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.application.ShopTradeService
 import net.badgersmc.em.domain.shop.SignRepository
-import net.badgersmc.em.infrastructure.vault.VaultHealth
+import net.badgersmc.nexus.vault.VaultHealth
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
