@@ -21,13 +21,8 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Build & publish Nexus to mavenLocal
-        run: |
-          git clone --depth 1 https://github.com/BadgersMC/Nexus.git "$RUNNER_TEMP/nexus"
-          cd "$RUNNER_TEMP/nexus"
-          # nexus repo is missing gradle/wrapper/gradle-wrapper.jar, so invoke the
-          # installed gradle directly instead of ./gradlew.
-          gradle :nexus-core:publishToMavenLocal :nexus-paper:publishToMavenLocal --no-daemon
+      # Nexus is now resolved from JitPack — no clone/publish step needed.
+      # See build.gradle.kts for the com.github.BadgersMC.Nexus coordinates.
 
       - name: Build RoseChat (fork) shadowJar
         run: |
