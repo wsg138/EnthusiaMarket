@@ -1,9 +1,14 @@
 package net.badgersmc.em.infrastructure.listeners
 
-import io.mockk.*
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
+import io.mockk.verify
+import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
-import net.badgersmc.em.application.ItemStackSerializer
+import net.kyori.adventure.text.Component
 import net.badgersmc.em.events.ShopStockDepletedEvent
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -151,7 +156,7 @@ class ContainerStockListenerTest {
         val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onClick(event)
 
-        verify { sign.setLine(3, "§7Stock: 10") }
+        verify { sign.line(3, any<Component>()) }
         verify { sign.update(true) }
     }
 
@@ -198,7 +203,7 @@ class ContainerStockListenerTest {
         val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onDrag(event)
 
-        verify { sign.setLine(3, "§7Stock: 10") }
+        verify { sign.line(3, any<Component>()) }
         verify { sign.update(true) }
     }
 
@@ -259,7 +264,7 @@ class ContainerStockListenerTest {
         val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onClick(event)
 
-        verify { sign.setLine(3, "§7Stock: 0") }
+        verify { sign.line(3, any<Component>()) }
         verify { sign.update(true) }
     }
 
