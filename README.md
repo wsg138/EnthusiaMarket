@@ -53,7 +53,7 @@ EnthusiaMarket depends on two artifacts that aren't on Maven Central and need to
 
    ```bash
    git clone https://github.com/BadgersMC/Nexus.git
-   cd nexus
+   cd Nexus
    ./gradlew -PuseMavenLocal=true publishToMavenLocal
    ```
 

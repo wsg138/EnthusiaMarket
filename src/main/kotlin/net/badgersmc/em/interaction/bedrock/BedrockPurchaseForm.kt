@@ -22,7 +22,8 @@ class BedrockPurchaseForm(
 ) : BedrockMenuBase(player, logger, lang) {
 
     override fun buildForm(): SimpleForm {
-        val ownerName = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
+        val ownerName = Bukkit.getOfflinePlayer(shop.owner).name
+            ?: lang.legacy("common.unknown_player")
         // Status placeholder is a raw MiniMessage fragment so the outer template can deserialize it.
         val statusKey = if (shop.frozen) "bedrock.purchase.status_frozen" else "bedrock.purchase.status_active"
         val statusMm = lang.raw(statusKey)

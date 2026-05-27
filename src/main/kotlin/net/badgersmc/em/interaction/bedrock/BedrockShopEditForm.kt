@@ -25,9 +25,9 @@ class BedrockShopEditForm(
         return CustomForm.builder()
             .title(lang.legacy("bedrock.edit.title"))
             .label(lang.legacy("bedrock.edit.label"))
-            .toggle("Freeze shop (block trades)", shop.frozen)
-            .toggle("Allow hopper input", shop.hopperAllowIn)
-            .toggle("Allow hopper output", shop.hopperAllowOut)
+            .toggle(lang.legacy("bedrock.edit.toggle_freeze"), shop.frozen)
+            .toggle(lang.legacy("bedrock.edit.toggle_hopper_in"), shop.hopperAllowIn)
+            .toggle(lang.legacy("bedrock.edit.toggle_hopper_out"), shop.hopperAllowOut)
             .validResultHandler { response: CustomFormResponse ->
                 val frozen = response.asToggle(1) // index 1 = first toggle
                 val hopperIn = response.asToggle(2)

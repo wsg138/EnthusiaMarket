@@ -7,6 +7,9 @@
 
 prefix: "<dark_gray>[<gold>EnthusiaMarket</gold>]</dark_gray> "
 
+common:
+  unknown_player: "Unknown"
+
 admin:
   import:
     result: "<prefix>import: created=<green><created></green> skipped=<yellow><skipped></yellow> <gray>(world=<world>, prefix=<region_prefix>)"
@@ -27,7 +30,6 @@ admin:
     startall:
       result: "<prefix><green>mass auction:</green> created=<green><created></green> skipped=<yellow><skipped></yellow> errors=<red><errors></red>"
       failure: "<prefix><red>mass auction failed: <reason>"
-      unexpected: "<prefix><red>mass auction returned unexpected result"
   bid:
     success: "<prefix><green>Bid placed:</green> <gold><amount></gold> <gray>on auction</gray> <id>"
     failure: "<prefix><red>Bid rejected: <reason>"
@@ -142,6 +144,9 @@ bedrock:
   edit:
     title: "Shop Settings"
     label: "<dark_gray>Shop Settings"
+    toggle_freeze: "Freeze shop (block trades)"
+    toggle_hopper_in: "Allow hopper input"
+    toggle_hopper_out: "Allow hopper output"
 
 container_sign:
   stock_line: "<gray>Stock: <trades>"

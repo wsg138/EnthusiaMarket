@@ -167,7 +167,8 @@ class AuctionBrowserMenu(
         val remaining = Duration.between(now, auction.endAt)
 
         val bidLine: Component = if (auction.highBid != null) {
-            val bidderName = Bukkit.getOfflinePlayer(auction.highBid!!.bidder).name ?: "?"
+            val bidderName = Bukkit.getOfflinePlayer(auction.highBid!!.bidder).name
+                ?: lang.raw("common.unknown_player")
             lang.msg(
                 "gui.auctions.entry_lore_current_with_bidder",
                 "amount" to currentBid,

@@ -27,20 +27,26 @@ class TrustManageMenu(
 ) : Menu {
 
     override fun open(player: Player) {
+        // Compute a stable inventory height and reserve the bottom row exclusively
+        // for the add button so a large trust list never overwrites a member head.
         val rows = 3 + ((shop.trusted.size + 8) / 9).coerceAtMost(4)
-        val gui = ChestGui(rows.coerceAtMost(6), ComponentHolder.of(lang.msg("gui.trust.title")))
+        val displayRows = rows.coerceAtMost(6)
+        val controlRowY = displayRows - 1
+        val gui = ChestGui(displayRows, ComponentHolder.of(lang.msg("gui.trust.title")))
 
-        val pane = StaticPane(9, rows.coerceAtMost(6))
+        val pane = StaticPane(9, displayRows)
         var slot = 0
 
-        val maxEntries = minOf(shop.trusted.size, rows * 9 - 9)
+        // Member heads occupy every slot ABOVE the reserved controls row.
+        val maxEntries = minOf(shop.trusted.size, controlRowY * 9)
         val entries = shop.trusted.take(maxEntries)
 
         for (trustedUuid in entries) {
             val head = ItemStack(Material.PLAYER_HEAD)
             val meta = head.itemMeta as? SkullMeta
             meta?.setOwningPlayer(Bukkit.getOfflinePlayer(trustedUuid))
-            val name = Bukkit.getOfflinePlayer(trustedUuid).name ?: "Unknown"
+            val name = Bukkit.getOfflinePlayer(trustedUuid).name
+                ?: lang.raw("common.unknown_player")
             meta?.displayName(lang.msg("gui.trust.member_name", "name" to name))
             meta?.lore(listOf(
                 lang.msg("gui.trust.member_lore_uuid", "uuid" to trustedUuid),
@@ -68,7 +74,7 @@ class TrustManageMenu(
         pane.addItem(GuiItem(addStack) { event ->
             event.isCancelled = true
             player.sendMessage(lang.msg("shop.trust.open_chat_prompt"))
-        }, 4, rows.coerceAtMost(6) - 2)
+        }, 4, controlRowY)
 
         gui.addPane(pane)
         gui.show(player)
