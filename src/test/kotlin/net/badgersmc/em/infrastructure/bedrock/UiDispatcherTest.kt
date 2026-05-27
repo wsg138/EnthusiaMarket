@@ -60,13 +60,13 @@ class UiDispatcherTest {
     @Test
     fun `isBedrockPlayer returns false when Floodgate is absent`() {
         // Graceful degradation: no FloodgateApi on classpath → false
-        val dispatcher = UiDispatcher()
+        val dispatcher = UiDispatcher(mockk(relaxed = true))
         assertFalse(dispatcher.isBedrockPlayer(testUuid))
     }
 
     @Test
     fun `dispatch does not throw for Java player`() {
-        val dispatcher = UiDispatcher()
+        val dispatcher = UiDispatcher(mockk(relaxed = true))
         val player = mockk<Player>(relaxed = true) {
             every { uniqueId } returns javaUuid
         }
@@ -77,7 +77,7 @@ class UiDispatcherTest {
 
     @Test
     fun `dispatch does not throw for any player type`() {
-        val dispatcher = UiDispatcher()
+        val dispatcher = UiDispatcher(mockk(relaxed = true))
         val player = mockk<Player>(relaxed = true) {
             every { uniqueId } returns testUuid
         }
@@ -88,7 +88,7 @@ class UiDispatcherTest {
 
     @Test
     fun `dispatch sends fallback message for Bedrock player when Cumulus absent`() {
-        val dispatcher = object : UiDispatcher() {
+        val dispatcher = object : UiDispatcher(mockk(relaxed = true)) {
             override fun isBedrockPlayer(uuid: UUID): Boolean = true
         }
         val player = mockk<Player>(relaxed = true) {
@@ -104,7 +104,7 @@ class UiDispatcherTest {
 
     @Test
     fun `dispatch does not send message for Java player`() {
-        val dispatcher = UiDispatcher()
+        val dispatcher = UiDispatcher(mockk(relaxed = true))
         val player = mockk<Player>(relaxed = true) {
             every { uniqueId } returns javaUuid
         }
