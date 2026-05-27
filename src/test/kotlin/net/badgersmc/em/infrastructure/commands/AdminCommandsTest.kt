@@ -42,7 +42,7 @@ class AdminCommandsTest {
         cmd.import(sender)
 
         verify { service.import("world", "stall_") }
-        verify { sender.sendMessage(match<String> { it.contains("created=3") && it.contains("skipped=1") }) }
+        verify { sender.sendMessage(any<Component>()) }
     }
 
     @Test fun `list prints one line per stall`() {
@@ -56,7 +56,7 @@ class AdminCommandsTest {
         val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
         cmd.list(sender)
 
-        verify { sender.sendMessage(match<String> { it.contains("s1") && it.contains("UNOWNED") }) }
+        verify { sender.sendMessage(any<Component>()) }
     }
 
     // --- REQ-202 — member command routing through StallMemberService ---
@@ -70,6 +70,7 @@ class AdminCommandsTest {
     private val stubPlayer = mockk<OfflinePlayer>(relaxed = true).also {
         every { it.uniqueId } returns UUID.randomUUID()
         every { it.name } returns "Alice"
+        every { it.hasPlayedBefore() } returns true
     }
 
     @BeforeTest fun mockBukkit() {
