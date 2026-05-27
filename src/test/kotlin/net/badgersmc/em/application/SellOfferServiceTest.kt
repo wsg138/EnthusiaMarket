@@ -72,6 +72,7 @@ class SellOfferServiceTest {
         val auctions = mockk<AuctionRepository>(relaxed = true)
         every { stalls.findById(stallId) } returns ownedStall()
         every { auctions.findOpenByStall(stallId) } returns null
+        every { offers.findByStall(any()) } returns null
 
         val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
         val r = svc.create(stallId, seller, price = 500L)
@@ -100,6 +101,7 @@ class SellOfferServiceTest {
         val auctions = mockk<AuctionRepository>(relaxed = true)
         every { stalls.findById(stallId) } returns ownedStall()
         every { auctions.findOpenByStall(stallId) } returns mockk(relaxed = true)
+        every { offers.findByStall(any()) } returns null
 
         val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
         val r = svc.create(stallId, seller, price = 500L)
