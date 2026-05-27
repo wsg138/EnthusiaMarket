@@ -64,7 +64,8 @@ class AuctionLifecycleService(
     private val auctionRepository: AuctionRepository,
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,
-    private val config: EnthusiaMarketConfig
+    private val config: EnthusiaMarketConfig,
+    private val limits: LimitResolutionService,
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
@@ -309,6 +310,39 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
+        // REQ-212 — limit gate. Runs BEFORE economy.withdraw so a winner
+        // at their cap is never charged. Region kind is currently a
+        // placeholder: Stall doesn't carry a kind field yet (lands with
+        // TDD-220), and the per-kind cap collapses to a no-op until then
+        // — the total cap still applies and is the typical ARM use case.
+        val winnerOwnedCount = stallRepository.all().count {
+            it.owner.type == net.badgersmc.em.domain.stall.OwnerType.SOLO &&
+                it.owner.id == bid.bidder.toString()
+        }
+        val decision = limits.canClaim(
+            player = bid.bidder,
+            kind = DEFAULT_KIND,
+            currentTotal = winnerOwnedCount,
+            currentForKind = winnerOwnedCount,
+        )
+        if (decision is LimitResolutionService.ClaimDecision.Rejected) {
+            // Treat as no-bid: revert system-mass-auctioned stall to
+            // UNOWNED, close the auction so it stops appearing in
+            // findExpired(). Winner is never charged. A future event
+            // hook can notify the winner; for now, log + drop.
+            logger.info(
+                "Auction ${auction.id} winner ${bid.bidder} over limit " +
+                    "($decision); reverting without payment."
+            )
+            if (stall.state == StallState.AUCTIONING &&
+                stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            ) {
+                stallRepository.save(stall.copy(state = StallState.UNOWNED))
+            }
+            auctionRepository.save(auction.close())
+            return
+        }
+
         // 0. Withdraw from winner FIRST (before any state changes)
         if (!economy.withdraw(bid.bidder, bid.amount)) {
             throw IllegalStateException("Failed to withdraw winning bid from ${bid.bidder}")
@@ -352,5 +386,12 @@ class AuctionLifecycleService(
         } else {
             null
         }
+    }
+
+    private companion object {
+        // Placeholder region kind for limit checks until Stall gains
+        // an explicit kind field (TDD-220). Per-kind caps under this
+        // name resolve via config.limits.<group>.regionkinds.default.
+        const val DEFAULT_KIND = "default"
     }
 }

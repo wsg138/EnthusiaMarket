@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import io.mockk.confirmVerified
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -78,7 +79,8 @@ class AuctionLifecycleServiceTest {
         val auctionRepo: AuctionRepository,
         val stallRepo: StallRepository,
         val economy: EconomyProvider,
-        val config: EnthusiaMarketConfig
+        val config: EnthusiaMarketConfig,
+        val limits: LimitResolutionService,
     )
 
     private fun buildService(
@@ -87,7 +89,9 @@ class AuctionLifecycleServiceTest {
         openAuctionByStall: Auction? = null,
         expiredAuctions: List<Auction> = emptyList(),
         economyWithdrawOk: Boolean = true,
-        economyDepositOk: Boolean = true
+        economyDepositOk: Boolean = true,
+        ownedByWinner: List<Stall> = emptyList(),
+        claimDecision: LimitResolutionService.ClaimDecision = LimitResolutionService.ClaimDecision.Allowed,
     ): ServiceWithMocks {
         val auctionRepo = mockk<AuctionRepository>(relaxUnitFun = true)
         every { auctionRepo.findById(auctionId) } returns auction
@@ -96,6 +100,7 @@ class AuctionLifecycleServiceTest {
 
         val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
         every { stallRepo.findById(stallId) } returns stall
+        every { stallRepo.all() } returns ownedByWinner + listOf(stall)
 
         val economy = mockk<EconomyProvider>()
         every { economy.withdraw(any(), any()) } returns economyWithdrawOk
@@ -103,12 +108,16 @@ class AuctionLifecycleServiceTest {
 
         val cfg = config()
 
+        val limits = mockk<LimitResolutionService>(relaxed = true)
+        every { limits.canClaim(any(), any(), any(), any()) } returns claimDecision
+
         return ServiceWithMocks(
-            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg),
+            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, limits),
             auctionRepo = auctionRepo,
             stallRepo = stallRepo,
             economy = economy,
-            config = cfg
+            config = cfg,
+            limits = limits,
         )
     }
 
@@ -138,7 +147,7 @@ class AuctionLifecycleServiceTest {
         val auctionRepo = mockk<AuctionRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg)
+        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed })
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
 
@@ -176,7 +185,7 @@ class AuctionLifecycleServiceTest {
         val stallRepo = mockk<StallRepository>()
         every { stallRepo.findById(stallId) } returns sampleStall
         val economy = mockk<EconomyProvider>()
-        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg)
+        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed })
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
 
@@ -226,7 +235,7 @@ class AuctionLifecycleServiceTest {
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg)
+        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed })
 
         val result = svc.placeBid(auctionId, otherPlayer, 200L)
 
@@ -284,7 +293,7 @@ class AuctionLifecycleServiceTest {
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg)
+        val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed })
 
         val result = svc.cancelAuction(auctionId, playerUuid)
 
@@ -366,5 +375,78 @@ class AuctionLifecycleServiceTest {
         verify { svc.auctionRepo.save(match { auction ->
             auction.state == AuctionState.CLOSED
         }) }
+    }
+
+    // ===== REQ-212 — limit enforcement on stall claim =====
+
+    @Test
+    fun `settleExpired rejects winner over their total cap, closes auction, never charges`() {
+        val winner = otherPlayer
+        val winningBid = Bid(amount = 500L, bidder = winner, placedAt = now)
+        val expired = sampleAuction.copy(
+            state = AuctionState.OPEN,
+            highBid = winningBid,
+            endAt = now.minusSeconds(60)
+        )
+        val systemAuctionedStall = sampleStall.copy(
+            state = StallState.AUCTIONING,
+            owner = OwnerRef.unowned(),
+        )
+
+        val svc = buildService(
+            stall = systemAuctionedStall,
+            expiredAuctions = listOf(expired),
+            claimDecision = LimitResolutionService.ClaimDecision.Rejected.TotalCapReached(3),
+        )
+
+        svc.service.settleExpired()
+
+        // Limit was consulted before any economy or persistence calls.
+        verify { svc.limits.canClaim(winner, any(), any(), any()) }
+        // Winner was NOT charged.
+        verify(exactly = 0) { svc.economy.withdraw(winner, any()) }
+        // Seller was NOT paid.
+        verify(exactly = 0) { svc.economy.deposit(any(), any()) }
+        // Stall ownership NOT mutated to the winner — it reverts to UNOWNED
+        // (system-mass-auction with no real owner).
+        verify(exactly = 0) {
+            svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) })
+        }
+        verify {
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED && it.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            })
+        }
+        // Auction was still closed so it stops appearing in findExpired().
+        verify {
+            svc.auctionRepo.save(match { it.state == AuctionState.CLOSED })
+        }
+    }
+
+    @Test
+    fun `settleExpired proceeds with normal settlement when limit decision is Allowed`() {
+        // Counterpart to the rejection case — sanity-checks that the limit
+        // gate doesn't accidentally block normal settlements when the
+        // decision is Allowed (default in buildService).
+        val winner = otherPlayer
+        val winningBid = Bid(amount = 500L, bidder = winner, placedAt = now)
+        val expired = sampleAuction.copy(
+            state = AuctionState.OPEN,
+            highBid = winningBid,
+            endAt = now.minusSeconds(60)
+        )
+
+        val svc = buildService(
+            stall = sampleStall,
+            expiredAuctions = listOf(expired),
+        )
+
+        svc.service.settleExpired()
+
+        verify { svc.limits.canClaim(winner, any(), any(), any()) }
+        verify { svc.economy.withdraw(winner, 500L) }
+        verify {
+            svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) && it.state == StallState.OWNED })
+        }
     }
 }
