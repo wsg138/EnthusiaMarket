@@ -71,7 +71,7 @@ class ShopDeletedEventTest {
 
         val block = mockContainerBlock()
         val breakEvent = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         // ── When: the container is broken ──
         listener.onBlockBreak(breakEvent)

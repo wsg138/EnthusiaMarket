@@ -108,8 +108,8 @@ class ShopCreateListenerTest {
         shopRepo: ShopRepository = mockk(relaxed = true),
         stall: Stall? = sampleStall()
     ): ShopCreateListener {
-        val listener = ShopCreateListener(stallRepo, shopRepo)
-        return object : ShopCreateListener(stallRepo, shopRepo) {
+        val listener = ShopCreateListener(stallRepo, shopRepo, mockk(relaxed = true))
+        return object : ShopCreateListener(stallRepo, shopRepo, mockk(relaxed = true)) {
             override fun findStallAt(location: Location): Stall? = stall
             override fun canManageStall(stall: Stall, player: Player): Boolean = true
         }
@@ -303,7 +303,7 @@ class ShopCreateListenerTest {
 
         val stall = sampleStall()
         val stallRepo = mockk<StallRepository>(relaxed = true)
-        val listener = object : ShopCreateListener(stallRepo, shopRepo) {
+        val listener = object : ShopCreateListener(stallRepo, shopRepo, mockk(relaxed = true)) {
             override fun findStallAt(location: Location): Stall? = stall
             override fun canManageStall(stall: Stall, player: Player): Boolean = false
         }

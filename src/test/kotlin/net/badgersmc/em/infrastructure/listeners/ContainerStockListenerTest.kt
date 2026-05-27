@@ -148,7 +148,7 @@ class ContainerStockListenerTest {
             view, InventoryType.SlotType.CONTAINER, 0,
             ClickType.LEFT, InventoryAction.PICKUP_ALL
         )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onClick(event)
 
         verify { sign.setLine(3, "§7Stock: 10") }
@@ -166,7 +166,7 @@ class ContainerStockListenerTest {
             view, InventoryType.SlotType.CONTAINER, 0,
             ClickType.LEFT, InventoryAction.PICKUP_ALL
         )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onClick(event)
         // Should not throw
     }
@@ -195,7 +195,7 @@ class ContainerStockListenerTest {
             false,
             mapOf(0 to mockk<ItemStack>(relaxed = true))
         )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onDrag(event)
 
         verify { sign.setLine(3, "§7Stock: 10") }
@@ -216,7 +216,7 @@ class ContainerStockListenerTest {
             false,
             mapOf(0 to mockk<ItemStack>(relaxed = true))
         )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onDrag(event)
         // Should not throw
     }
@@ -231,7 +231,7 @@ class ContainerStockListenerTest {
             view, InventoryType.SlotType.CONTAINER, 0,
             ClickType.LEFT, InventoryAction.PICKUP_ALL
         )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onClick(event)
         // Should not call findByContainer
         verify(exactly = 0) { repo.findByContainer(any(), any(), any(), any()) }
@@ -256,7 +256,7 @@ class ContainerStockListenerTest {
             view, InventoryType.SlotType.CONTAINER, 0,
             ClickType.LEFT, InventoryAction.PICKUP_ALL
         )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
         listener.onClick(event)
 
         verify { sign.setLine(3, "§7Stock: 0") }
@@ -291,7 +291,7 @@ class ContainerStockListenerTest {
                 view, InventoryType.SlotType.CONTAINER, 0,
                 ClickType.LEFT, InventoryAction.PICKUP_ALL
             )
-            val listener = ContainerStockListener(repo, mockk(relaxed = true))
+            val listener = ContainerStockListener(repo, mockk(relaxed = true), mockk(relaxed = true))
 
             // ── When: the listener processes the inventory click ──
             listener.onClick(event)

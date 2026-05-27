@@ -95,7 +95,7 @@ class BlockProtectionListenerTest {
 
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -116,7 +116,7 @@ class BlockProtectionListenerTest {
 
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -138,7 +138,7 @@ class BlockProtectionListenerTest {
 
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -162,7 +162,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer(x = 50, y = 64, z = 60)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -185,7 +185,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer(x = 50, y = 64, z = 60)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -205,7 +205,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer()
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -220,7 +220,7 @@ class BlockProtectionListenerTest {
         // block.state returns null by default from relaxed mockk
 
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -237,7 +237,7 @@ class BlockProtectionListenerTest {
         val sign = mockk<Sign>(relaxed = true)
         val block = mockBlock(sign, x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 

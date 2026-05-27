@@ -87,7 +87,7 @@ class ShopCreatedEventTest {
             rentTerms = RentTerms.formula(0.01)
         )
 
-        val listener = object : ShopCreateListener(stallRepo, shopRepo) {
+        val listener = object : ShopCreateListener(stallRepo, shopRepo, mockk(relaxed = true)) {
             override fun findStallAt(location: Location): Stall? = stall
             override fun canManageStall(stall: Stall, player: Player): Boolean = true
         }
