@@ -40,6 +40,8 @@ class StallMemberService(
         } catch (e: IllegalStateException) {
             return Result.Rejected(e.message ?: "member cap reached")
         }
+        // Short-circuit when the roster didn't change (already a member, owner)
+        if (updated === stall) return Result.Success(stall)
         regionMembers.addMember(stall.world, stall.regionId, target)
         stalls.save(updated)
         return Result.Success(updated)
@@ -49,6 +51,8 @@ class StallMemberService(
         val stall = stalls.findById(stallId) ?: return Result.NotFound
         if (!stall.canManage(actor, guildProvider)) return Result.NotAuthorised
         val updated = stall.removeMember(target)
+        // Short-circuit when the roster didn't change (not a member)
+        if (updated === stall) return Result.Success(stall)
         regionMembers.removeMember(stall.world, stall.regionId, target)
         stalls.save(updated)
         return Result.Success(updated)
