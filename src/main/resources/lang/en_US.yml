@@ -35,6 +35,18 @@ admin:
     failure: "<prefix><red>Bid rejected: <reason>"
     not_found: "<prefix><red>Auction not found"
 
+stall:
+  members:
+    added: "<prefix><green>Added</green> <player> <gray>as a member of</gray> <aqua><stall>"
+    removed: "<prefix><yellow>Removed</yellow> <player> <gray>from</gray> <aqua><stall>"
+    list_header: "<prefix><gray>Members of</gray> <aqua><stall></aqua> <gray>(</gray><count><gray>):"
+    list_entry: "  <white>- <player>"
+    list_empty: "<prefix><gray>No members on</gray> <aqua><stall>"
+    not_found: "<prefix><red>Stall not found:</red> <stall>"
+    not_authorised: "<prefix><red>You do not have permission to manage</red> <stall>"
+    rejected: "<prefix><red>Cannot add member: <reason>"
+    unknown_player: "<prefix><red>Unknown player:</red> <player>"
+
 command:
   players_only: "<prefix><red>This command must be run by a player"
 

@@ -12,8 +12,41 @@ data class Stall(
     val owner: OwnerRef,
     val ownerSince: Instant?,
     val winningBid: Long,
-    val rentTerms: RentTerms
+    val rentTerms: RentTerms,
+    /**
+     * Co-owners delegated build/interact rights inside the stall region.
+     * Distinct from [owner]; new stalls start with an empty roster.
+     * See REQ-200.
+     */
+    val members: Set<UUID> = emptySet(),
+    /**
+     * Per-stall ceiling on [members] size. `-1` means unlimited
+     * (default); zero or positive values are enforced on [addMember].
+     * See REQ-201.
+     */
+    val maxMembers: Int = -1,
 ) {
+    /**
+     * Add [playerUuid] to the member roster. Idempotent — re-adding an
+     * existing member is a no-op. Rejects with [IllegalStateException]
+     * when the roster is at its configured cap (REQ-201). The cap only
+     * applies to genuinely new entries; re-adding an existing member at
+     * cap still succeeds because no slot is consumed.
+     */
+    fun addMember(playerUuid: UUID): Stall {
+        if (playerUuid in members) return this
+        check(maxMembers < 0 || members.size < maxMembers) {
+            "Stall ${id.value} is at its member cap ($maxMembers)"
+        }
+        return copy(members = members + playerUuid)
+    }
+
+    /** Remove [playerUuid] from the roster. No-op when not a member. */
+    fun removeMember(playerUuid: UUID): Stall {
+        if (playerUuid !in members) return this
+        return copy(members = members - playerUuid)
+    }
+
     fun awardTo(newOwner: OwnerRef, winningBid: Long, at: Instant): Stall {
         require(newOwner.type != OwnerType.NONE) { "Cannot award stall to nobody" }
         require(winningBid > 0) { "Winning bid must be positive" }

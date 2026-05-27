@@ -4,6 +4,7 @@ import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
 import net.badgersmc.em.application.MassAuctionResult
+import net.badgersmc.em.application.StallMemberService
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
@@ -33,7 +34,8 @@ class AdminCommands(
     private val auctions: AuctionRepository,
     private val plugin: JavaPlugin,
     private val lang: LangService,
-    private val nexusScheduler: NexusScheduler
+    private val nexusScheduler: NexusScheduler,
+    private val stallMembers: StallMemberService,
 ) {
     @Subcommand("import")
     @Permission("enthusiamarket.admin.import")
@@ -167,6 +169,87 @@ class AdminCommands(
             is AuctionResult.NotFound -> lang.msg("admin.auction.cancel.not_found")
         }
         sender.sendMessage(component)
+    }
+
+    @Subcommand("stall members add")
+    @Permission("enthusiamarket.stall.members")
+    fun membersAdd(
+        @Context sender: Player,
+        @Arg("stall") stall: String,
+        @Arg("player") player: String,
+    ) {
+        val targetUuid = org.bukkit.Bukkit.getOfflinePlayer(player).uniqueId
+        renderMemberMutation(sender, stall, "added") {
+            stallMembers.addMember(StallId(stall), sender.uniqueId, targetUuid) to targetUuid
+        }
+    }
+
+    @Subcommand("stall members remove")
+    @Permission("enthusiamarket.stall.members")
+    fun membersRemove(
+        @Context sender: Player,
+        @Arg("stall") stall: String,
+        @Arg("player") player: String,
+    ) {
+        val targetUuid = org.bukkit.Bukkit.getOfflinePlayer(player).uniqueId
+        renderMemberMutation(sender, stall, "removed") {
+            stallMembers.removeMember(StallId(stall), sender.uniqueId, targetUuid) to targetUuid
+        }
+    }
+
+    @Subcommand("stall members list")
+    @Permission("enthusiamarket.stall.members")
+    fun membersList(
+        @Context sender: Player,
+        @Arg("stall") stall: String,
+    ) {
+        when (val r = stallMembers.listMembers(StallId(stall), sender.uniqueId)) {
+            is StallMemberService.Result.NotFound ->
+                sender.sendMessage(lang.msg("stall.members.not_found", "stall" to stall))
+            is StallMemberService.Result.NotAuthorised ->
+                sender.sendMessage(lang.msg("stall.members.not_authorised", "stall" to stall))
+            is StallMemberService.Result.Rejected ->
+                sender.sendMessage(lang.msg("stall.members.rejected", "reason" to r.reason))
+            is StallMemberService.Result.Success -> {
+                val members = r.stall.members
+                if (members.isEmpty()) {
+                    sender.sendMessage(lang.msg("stall.members.list_empty", "stall" to stall))
+                } else {
+                    sender.sendMessage(
+                        lang.msg(
+                            "stall.members.list_header",
+                            "stall" to stall,
+                            "count" to members.size,
+                        )
+                    )
+                    for (uuid in members) {
+                        val name = org.bukkit.Bukkit.getOfflinePlayer(uuid).name ?: uuid.toString()
+                        sender.sendMessage(lang.msg("stall.members.list_entry", "player" to name))
+                    }
+                }
+            }
+        }
+    }
+
+    private inline fun renderMemberMutation(
+        sender: Player,
+        stall: String,
+        successKey: String,
+        op: () -> Pair<StallMemberService.Result, UUID>,
+    ) {
+        val (result, targetUuid) = op()
+        val targetName = org.bukkit.Bukkit.getOfflinePlayer(targetUuid).name ?: targetUuid.toString()
+        val msg = when (result) {
+            is StallMemberService.Result.Success ->
+                lang.msg("stall.members.$successKey", "player" to targetName, "stall" to stall)
+            is StallMemberService.Result.NotFound ->
+                lang.msg("stall.members.not_found", "stall" to stall)
+            is StallMemberService.Result.NotAuthorised ->
+                lang.msg("stall.members.not_authorised", "stall" to stall)
+            is StallMemberService.Result.Rejected ->
+                lang.msg("stall.members.rejected", "reason" to result.reason)
+        }
+        sender.sendMessage(msg)
     }
 
     /** Extract sender UUID, preferring Player sender. */
