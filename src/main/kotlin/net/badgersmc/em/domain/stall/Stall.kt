@@ -35,6 +35,12 @@ data class Stall(
      */
     fun addMember(playerUuid: UUID): Stall {
         if (playerUuid in members) return this
+        // Owner cannot be added to the co-owner roster — they already have
+        // full authority and are distinct from members (REQ-200).
+        if (owner.type == OwnerType.SOLO) {
+            val ownerUuid = runCatching { UUID.fromString(owner.id) }.getOrNull()
+            if (ownerUuid == playerUuid) return this
+        }
         check(maxMembers < 0 || members.size < maxMembers) {
             "Stall ${id.value} is at its member cap ($maxMembers)"
         }

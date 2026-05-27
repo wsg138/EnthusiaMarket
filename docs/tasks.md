@@ -386,9 +386,9 @@ References: REQ-024 through REQ-027
   Description: `AuctionBrowserMenu` (IFramework ChestGui, 6 rows). Top 5 rows = `PaginatedPane` of every `auctions.allOpen()` sorted by current `SortMode`. Bottom row = prev / sort cycle / page indicator / next / close. `BukkitTask` re-renders contents every 20 ticks while `player.openInventory.topInventory == gui.inventory`; cancels on close. Sort modes: HIGHEST_BID, LOWEST_BID, ENDING_SOON, ENDING_LATEST. `/em auctions` subcommand opens menu (permission `enthusiamarket.auction.list`).
   Evidence: `src/main/kotlin/net/badgersmc/em/interaction/gui/AuctionBrowserMenu.kt`, `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt:auctionsBrowse`
 
-## Phase 5 — ARM-inspired features (planned, no code yet)
+## Phase 5 — ARM-inspired features (in progress)
 
-### TDD tasks
+### Completed tasks
 
 - [x] **TDD-200** — Stall member roster domain model
   References: REQ-200, REQ-201
@@ -401,6 +401,8 @@ References: REQ-024 through REQ-027
   Tag: TDD
   Description: `/em stall members add|remove|list <stall> [player]` in AdminCommands (player-callable on own stalls). On mutation, sync to WorldGuard region's member set via a new `RegionMemberSync` infrastructure port. Failing test: command rejected for non-owner; accepted for owner; WG sync invoked.
   Evidence: docs/requirements.md REQ-202 (member commands sync to WG + persist), REQ-203 (member grants WG build/interact via region membership); src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvider.kt (WG adapter pattern: WorldGuard.getInstance().platform.regionContainer + BukkitAdapter.adapt(world)); src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt addMember/removeMember from TDD-200; com.sk89q.worldguard.protection.regions.ProtectedRegion getMembers; com.sk89q.worldguard.domains.DefaultDomain addPlayer/removePlayer; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt (existing @Subcommand pattern); src/test/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommandsTest.kt (MockK ctor-injection pattern); io.mockk.{mockk,every,verify,confirmVerified}.
+
+### Pending tasks
 
 - [ ] **TDD-210** — Limit group config + resolution
   References: REQ-210, REQ-211, REQ-213

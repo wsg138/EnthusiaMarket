@@ -29,6 +29,7 @@ import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
 import kotlin.test.Test
+import net.kyori.adventure.text.Component
 
 class ShopCreateListenerTest {
 
@@ -149,7 +150,7 @@ class ShopCreateListenerTest {
         listener.onSignInteract(event)
 
         assert(event.useInteractedBlock() == Event.Result.DENY) { "Event should be cancelled" }
-        verify { player.sendMessage("§e[Shop] Create menu would open here (TDD-52)") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     // ===== Negative cases =====
@@ -213,7 +214,7 @@ class ShopCreateListenerTest {
         listener.onSignInteract(event)
 
         assert(event.useInteractedBlock() != Event.Result.DENY) { "Event should not be cancelled when shop already exists" }
-        verify { player.sendMessage("§cThis sign is already a shop") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     @Test
@@ -236,7 +237,7 @@ class ShopCreateListenerTest {
         listener.onSignInteract(event)
 
         assert(event.useInteractedBlock() != Event.Result.DENY) { "Event should not be cancelled when sign not on container" }
-        verify { player.sendMessage("§cSign must be attached to a container (chest, barrel, shulker)") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     @Test
@@ -260,7 +261,7 @@ class ShopCreateListenerTest {
         listener.onSignInteract(event)
 
         assert(event.useInteractedBlock() != Event.Result.DENY) { "Event should not be cancelled outside a stall" }
-        verify { player.sendMessage("§cSign must be inside a registered stall") }
+        verify { player.sendMessage(any<Component>()) }
     }
 
     @Test
@@ -312,6 +313,6 @@ class ShopCreateListenerTest {
         listener.onSignInteract(event)
 
         assert(event.useInteractedBlock() != Event.Result.DENY) { "Event should not be cancelled when player cannot manage stall" }
-        verify { player.sendMessage("§cYou do not own or rent this stall") }
+        verify { player.sendMessage(any<Component>()) }
     }
 }

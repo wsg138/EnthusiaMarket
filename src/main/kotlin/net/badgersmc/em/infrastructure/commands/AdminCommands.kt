@@ -178,7 +178,12 @@ class AdminCommands(
         @Arg("stall") stall: String,
         @Arg("player") player: String,
     ) {
-        val targetUuid = org.bukkit.Bukkit.getOfflinePlayer(player).uniqueId
+        val offline = org.bukkit.Bukkit.getOfflinePlayer(player)
+        if (!offline.hasPlayedBefore()) {
+            sender.sendMessage(lang.msg("stall.members.unknown_player", "player" to player))
+            return
+        }
+        val targetUuid = offline.uniqueId
         renderMemberMutation(sender, stall, "added") {
             stallMembers.addMember(StallId(stall), sender.uniqueId, targetUuid) to targetUuid
         }
@@ -191,7 +196,12 @@ class AdminCommands(
         @Arg("stall") stall: String,
         @Arg("player") player: String,
     ) {
-        val targetUuid = org.bukkit.Bukkit.getOfflinePlayer(player).uniqueId
+        val offline = org.bukkit.Bukkit.getOfflinePlayer(player)
+        if (!offline.hasPlayedBefore()) {
+            sender.sendMessage(lang.msg("stall.members.unknown_player", "player" to player))
+            return
+        }
+        val targetUuid = offline.uniqueId
         renderMemberMutation(sender, stall, "removed") {
             stallMembers.removeMember(StallId(stall), sender.uniqueId, targetUuid) to targetUuid
         }
