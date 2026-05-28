@@ -14,28 +14,21 @@ import java.util.UUID
  * Real [GuildProvider] backed by the LumaGuilds API.
  *
  * Resolves LumaGuilds services lazily via Koin's [GlobalContext].
- * Optional constructor parameters allow direct injection of mock services in tests
- * without requiring a running Koin context.
  */
 @Component
-class LumaGuildsGuildProvider(
-    private val guildService: GuildService? = null,
-    private val memberService: MemberService? = null,
-    private val rankService: RankService? = null,
-    private val bankService: BankService? = null,
-) : GuildProvider {
+class LumaGuildsGuildProvider : GuildProvider {
 
     private val resolvedGuildService: GuildService by lazy {
-        guildService ?: GlobalContext.get().get()
+        GlobalContext.get().get()
     }
     private val resolvedMemberService: MemberService by lazy {
-        memberService ?: GlobalContext.get().get()
+        GlobalContext.get().get()
     }
     private val resolvedRankService: RankService by lazy {
-        rankService ?: GlobalContext.get().get()
+        GlobalContext.get().get()
     }
     private val resolvedBankService: BankService by lazy {
-        bankService ?: GlobalContext.get().get()
+        GlobalContext.get().get()
     }
 
     private val dissolveHandlers = mutableListOf<(String) -> Unit>()
