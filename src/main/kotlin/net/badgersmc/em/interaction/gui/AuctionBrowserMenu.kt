@@ -77,6 +77,11 @@ class AuctionBrowserMenu(
         const val ROWS = 6
         const val ITEMS_PER_PAGE = 45 // rows 0..4
         const val REFRESH_TICKS = 20L
+
+        // lang.msg() map key constants — extracted to avoid StringLiteralDuplication
+        private const val KEY_AMOUNT = "amount"
+        private const val KEY_STALL = "stall"
+        private const val KEY_ID = "id"
     }
 
     @Volatile
@@ -209,15 +214,15 @@ class AuctionBrowserMenu(
             val bidder = entry.bidderName ?: lang.raw("common.unknown_player")
             lang.msg(
                 "gui.auctions.entry_lore_current_with_bidder",
-                "amount" to currentBid,
+                KEY_AMOUNT to currentBid,
                 "bidder" to bidder
             )
         } else {
-            lang.msg("gui.auctions.entry_lore_current_no_bids", "amount" to currentBid)
+            lang.msg("gui.auctions.entry_lore_current_no_bids", KEY_AMOUNT to currentBid)
         }
 
         return itemStack(Material.EMERALD) {
-            name(lang.msg("gui.auctions.entry_name", "stall" to auction.stallId.value))
+            name(lang.msg("gui.auctions.entry_name", KEY_STALL to auction.stallId.value))
             lore(
                 lang.msg(
                     "gui.auctions.entry_lore_region",
@@ -225,9 +230,9 @@ class AuctionBrowserMenu(
                     "region" to (entry.stallRegion ?: "?")
                 ),
                 bidLine,
-                lang.msg("gui.auctions.entry_lore_starting", "amount" to auction.startingBid),
+                lang.msg("gui.auctions.entry_lore_starting", KEY_AMOUNT to auction.startingBid),
                 lang.msg("gui.auctions.entry_lore_time_left", "time" to formatRemaining(remaining)),
-                lang.msg("gui.auctions.entry_lore_id", "id" to auction.id.value)
+                lang.msg("gui.auctions.entry_lore_id", KEY_ID to auction.id.value)
             )
         }
     }
@@ -238,11 +243,11 @@ class AuctionBrowserMenu(
         val hours = d.toHours() % 24
         val minutes = d.toMinutes() % 60
         val seconds = d.seconds % 60
-        return buildString {
-            if (days > 0) append("${days}d ")
-            if (days > 0 || hours > 0) append("${hours}h ")
-            if (days > 0 || hours > 0 || minutes > 0) append("${minutes}m ")
-            append("${seconds}s")
-        }
+        val parts = mutableListOf<String>()
+        if (days > 0) parts.add("${days}d")
+        if (hours > 0) parts.add("${hours}h")
+        if (minutes > 0) parts.add("${minutes}m")
+        parts.add("${seconds}s")
+        return parts.joinToString(" ")
     }
 }

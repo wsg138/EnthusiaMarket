@@ -9,6 +9,7 @@ import net.badgersmc.em.domain.auction.Bid
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
@@ -153,42 +154,11 @@ class AuctionLifecycleService(
         var errors = 0
 
         for (stall in candidates) {
-            try {
-                if (auctionRepository.findOpenByStall(stall.id) != null) {
-                    skipped++
-                    continue
-                }
-                val auction = Auction(
-                    id = AuctionId(UUID.randomUUID().toString()),
-                    stallId = stall.id,
-                    state = AuctionState.OPEN,
-                    startAt = now,
-                    endAt = endAt,
-                    startingBid = startingBid,
-                    highBid = null,
-                    antiSnipeWindow = antiSnipe
-                )
-                // Persist auction first, then transition stall. If the stall save
-                // fails we compensate by closing the just-created auction so we
-                // never leave an OPEN auction pointing at a non-AUCTIONING stall.
-                auctionRepository.create(auction)
-                try {
-                    stallRepository.save(stall.copy(state = StallState.AUCTIONING))
-                } catch (stallErr: Exception) {
-                    try {
-                        auctionRepository.save(auction.close())
-                    } catch (compErr: Exception) {
-                        logger.warning(
-                            "startMassAuction: failed to compensate auction ${auction.id} " +
-                                "after stall save failed for ${stall.id}: ${compErr.message}"
-                        )
-                    }
-                    throw stallErr
-                }
-                created.add(auction.id)
-            } catch (e: Exception) {
-                logger.warning("startMassAuction: stall ${stall.id} failed — ${e.message}")
-                errors++
+            val result = startAuctionForStall(stall, now, endAt, antiSnipe, startingBid)
+            when {
+                result == null -> skipped++
+                result.first != null -> created.add(result.first)
+                else -> errors++
             }
         }
 
@@ -198,6 +168,57 @@ class AuctionLifecycleService(
             errors = errors,
             auctionIds = created
         )
+    }
+
+    /**
+     * Process a single stall within a mass auction. Returns:
+     * - `null` if the stall already has an open auction (skipped)
+     * - `Pair(auctionId, "created")` on success
+     * - `Pair(null, "error")` on failure
+     */
+    private fun startAuctionForStall(
+        stall: Stall,
+        now: Instant,
+        endAt: Instant,
+        antiSnipe: Duration,
+        startingBid: Long
+    ): Pair<AuctionId?, String>? {
+        try {
+            if (auctionRepository.findOpenByStall(stall.id) != null) {
+                return null // skipped
+            }
+            val auction = Auction(
+                id = AuctionId(UUID.randomUUID().toString()),
+                stallId = stall.id,
+                state = AuctionState.OPEN,
+                startAt = now,
+                endAt = endAt,
+                startingBid = startingBid,
+                highBid = null,
+                antiSnipeWindow = antiSnipe
+            )
+            // Persist auction first, then transition stall. If the stall save
+            // fails we compensate by closing the just-created auction so we
+            // never leave an OPEN auction pointing at a non-AUCTIONING stall.
+            auctionRepository.create(auction)
+            try {
+                stallRepository.save(stall.copy(state = StallState.AUCTIONING))
+            } catch (stallErr: RuntimeException) {
+                try {
+                    auctionRepository.save(auction.close())
+                } catch (compErr: RuntimeException) {
+                    logger.warning(
+                        "startAuctionForStall: failed to compensate auction ${auction.id} " +
+                            "after stall save failed for ${stall.id}: ${compErr.message}"
+                    )
+                }
+                throw stallErr
+            }
+            return Pair(auction.id, "created")
+        } catch (e: RuntimeException) {
+            logger.warning("startAuctionForStall: stall ${stall.id} failed — ${e.message}")
+            return Pair(null, "error")
+        }
     }
 
     private fun validateStartingBid(startingBid: Long): AuctionResult.Failure? {
