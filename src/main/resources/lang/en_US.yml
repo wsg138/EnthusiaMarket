@@ -88,6 +88,19 @@ stall:
     rejected: "<prefix><red>Cannot add member: <reason>"
     unknown_player: "<prefix><red>Unknown player:</red> <player>"
 
+sellback:
+  warn:
+    header: "<prefix><yellow>Sellback quote for</yellow> <aqua><stall></aqua><yellow>: refund <gold><refund></gold> (<periods> period(s) prepaid, today excluded). Confirm within <seconds>s."
+    wipe: "<gray>This will delete <yellow><shops></yellow> shop(s) bound to the stall."
+    schematic: "<gray>Schematic restore is pending TDD-270 — region geometry will NOT be reverted yet."
+    confirm: "<aqua>Run /em sellback confirm <stall></aqua> <gray>to proceed."
+  success: "<prefix><green>Stall</green> <aqua><stall></aqua> <green>released. Refunded</green> <gold><refund></gold> <green>and wiped</green> <yellow><shops></yellow> <green>shop(s)."
+  stall_not_found: "<prefix><red>Stall not found:</red> <stall>"
+  not_owned: "<prefix><red>Stall is not currently owned:</red> <stall>"
+  not_authorised: "<prefix><red>You do not own or have authority over</red> <aqua><stall>"
+  no_pending: "<prefix><gray>No pending sellback for</gray> <aqua><stall></aqua> <gray>— run /em sellback <stall> first."
+  rejected: "<prefix><red>Sellback failed: <reason>"
+
 offer:
   created: "<prefix><green>Offer listed:</green> <aqua><stall></aqua> <gray>for</gray> <gold><price>"
   cancelled: "<prefix><yellow>Offer cancelled on</yellow> <aqua><stall>"

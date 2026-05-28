@@ -6,6 +6,7 @@ import net.badgersmc.em.application.ImportStallsService
 import net.badgersmc.em.application.MassAuctionResult
 import net.badgersmc.em.application.SellOfferService
 import net.badgersmc.em.application.StallMemberService
+import net.badgersmc.em.application.StallSellbackService
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
@@ -38,7 +39,12 @@ class AdminCommands(
     private val nexusScheduler: NexusScheduler,
     private val stallMembers: StallMemberService,
     private val sellOffers: SellOfferService,
+    private val sellback: StallSellbackService,
 ) {
+    /** Pending `/em sellback` confirmations keyed on (player, stall). */
+    private val pendingSellbacks =
+        java.util.concurrent.ConcurrentHashMap<Pair<UUID, String>, java.time.Instant>()
+    private val sellbackConfirmWindow: java.time.Duration = java.time.Duration.ofSeconds(30)
     @Subcommand("import")
     @Permission("enthusiamarket.admin.import")
     fun import(@Context sender: CommandSender) {
@@ -345,6 +351,74 @@ class AdminCommands(
             is SellOfferService.Result.Created,
             is SellOfferService.Result.Cancelled ->
                 lang.msg("offer.rejected", "reason" to "unexpected")
+        }
+        sender.sendMessage(msg)
+    }
+
+    // ----- Sellback (voluntary relinquish + refund) -----
+
+    @Subcommand("sellback")
+    @Permission("enthusiamarket.stall.sellback")
+    fun sellback(
+        @Context sender: Player,
+        @Arg("stall") stall: String,
+    ) {
+        when (val r = sellback.quote(StallId(stall), sender.uniqueId)) {
+            is StallSellbackService.QuoteResult.NotFound ->
+                sender.sendMessage(lang.msg("sellback.stall_not_found", "stall" to stall))
+            is StallSellbackService.QuoteResult.NotOwned ->
+                sender.sendMessage(lang.msg("sellback.not_owned", "stall" to stall))
+            is StallSellbackService.QuoteResult.NotAuthorised ->
+                sender.sendMessage(lang.msg("sellback.not_authorised", "stall" to stall))
+            is StallSellbackService.QuoteResult.Ok -> {
+                pendingSellbacks[sender.uniqueId to stall] = java.time.Instant.now()
+                sender.sendMessage(lang.msg(
+                    "sellback.warn.header",
+                    "stall" to stall,
+                    "refund" to r.quote.refund,
+                    "periods" to r.quote.refundedPeriods,
+                    "shops" to r.quote.shopCount,
+                    "seconds" to sellbackConfirmWindow.seconds,
+                ))
+                sender.sendMessage(lang.msg("sellback.warn.wipe", "shops" to r.quote.shopCount))
+                sender.sendMessage(lang.msg("sellback.warn.schematic"))
+                sender.sendMessage(lang.msg("sellback.warn.confirm", "stall" to stall))
+            }
+        }
+    }
+
+    @Subcommand("sellback confirm")
+    @Permission("enthusiamarket.stall.sellback")
+    fun sellbackConfirm(
+        @Context sender: Player,
+        @Arg("stall") stall: String,
+    ) {
+        val key = sender.uniqueId to stall
+        val stagedAt = pendingSellbacks[key]
+        if (stagedAt == null ||
+            java.time.Duration.between(stagedAt, java.time.Instant.now()) > sellbackConfirmWindow
+        ) {
+            pendingSellbacks.remove(key)
+            sender.sendMessage(lang.msg("sellback.no_pending", "stall" to stall))
+            return
+        }
+        pendingSellbacks.remove(key)
+
+        val msg = when (val r = sellback.execute(StallId(stall), sender.uniqueId)) {
+            is StallSellbackService.ExecuteResult.Sold -> lang.msg(
+                "sellback.success",
+                "stall" to stall,
+                "refund" to r.refund,
+                "shops" to r.shopsWiped,
+            )
+            is StallSellbackService.ExecuteResult.NotFound ->
+                lang.msg("sellback.stall_not_found", "stall" to stall)
+            is StallSellbackService.ExecuteResult.NotOwned ->
+                lang.msg("sellback.not_owned", "stall" to stall)
+            is StallSellbackService.ExecuteResult.NotAuthorised ->
+                lang.msg("sellback.not_authorised", "stall" to stall)
+            is StallSellbackService.ExecuteResult.Rejected ->
+                lang.msg("sellback.rejected", "reason" to r.reason)
         }
         sender.sendMessage(msg)
     }
