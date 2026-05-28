@@ -88,6 +88,22 @@ open class EnthusiaMarket : JavaPlugin() {
             plugin = this
         )
 
+        // Phase 6: Force-instantiate purchase-sign listeners. The
+        // @PostConstruct register() pattern only fires when something
+        // resolves the bean; commands above pull most of the graph
+        // but the sign listeners aren't depended on by any command,
+        // so they'd otherwise stay un-instantiated and never register.
+        try {
+            ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignCreateListener::class)
+            ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignClickListener::class)
+            ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignBreakListener::class)
+            ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignRefreshListener::class)
+            logger.info("Purchase-sign listeners resolved + registered")
+        } catch (e: Exception) {
+            logger.severe("Failed to instantiate purchase-sign listeners: ${e.message}")
+            e.printStackTrace()
+        }
+
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }
 
