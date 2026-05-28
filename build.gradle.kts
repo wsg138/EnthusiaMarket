@@ -1,7 +1,12 @@
 plugins {
     kotlin("jvm") version "2.0.0"
     id("com.gradleup.shadow") version "8.3.6"
+    jacoco
     idea
+}
+
+jacoco {
+    toolVersion = "0.8.12"
 }
 
 group = "net.badgersmc.em"
@@ -98,7 +103,10 @@ kotlin {
 }
 
 tasks {
-    test { useJUnitPlatform() }
+    test {
+        useJUnitPlatform()
+        finalizedBy(tasks.jacocoTestReport)
+    }
     shadowJar {
         archiveClassifier.set("")
         relocate("net.badgersmc.nexus", "net.badgersmc.em.libs.nexus")
@@ -122,6 +130,14 @@ tasks {
             exclude(dependency("com.squareup.okio:okio-jvm:.*"))
             exclude(dependency("org.jetbrains.kotlinx:kotlinx-serialization-core:.*"))
             exclude(dependency("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:.*"))
+        }
+    }
+    jacocoTestReport {
+        dependsOn(tasks.test)
+        reports {
+            xml.required.set(true)
+            csv.required.set(false)
+            html.required.set(true)
         }
     }
     build { dependsOn(shadowJar) }

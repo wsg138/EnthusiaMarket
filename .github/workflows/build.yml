@@ -50,4 +50,10 @@ jobs:
       - name: Test and shadowJar
         env:
           LUMAGUILDS_JAR: ${{ steps.lg.outputs.jar }}
-        run: ./gradlew test shadowJar --no-daemon
+        run: ./gradlew test shadowJar jacocoTestReport --no-daemon
+
+      - name: Upload coverage to Codacy
+        env:
+          CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
+        run: bash <(curl -Ls https://coverage.codacy.com/get.sh) report
+        continue-on-error: true
