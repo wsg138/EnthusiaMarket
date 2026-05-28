@@ -107,7 +107,7 @@ class PurchaseSignRenderer(
      */
     private fun formatTimeLeft(target: Instant): String {
         val remaining = Duration.between(Instant.now(), target)
-        if (remaining.isZero || remaining.isNegative) return "overdue"
+        if (remaining.isZero || remaining.isNegative) return lang.msg("purchase_sign.time.overdue")
         val days = remaining.toDays()
         if (days > 0) return "${days}d"
         val hours = remaining.toHours()

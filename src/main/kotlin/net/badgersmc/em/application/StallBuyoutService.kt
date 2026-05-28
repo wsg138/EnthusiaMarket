@@ -55,7 +55,11 @@ class StallBuyoutService(
 
         // Reject on AUCTIONING — the one-shot initial auction is using the
         // stall right now; click-to-buy is for the post-auction lifecycle.
-        if (stall.state == StallState.AUCTIONING ||
+        if (stall.state in setOf(
+                StallState.AUCTIONING,
+                StallState.RE_AUCTIONING,
+                StallState.EMERGENCY_AUCTIONING,
+            ) ||
             auctions.findOpenByStall(stallId) != null
         ) {
             return Result.AuctionLive
@@ -79,7 +83,14 @@ class StallBuyoutService(
             // stall, clean it up so a follow-up click doesn't trip the
             // mutex check next door.
             if (offers.findByStall(stallId) != null) {
-                offers.delete(stallId)
+                try {
+                    offers.delete(stallId)
+                } catch (cleanupErr: Exception) {
+                    log.warning(
+                        "StallBuyoutService.buy: failed to cleanup lingering sell offer for " +
+                            "${stallId.value}. cause=${cleanupErr.message}"
+                    )
+                }
             }
             awarded
         } catch (e: Exception) {
