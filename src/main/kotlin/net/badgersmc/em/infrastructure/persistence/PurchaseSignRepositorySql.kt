@@ -1,7 +1,6 @@
 package net.badgersmc.em.infrastructure.persistence
 
 import net.badgersmc.em.domain.sign.PurchaseSign
-import net.badgersmc.em.domain.sign.PurchaseSignKind
 import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.nexus.annotations.Repository
@@ -53,13 +52,13 @@ class PurchaseSignRepositorySql(private val ds: DataSource) : PurchaseSignReposi
         ds.connection.use { conn ->
             conn.prepareStatement(
                 """INSERT OR REPLACE INTO purchase_signs
-                   (world, x, y, z, stall_id, kind)
+                   (world, x, y, z, stall_id, price)
                    VALUES (?, ?, ?, ?, ?, ?)"""
             ).use { ps ->
                 ps.setString(1, sign.world)
                 ps.setInt(2, sign.x); ps.setInt(3, sign.y); ps.setInt(4, sign.z)
                 ps.setString(5, sign.stallId.value)
-                ps.setString(6, sign.kind.name)
+                ps.setLong(6, sign.price)
                 ps.executeUpdate()
             }
         }
@@ -82,6 +81,6 @@ class PurchaseSignRepositorySql(private val ds: DataSource) : PurchaseSignReposi
         x = rs.getInt("x"),
         y = rs.getInt("y"),
         z = rs.getInt("z"),
-        kind = PurchaseSignKind.valueOf(rs.getString("kind")),
+        price = rs.getLong("price"),
     )
 }

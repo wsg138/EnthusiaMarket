@@ -30,6 +30,21 @@ class EnthusiaMarketConfig {
     class Signs {
         @Comment("First-line token a player writes to register a purchase sign (e.g. [em]).")
         var triggerToken: String = "[em]"
+        @Comment(
+            "Template used to render a SOLO owner's name on OWNED stall signs. " +
+                "Expanded via PlaceholderAPI when loaded; falls back to %player_name% substitution otherwise."
+        )
+        var ownerNameTemplate: String = "%player_name%"
+        @Comment(
+            "Template used to render a GUILD owner on OWNED stall signs. " +
+                "Substitutes %guild_name% and %guild_id% against GuildProvider.guildById."
+        )
+        var guildNameTemplate: String = "%guild_name%"
+        @Comment(
+            "Window (seconds) a player has to click an owned sign a second time to " +
+                "confirm the rent-extension payment. Lower = stricter; higher = friendlier."
+        )
+        var confirmWindowSec: Int = 10
     }
     @Comment(
         "ARM-style ownership limit groups (REQ-210). Players gain a group by holding the " +

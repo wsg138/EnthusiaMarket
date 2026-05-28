@@ -25,6 +25,14 @@ data class Stall(
      * See REQ-201.
      */
     val maxMembers: Int = -1,
+    /**
+     * Wall-clock instant when the next rent collection is due. Set on
+     * award and bumped on each successful rent tick / extension. `null`
+     * for stalls created before V011 (use ownerSince + interval as the
+     * fallback estimate). Purchase-sign renderer reads this to display
+     * the time remaining (REQ-250 extension).
+     */
+    val nextRentAt: Instant? = null,
 ) {
     /**
      * Add [playerUuid] to the member roster. Idempotent — re-adding an

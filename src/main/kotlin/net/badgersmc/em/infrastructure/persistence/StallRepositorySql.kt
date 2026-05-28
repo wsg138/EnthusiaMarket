@@ -30,8 +30,8 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             conn.prepareStatement(
                 """INSERT INTO stalls
                    (id, region_id, world, state, owner_type, owner_id, owner_since,
-                    winning_bid, rent_mode, rent_pct, rent_flat, members, max_members)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                    winning_bid, rent_mode, rent_pct, rent_flat, members, max_members, next_rent_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
             ).use { ps ->
                 bind(ps, stall)
                 ps.executeUpdate()
@@ -45,7 +45,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                 """UPDATE stalls SET
                      region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
                      owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
-                     members = ?, max_members = ?
+                     members = ?, max_members = ?, next_rent_at = ?
                    WHERE id = ?"""
             ).use { ps ->
                 ps.setString(1, stall.regionId)
@@ -61,7 +61,9 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                 ps.setLong(10, stall.rentTerms.flatAmount)
                 ps.setString(11, encodeMembers(stall.members))
                 ps.setInt(12, stall.maxMembers)
-                ps.setString(13, stall.id.value)
+                if (stall.nextRentAt != null) ps.setLong(13, stall.nextRentAt.toEpochMilli())
+                else ps.setNull(13, java.sql.Types.INTEGER)
+                ps.setString(14, stall.id.value)
                 ps.executeUpdate()
             }
         }
@@ -82,6 +84,8 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         ps.setLong(11, stall.rentTerms.flatAmount)
         ps.setString(12, encodeMembers(stall.members))
         ps.setInt(13, stall.maxMembers)
+        if (stall.nextRentAt != null) ps.setLong(14, stall.nextRentAt.toEpochMilli())
+        else ps.setNull(14, java.sql.Types.INTEGER)
     }
 
     private fun encodeMembers(members: Set<UUID>): String =
@@ -138,6 +142,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             rentTerms = rentTerms,
             members = decodeMembers(rs.getString("members")),
             maxMembers = rs.getInt("max_members"),
+            nextRentAt = rs.getLong("next_rent_at").takeIf { !rs.wasNull() }?.let { Instant.ofEpochMilli(it) },
         )
     }
 }

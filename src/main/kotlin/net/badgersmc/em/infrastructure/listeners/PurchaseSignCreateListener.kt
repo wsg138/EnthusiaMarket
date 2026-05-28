@@ -3,7 +3,6 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.application.PurchaseSignRenderer
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.sign.PurchaseSign
-import net.badgersmc.em.domain.sign.PurchaseSignKind
 import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
@@ -18,13 +17,18 @@ import org.bukkit.event.block.SignChangeEvent
 import org.bukkit.plugin.java.JavaPlugin
 
 /**
- * Registers a [PurchaseSign] when a player writes a sign whose first
- * line matches `config.signs.triggerToken` (default `[em]`) and whose
- * second line is an existing stall id. Third line (optional) selects
- * the sign kind (`BUY` / `RENT` / `EXTEND` / `INFO`); defaults to
- * `BUY`. See REQ-251.
+ * Registers a [PurchaseSign] when a player writes a sign with:
  *
- * Permission `enthusiamarket.sign.create` required.
+ * ```
+ * line 1: <triggerToken>   (default "[em]")
+ * line 2: <stall id>
+ * line 3: <price>           (positive integer)
+ * line 4: (ignored)
+ * ```
+ *
+ * Permission `enthusiamarket.sign.create` required (REQ-251).
+ * Invalid stall id / non-positive price / blank fields → event
+ * cancelled with a translated lang message; no binding persisted.
  */
 @Component
 open class PurchaseSignCreateListener(
@@ -44,8 +48,8 @@ open class PurchaseSignCreateListener(
 
     @EventHandler
     fun onSignPlace(event: SignChangeEvent) {
-        val lines = event.lines()
         val plain = PlainTextComponentSerializer.plainText()
+        val lines = event.lines()
         val firstLine = plain.serialize(lines[0]).trim()
         if (!firstLine.equals(config.signs.triggerToken, ignoreCase = true)) return
 
@@ -56,8 +60,24 @@ open class PurchaseSignCreateListener(
             return
         }
 
-        val stallName = plain.serialize(lines.getOrElse(1) { net.kyori.adventure.text.Component.empty() }).trim()
-        if (stallName.isBlank()) return
+        val stallName = plain
+            .serialize(lines.getOrElse(1) { net.kyori.adventure.text.Component.empty() })
+            .trim()
+        if (stallName.isBlank()) {
+            player.sendMessage(lang.msg("purchase_sign.msg.invalid_stall", "stall" to ""))
+            event.isCancelled = true
+            return
+        }
+
+        val priceRaw = plain
+            .serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
+            .trim()
+        val price = priceRaw.toLongOrNull()
+        if (price == null || price <= 0) {
+            player.sendMessage(lang.msg("purchase_sign.msg.invalid_price", "price" to priceRaw))
+            event.isCancelled = true
+            return
+        }
 
         val stall = stalls.findById(StallId(stallName))
         if (stall == null) {
@@ -66,16 +86,12 @@ open class PurchaseSignCreateListener(
             return
         }
 
-        val kindRaw = plain.serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() }).trim()
-        val kind = if (kindRaw.isBlank()) PurchaseSignKind.BUY
-        else PurchaseSignKind.parse(kindRaw) ?: PurchaseSignKind.BUY
-
         val block = event.block
         val sign = PurchaseSign(
             stallId = stall.id,
             world = block.world.name,
             x = block.x, y = block.y, z = block.z,
-            kind = kind,
+            price = price,
         )
         signs.save(sign)
 
@@ -83,6 +99,8 @@ open class PurchaseSignCreateListener(
         for (i in 0 until 4) {
             event.line(i, rendered.getOrElse(i) { net.kyori.adventure.text.Component.empty() })
         }
-        player.sendMessage(lang.msg("purchase_sign.msg.created", "stall" to stallName, "kind" to kind.name))
+        player.sendMessage(
+            lang.msg("purchase_sign.msg.created", "stall" to stallName, "price" to price)
+        )
     }
 }
