@@ -92,20 +92,41 @@ open class PurchaseSignClickListener(
     }
 
     private fun handleBuy(actor: UUID, stallId: net.badgersmc.em.domain.stall.StallId, price: Long, player: org.bukkit.entity.Player) {
-        val msg = when (val r = buyout.buy(stallId, actor, price)) {
-            is StallBuyoutService.Result.Purchased -> lang.msg(
-                "purchase_sign.msg.purchased",
-                "stall" to stallId.value,
-                "price" to r.price,
-            )
+        // Sneak + right-click = "buy for my guild". Plain right-click =
+        // personal buyout. Guild path charges the actor personally and
+        // awards to OwnerRef.guild — the LumaGuilds bank isn't a UUID-
+        // addressable economy account in the current Vault setup, so
+        // routing the debit through the actor is the cleanest option.
+        val result = if (player.isSneaking) {
+            buyout.buyForGuild(stallId, actor, price)
+        } else {
+            buyout.buy(stallId, actor, price)
+        }
+        val msg = when (result) {
+            is StallBuyoutService.Result.Purchased -> {
+                val key = if (result.owner.type == net.badgersmc.em.domain.stall.OwnerType.GUILD) {
+                    "purchase_sign.msg.purchased_guild"
+                } else {
+                    "purchase_sign.msg.purchased"
+                }
+                lang.msg(
+                    key,
+                    "stall" to stallId.value,
+                    "price" to result.price,
+                )
+            }
             is StallBuyoutService.Result.NotFound ->
                 lang.msg("purchase_sign.msg.stall_missing", "stall" to stallId.value)
             is StallBuyoutService.Result.AuctionLive ->
                 lang.msg("purchase_sign.msg.auction_live", "stall" to stallId.value)
             is StallBuyoutService.Result.AlreadyOwned ->
                 lang.msg("purchase_sign.msg.already_owned", "stall" to stallId.value)
+            is StallBuyoutService.Result.NotInGuild ->
+                lang.msg("purchase_sign.msg.not_in_guild")
+            is StallBuyoutService.Result.NoGuildPermission ->
+                lang.msg("purchase_sign.msg.no_guild_permission")
             is StallBuyoutService.Result.Rejected ->
-                lang.msg("purchase_sign.msg.rejected", "reason" to r.reason)
+                lang.msg("purchase_sign.msg.rejected", "reason" to result.reason)
         }
         player.sendMessage(msg)
     }
