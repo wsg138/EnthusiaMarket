@@ -109,8 +109,6 @@ tasks {
     shadowJar {
         archiveClassifier.set("")
         relocate("net.badgersmc.nexus", "net.badgersmc.em.libs.nexus")
-        relocate("io.github.classgraph", "net.badgersmc.em.libs.classgraph")
-        relocate("nonapi.io.github.classgraph", "net.badgersmc.em.libs.nonapi.classgraph")
         // Drop Nexus's transitive heavyweights from the shaded jar — Paper downloads
         // them at runtime via plugin.yml `libraries:`. Keep versions in sync there.
         dependencies {
@@ -129,6 +127,7 @@ tasks {
             exclude(dependency("com.squareup.okio:okio-jvm:.*"))
             exclude(dependency("org.jetbrains.kotlinx:kotlinx-serialization-core:.*"))
             exclude(dependency("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:.*"))
+            exclude(dependency("io.github.classgraph:classgraph:.*"))
         }
     }
     jacocoTestReport {
