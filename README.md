@@ -1,6 +1,6 @@
 # EnthusiaMarket
 
-[![build](https://github.com/BadgersMC/EnthusiaMarket/actions/workflows/build.yml/badge.svg)](https://github.com/BadgersMC/EnthusiaMarket/actions/workflows/build.yml) [![Codacy Badge](https://app.codacy.com/project/badge/Grade/f9477623e26341ad9ea58c04fd174815)](https://app.codacy.com/gh/BadgersMC/EnthusiaMarket/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![build](https://github.com/BadgersMC/EnthusiaMarket/actions/workflows/build.yml/badge.svg)](https://github.com/BadgersMC/EnthusiaMarket/actions/workflows/build.yml) [![Codacy Badge](https://app.codacy.com/project/badge/Grade/f9477623e26341ad9ea58c04fd174815)](https://app.codacy.com/gh/BadgersMC/EnthusiaMarket/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade) [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/f9477623e26341ad9ea58c04fd174815)](https://app.codacy.com/gh/BadgersMC/EnthusiaMarket/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 
 Paper 1.21.x plugin that turns WorldGuard regions into rentable / ownable player- and guild-operated market stalls, with sign-shops and timed item auctions. Bedrock-aware via Floodgate + Cumulus forms.
 
