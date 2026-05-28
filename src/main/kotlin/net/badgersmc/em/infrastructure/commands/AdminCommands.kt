@@ -48,12 +48,13 @@ class AdminCommands(
                 "admin.import.result",
                 "created" to r.created,
                 "skipped" to r.skipped,
-                "world" to config.market.world,
-                "region_prefix" to config.market.regionPrefix
+                KEY_WORLD to config.market.world,
+                KEY_REGION_PREFIX to config.market.regionPrefix
             )
         )
     }
 
+    @Suppress("TooGenericExceptionCaught")
     @Subcommand("reload")
     @Permission("enthusiamarket.admin.reload")
     fun reload(@Context sender: CommandSender) {
@@ -63,8 +64,8 @@ class AdminCommands(
             sender.sendMessage(
                 lang.msg(
                     "admin.reload.success",
-                    "world" to config.market.world,
-                    "region_prefix" to config.market.regionPrefix
+                    KEY_WORLD to config.market.world,
+                    KEY_REGION_PREFIX to config.market.regionPrefix
                 )
             )
         } catch (e: Exception) {
@@ -351,5 +352,10 @@ class AdminCommands(
     /** Extract sender UUID, preferring Player sender. */
     private fun extractSenderUuid(sender: CommandSender): UUID {
         return if (sender is Player) sender.uniqueId else UUID.randomUUID()
+    }
+
+    private companion object {
+        const val KEY_WORLD = "world"
+        const val KEY_REGION_PREFIX = "region_prefix"
     }
 }
