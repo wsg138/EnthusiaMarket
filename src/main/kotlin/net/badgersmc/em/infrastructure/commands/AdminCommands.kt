@@ -54,6 +54,7 @@ class AdminCommands(
         )
     }
 
+    @Suppress("TooGenericExceptionCaught")
     @Subcommand("reload")
     @Permission("enthusiamarket.admin.reload")
     fun reload(@Context sender: CommandSender) {
@@ -67,7 +68,7 @@ class AdminCommands(
                     KEY_REGION_PREFIX to config.market.regionPrefix
                 )
             )
-        } catch (e: RuntimeException) {
+        } catch (e: Exception) {
             sender.sendMessage(lang.msg("admin.reload.failure", "reason" to (e.message ?: "unknown error")))
         }
     }

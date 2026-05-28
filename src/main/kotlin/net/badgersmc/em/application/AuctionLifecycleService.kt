@@ -198,10 +198,10 @@ class AuctionLifecycleService(
             auctionRepository.create(auction)
             try {
                 stallRepository.save(stall.copy(state = StallState.AUCTIONING))
-            } catch (stallErr: RuntimeException) {
+            } catch (stallErr: Exception) {
                 try {
                     auctionRepository.save(auction.close())
-                } catch (compErr: RuntimeException) {
+                } catch (compErr: Exception) {
                     logger.warning(
                         "startAuctionForStall: failed to compensate auction ${auction.id} " +
                             "after stall save failed for ${stall.id}: ${compErr.message}"
@@ -210,7 +210,7 @@ class AuctionLifecycleService(
                 throw stallErr
             }
             return Pair(auction.id, "created")
-        } catch (e: RuntimeException) {
+        } catch (e: Exception) {
             logger.warning("startAuctionForStall: stall ${stall.id} failed — ${e.message}")
             return Pair(null, "error")
         }
