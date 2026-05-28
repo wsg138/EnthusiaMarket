@@ -9,6 +9,10 @@ import net.lumalyte.lg.application.services.RankService
 import net.lumalyte.lg.domain.entities.Guild
 import net.lumalyte.lg.domain.entities.Member
 import net.lumalyte.lg.domain.entities.Rank
+import org.koin.core.context.GlobalContext
+import org.koin.core.context.startKoin
+import org.koin.core.context.stopKoin
+import org.koin.dsl.module
 import java.time.Instant
 import java.util.UUID
 import kotlin.test.Test
@@ -17,6 +21,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 
 class LumaGuildsGuildProviderTest {
 
@@ -32,12 +38,33 @@ class LumaGuildsGuildProviderTest {
     private val memberService = mockk<MemberService>()
     private val rankService = mockk<RankService>()
     private val bankService = mockk<BankService>()
-    private val provider = LumaGuildsGuildProvider(
-        guildService = guildService,
-        memberService = memberService,
-        rankService = rankService,
-        bankService = bankService,
-    )
+    private val provider = LumaGuildsGuildProvider()
+
+    @BeforeEach
+    fun setUp() {
+        startKoinWithMocks()
+    }
+
+    @AfterEach
+    fun tearDown() {
+        stopKoinContext()
+    }
+
+    private fun startKoinWithMocks() {
+        stopKoin()
+        startKoin {
+            modules(module {
+                single { guildService }
+                single { memberService }
+                single { rankService }
+                single { bankService }
+            })
+        }
+    }
+
+    private fun stopKoinContext() {
+        stopKoin()
+    }
 
     // --- guildOf ---
 
