@@ -53,7 +53,8 @@ jobs:
         run: ./gradlew test shadowJar jacocoTestReport --no-daemon
 
       - name: Upload coverage to Codacy
-        env:
-          CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
-        run: bash <(curl -Ls https://coverage.codacy.com/get.sh) report
+        uses: codacy/codacy-coverage-reporter-action@v1
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: build/reports/jacoco/test/jacocoTestReport.xml
         continue-on-error: true

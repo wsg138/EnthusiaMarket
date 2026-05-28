@@ -170,12 +170,7 @@ class AuctionLifecycleService(
         )
     }
 
-    /**
-     * Process a single stall within a mass auction. Returns:
-     * - `null` if the stall already has an open auction (skipped)
-     * - `Pair(auctionId, "created")` on success
-     * - `Pair(null, "error")` on failure
-     */
+    @Suppress("TooGenericExceptionCaught")
     private fun startAuctionForStall(
         stall: Stall,
         now: Instant,
