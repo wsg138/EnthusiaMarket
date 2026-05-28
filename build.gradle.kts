@@ -108,7 +108,16 @@ tasks {
     }
     shadowJar {
         archiveClassifier.set("")
-        relocate("net.badgersmc.nexus", "net.badgersmc.em.libs.nexus")
+        // Do NOT relocate net.badgersmc.nexus. gradleup/shadow 8.3.6 does
+        // not rewrite Kotlin @Metadata annotations during relocation, so
+        // any constructor introspected by Nexus DI fails at runtime with
+        // ClassNotFoundException on the un-relocated FQCN (e.g. seen at
+        // PaperCommandRegistry → BeanFactory → KFunctionImpl.getCaller
+        // looking up net.badgersmc.nexus.config.ConfigManager). Paper's
+        // isolated plugin classloaders already prevent cross-plugin
+        // package collisions, so shipping Nexus under its original
+        // package is safe and matches the pattern Hermes used in PR #16
+        // (classgraph) and PR #17 (Koin removal).
         // Drop Nexus's transitive heavyweights from the shaded jar — Paper downloads
         // them at runtime via plugin.yml `libraries:`. Keep versions in sync there.
         dependencies {

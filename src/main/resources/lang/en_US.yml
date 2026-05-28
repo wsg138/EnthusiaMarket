@@ -35,6 +35,42 @@ admin:
     failure: "<prefix><red>Bid rejected: <reason>"
     not_found: "<prefix><red>Auction not found"
 
+# REQ-250..253 — physical purchase signs. Four lines max per Bukkit sign.
+# Render templates are state-driven by PurchaseSignRenderer.
+purchase_sign:
+  buyable:
+    line1: "<dark_gray>[<gold>EM</gold>]"
+    line2: "<aqua><stall>"
+    line3: "<gold><price>"
+    line4: "<green>Click to buy"
+  auction:
+    line1: "<dark_gray>[<gold>EM</gold>]"
+    line2: "<aqua><stall>"
+    line3: "<yellow>Bid: <bid>"
+    line4: "<gray>/em bid"
+  owned:
+    line1: "<dark_gray>[<gold>EM</gold>]"
+    line2: "<yellow><owner>"
+    line3: "<gray>Rent: <time>"
+    line4: "<aqua>Right-click"
+  missing:
+    line1: "<dark_gray>[<gold>EM</gold>]"
+    line2: "<red>?<stall>"
+  msg:
+    created: "<prefix><green>Sign linked to</green> <aqua><stall></aqua> <gray>for</gray> <gold><price>"
+    invalid_stall: "<prefix><red>Unknown stall:</red> <stall>"
+    invalid_price: "<prefix><red>Sign line 3 must be a positive whole number; got:</red> <price>"
+    no_permission: "<prefix><red>You don't have permission to create purchase signs"
+    purchased: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for</gray> <gold><price>"
+    stall_missing: "<prefix><red>Stall not found:</red> <stall>"
+    auction_live: "<prefix><yellow>Auction is live on</yellow> <aqua><stall></aqua> <gray>— use /em bid"
+    already_owned: "<prefix><gray>This stall is already owned"
+    rejected: "<prefix><red>Purchase rejected: <reason>"
+    broken: "<prefix><yellow>Purchase sign removed from</yellow> <aqua><stall>"
+    confirm_extend: "<prefix><yellow>Right-click again within <seconds>s to extend rent on</yellow> <aqua><stall>"
+    extended: "<prefix><green>Rent extended on</green> <aqua><stall></aqua> <gray>(paid <gold><amount><gray>)"
+    not_owner: "<prefix><red>You do not own</red> <aqua><stall>"
+
 stall:
   members:
     added: "<prefix><green>Added</green> <player> <gray>as a member of</gray> <aqua><stall>"

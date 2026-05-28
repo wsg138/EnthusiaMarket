@@ -8,6 +8,7 @@ import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
@@ -199,6 +200,7 @@ class AuctionLifecycleService(
             auctionRepository.create(auction)
             try {
                 stallRepository.save(stall.copy(state = StallState.AUCTIONING))
+                fireStateChanged(stall.id.value, stall.state, StallState.AUCTIONING)
             } catch (stallErr: Exception) {
                 try {
                     auctionRepository.save(auction.close())
@@ -319,6 +321,7 @@ class AuctionLifecycleService(
                         && stall.state == StallState.AUCTIONING
                     ) {
                         stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                        fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
                     }
                     auctionRepository.save(auction.close())
                 }
@@ -364,6 +367,7 @@ class AuctionLifecycleService(
                 stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
             ) {
                 stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
             }
             auctionRepository.save(auction.close())
             return
@@ -381,6 +385,7 @@ class AuctionLifecycleService(
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
         stallRepository.save(updatedStall)
         auctionRepository.save(auction.close())
+        fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
         // 2. Pay seller (after state is persisted — if this fails, seller funds are still held)
         // Trade-off: if deposit fails, the winner has been charged but the seller hasn't been paid.
@@ -419,5 +424,21 @@ class AuctionLifecycleService(
         // an explicit kind field (TDD-220). Per-kind caps under this
         // name resolve via config.limits.<group>.regionkinds.default.
         const val DEFAULT_KIND = "default"
+    }
+
+    /**
+     * Fire-and-forget StallStateChangedEvent. Bukkit may be unavailable
+     * in unit-test contexts; the null check on `getServer()` keeps the
+     * call safe for callers that don't bootstrap a MockBukkit server.
+     */
+    private fun fireStateChanged(stallId: String, previous: StallState, current: StallState) {
+        if (previous == current) return
+        try {
+            org.bukkit.Bukkit.getServer()?.pluginManager?.callEvent(
+                StallStateChangedEvent(stallId, previous, current)
+            )
+        } catch (e: Exception) {
+            logger.warning("Failed to fire StallStateChangedEvent for $stallId: ${e.message}")
+        }
     }
 }

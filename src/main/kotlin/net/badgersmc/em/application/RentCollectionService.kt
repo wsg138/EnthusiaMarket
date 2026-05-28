@@ -95,14 +95,19 @@ class RentCollectionService(
         val withdrawSuccess = economy.withdraw(ownerUuid, rentDue)
 
         if (withdrawSuccess) {
+            val nextRent = now.plus(collectionInterval())
             // Payment succeeded — if in GRACE, restore to OWNED
             if (stall.state == StallState.GRACE) {
                 stallRepository.save(
-                    stall.copy(state = StallState.OWNED, ownerSince = Instant.now())
+                    stall.copy(
+                        state = StallState.OWNED,
+                        ownerSince = Instant.now(),
+                        nextRentAt = nextRent,
+                    )
                 )
             } else {
                 // Already OWNED, just persist (ownerSince unchanged)
-                stallRepository.save(stall)
+                stallRepository.save(stall.copy(nextRentAt = nextRent))
             }
             return ProcessResult.Collected
         }
@@ -137,6 +142,12 @@ class RentCollectionService(
             }
             else -> ProcessResult.Skipped
         }
+    }
+
+    private fun collectionInterval(): Duration = try {
+        Duration.parse(config.rent.collectionInterval)
+    } catch (_: java.time.format.DateTimeParseException) {
+        Duration.ofDays(1)
     }
 
     private fun isPastGrace(ownerSince: Instant, now: Instant): Boolean {
