@@ -71,8 +71,13 @@ class EnthusiaMarketConfig {
     class Rent {
         @Comment("Rent mode: formula or flat")
         var mode: String = "formula"
-        @Comment("Percentage of winning bid per period (used when mode=formula)")
-        var formulaPct: Double = 0.01
+        @Comment(
+            "Percentage of winning bid per period (used when mode=formula). " +
+                "Interpreted as percent — 1.0 means 1% per period. The old default of " +
+                "0.01 produced ~0 rent on small bids (1000 * 0.01 / 100 = 0.1 → 0L) " +
+                "which let players infinite-extend rent for free."
+        )
+        var formulaPct: Double = 1.0
         @Comment("Flat rent amount per period (used when mode=flat)")
         var flatAmount: Long = 0
         @Comment("ISO-8601 duration between collection ticks")
