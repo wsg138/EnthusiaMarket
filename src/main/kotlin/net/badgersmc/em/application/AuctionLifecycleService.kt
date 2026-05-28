@@ -155,9 +155,10 @@ class AuctionLifecycleService(
 
         for (stall in candidates) {
             val result = startAuctionForStall(stall, now, endAt, antiSnipe, startingBid)
+            val id = result?.first
             when {
                 result == null -> skipped++
-                result.first != null -> created.add(result.first)
+                id != null -> created.add(id)
                 else -> errors++
             }
         }
