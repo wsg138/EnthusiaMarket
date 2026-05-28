@@ -440,25 +440,25 @@ References: REQ-024 through REQ-027
   Description: New `ParticleBorderService` (`@Component`). Tracks active outlines as `(player, stall, expiresAt)` triples. Bukkit repeat task at 4-tick interval traces WorldGuard region's bounding box with `Particle.END_ROD` visible only to the requesting player. Hard cap of `particles.maxPerTick` (default 200) — degrade by widening spacing rather than dropping outlines. Failing test: outline added/removed; particle count bound respected.
   Evidence: ``
 
-- [ ] **TDD-250** — Stall purchase sign domain
+- [x] **TDD-250** — Stall purchase sign domain
   References: REQ-250, REQ-253
   Tag: TDD
   Description: Domain type `PurchaseSign(stallId, world, x, y, z, kind: BUY|RENT|EXTEND|INFO)`. New `PurchaseSignRepository` port + JDBC impl. Migration `V009__purchase_signs.sql`. Domain operations: render text for current stall state. Failing test: sign render output matches expected lang template per stall state.
   Evidence: ``
 
-- [ ] **TDD-251** — Sign creation listener
+- [x] **TDD-251** — Sign creation listener
   References: REQ-251
   Tag: TDD
   Description: `SignChangeEvent` handler: when line 1 == config trigger token and line 2 names an existing stall, register a `PurchaseSign` and re-render lines from lang template. Permission `enthusiamarket.sign.create` required. Failing test: valid sign → persisted + lines overwritten; invalid stall name → rejected with player message.
   Evidence: ``
 
-- [ ] **TDD-252** — Sign auto-refresh on state change
+- [x] **TDD-252** — Sign auto-refresh on state change
   References: REQ-252
   Tag: TDD
   Description: Emit a new `StallStateChangedEvent` from `AuctionLifecycleService.settleWithWinner`, `RentCollectionService.evict`, and `SellOfferService.complete`. Listener `PurchaseSignRefreshListener` finds all signs bound to the stall and re-renders within one tick (uses NexusScheduler.runOnMain). Failing test: state change fires event; signs in repo are re-rendered.
   Evidence: ``
 
-- [ ] **TDD-253** — Sign click action
+- [x] **TDD-253** — Sign click action
   References: REQ-250
   Tag: TDD
   Description: `PlayerInteractEvent` handler routes right-clicks on registered purchase signs to the appropriate flow: `BUY` → trigger sell-offer purchase or auction bid menu; `RENT`/`EXTEND` → invoke RentService extension; `INFO` → display REQ-230 card. Failing test: click on BUY sign with open offer → SellOfferService.purchase invoked.

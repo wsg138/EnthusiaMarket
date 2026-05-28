@@ -11,6 +11,7 @@ import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.events.SellOfferCompletedEvent
 import net.badgersmc.em.events.SellOfferCreatedEvent
+import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Bukkit
 import java.time.Instant
@@ -109,11 +110,15 @@ class SellOfferService(
         // charged but no ownership change — operators can refund manually
         // (logged below). Matches the auction settlement compensation
         // pattern: charge → persist → pay, never the reverse.
+        val previousState = stall.state
         try {
             val now = Instant.now()
             val updated = stall.awardTo(OwnerRef.solo(buyer), offer.price, now)
             stalls.save(updated)
             offers.delete(stallId)
+            Bukkit.getServer()?.pluginManager?.callEvent(
+                StallStateChangedEvent(stallId.value, previousState, updated.state)
+            )
         } catch (e: Exception) {
             log.severe(
                 "SellOfferService.purchase: ownership transfer failed for stall " +

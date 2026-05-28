@@ -24,6 +24,13 @@ class EnthusiaMarketConfig {
     var debug: Debug = Debug()
     @Comment("Localisation / language file selection")
     var lang: Lang = Lang()
+    @Comment("Purchase-sign trigger token + permissions (REQ-250..253)")
+    var signs: Signs = Signs()
+
+    class Signs {
+        @Comment("First-line token a player writes to register a purchase sign (e.g. [em]).")
+        var triggerToken: String = "[em]"
+    }
     @Comment(
         "ARM-style ownership limit groups (REQ-210). Players gain a group by holding the " +
             "permission enthusiamarket.limit.<group-name>. Effective limits merge by taking the " +

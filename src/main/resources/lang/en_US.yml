@@ -35,6 +35,52 @@ admin:
     failure: "<prefix><red>Bid rejected: <reason>"
     not_found: "<prefix><red>Auction not found"
 
+# REQ-250..253 — physical purchase signs. Four lines max per Bukkit sign.
+# 15-char soft limit per rendered line (after MiniMessage strip).
+purchase_sign:
+  buy:
+    for_sale:
+      line1: "<dark_gray>[<gold>EM</gold>]"
+      line2: "<aqua><stall>"
+      line3: "<gold><price>"
+      line4: "<green>Click to buy"
+    unowned:
+      line1: "<dark_gray>[<gold>EM</gold>]"
+      line2: "<aqua><stall>"
+      line3: "<gray>For auction"
+      line4: "<yellow>/em bid"
+    owned:
+      line1: "<dark_gray>[<gold>EM</gold>]"
+      line2: "<aqua><stall>"
+      line3: "<red>Not listed"
+      line4: ""
+  rent:
+    line1: "<dark_gray>[<gold>EM</gold>]"
+    line2: "<aqua><stall>"
+    line3: "<yellow>Pay rent"
+    line4: "<state>"
+  extend:
+    line1: "<dark_gray>[<gold>EM</gold>]"
+    line2: "<aqua><stall>"
+    line3: "<yellow>Extend rent"
+    line4: "<state>"
+  info:
+    line1: "<dark_gray>[<gold>EM</gold>]"
+    line2: "<aqua><stall>"
+    line3: "<gray><state>"
+    line4: "<yellow>Click for info"
+  missing:
+    line1: "<dark_gray>[<gold>EM</gold>]"
+    line2: "<red>?<stall>"
+  msg:
+    created: "<prefix><green>Sign linked to</green> <aqua><stall></aqua> <gray>(<kind>)"
+    invalid_stall: "<prefix><red>Unknown stall:</red> <stall>"
+    no_permission: "<prefix><red>You don't have permission to create purchase signs"
+    not_for_sale: "<prefix><gray>This stall is not currently listed for sale"
+    rent_not_supported: "<prefix><yellow>Rent signs are not yet implemented — use the offer flow"
+    info_not_supported: "<prefix><yellow>Info signs are not yet implemented — use /em stall info"
+    broken: "<prefix><yellow>Purchase sign removed from</yellow> <aqua><stall>"
+
 stall:
   members:
     added: "<prefix><green>Added</green> <player> <gray>as a member of</gray> <aqua><stall>"
