@@ -105,7 +105,6 @@ kotlin {
 tasks {
     test {
         useJUnitPlatform()
-        finalizedBy(tasks.jacocoTestReport)
     }
     shadowJar {
         archiveClassifier.set("")
@@ -133,6 +132,7 @@ tasks {
         }
     }
     jacocoTestReport {
+        dependsOn(tasks.test)
         reports {
             xml.required.set(true)
             csv.required.set(false)
