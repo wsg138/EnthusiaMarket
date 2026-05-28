@@ -98,9 +98,10 @@ open class EnthusiaMarket : JavaPlugin() {
             ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignClickListener::class)
             ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignBreakListener::class)
             ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignRefreshListener::class)
-            logger.info("Purchase-sign listeners resolved + registered")
+            ctx.getBean(net.badgersmc.em.infrastructure.listeners.SignPlaceListener::class)
+            logger.info("Purchase-sign + shop-sign listeners resolved + registered")
         } catch (e: Exception) {
-            logger.severe("Failed to instantiate purchase-sign listeners: ${e.message}")
+            logger.severe("Failed to instantiate sign listeners: ${e.message}")
             e.printStackTrace()
         }
 
