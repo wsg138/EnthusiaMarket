@@ -101,7 +101,7 @@ class RentCollectionService(
                 stallRepository.save(
                     stall.copy(
                         state = StallState.OWNED,
-                        ownerSince = Instant.now(),
+                        ownerSince = now,
                         nextRentAt = nextRent,
                     )
                 )
@@ -146,6 +146,8 @@ class RentCollectionService(
 
     private fun collectionInterval(): Duration = try {
         Duration.parse(config.rent.collectionInterval)
+            .takeIf { !it.isZero && !it.isNegative }
+            ?: Duration.ofDays(1)
     } catch (_: java.time.format.DateTimeParseException) {
         Duration.ofDays(1)
     }

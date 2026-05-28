@@ -69,13 +69,24 @@ class PurchaseSignRenderer(
     private fun ownedLines(sign: PurchaseSign, stall: Stall): List<Component> {
         val ownerName = owners.displayNameFor(stall.owner)
         val nextRent = stall.nextRentAt ?: fallbackNextRent(stall)
-        val timeLeft = formatTimeLeft(nextRent)
         return listOf(
             lang.msg("purchase_sign.owned.line1"),
             lang.msg("purchase_sign.owned.line2", "owner" to ownerName),
-            lang.msg("purchase_sign.owned.line3", "time" to timeLeft),
+            formatOwnedLine3(nextRent),
             lang.msg("purchase_sign.owned.line4"),
         )
+    }
+
+    private fun formatOwnedLine3(nextRent: Instant): Component {
+        val remaining = Duration.between(Instant.now(), nextRent)
+        if (remaining.isZero || remaining.isNegative) return lang.msg("purchase_sign.owned.overdue")
+        val days = remaining.toDays()
+        if (days > 0) return lang.msg("purchase_sign.owned.line3", "time" to "${days}d")
+        val hours = remaining.toHours()
+        if (hours > 0) return lang.msg("purchase_sign.owned.line3", "time" to "${hours}h")
+        val minutes = remaining.toMinutes()
+        if (minutes > 0) return lang.msg("purchase_sign.owned.line3", "time" to "${minutes}m")
+        return lang.msg("purchase_sign.owned.line3", "time" to "${remaining.seconds}s")
     }
 
     private fun missing(sign: PurchaseSign): List<Component> = listOf(
@@ -99,21 +110,5 @@ class PurchaseSignRenderer(
         Duration.parse(config.rent.collectionInterval)
     } catch (_: java.time.format.DateTimeParseException) {
         Duration.ofDays(1)
-    }
-
-    /**
-     * Compact "<n><u>" formatting: 23h, 47m, 12s, overdue. The sign
-     * line has ~15 chars after the colour codes so brevity matters.
-     */
-    private fun formatTimeLeft(target: Instant): String {
-        val remaining = Duration.between(Instant.now(), target)
-        if (remaining.isZero || remaining.isNegative) return "overdue"
-        val days = remaining.toDays()
-        if (days > 0) return "${days}d"
-        val hours = remaining.toHours()
-        if (hours > 0) return "${hours}h"
-        val minutes = remaining.toMinutes()
-        if (minutes > 0) return "${minutes}m"
-        return "${remaining.seconds}s"
     }
 }

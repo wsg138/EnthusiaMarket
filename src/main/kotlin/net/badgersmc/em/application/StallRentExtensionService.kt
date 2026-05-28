@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -7,6 +8,7 @@ import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
+import org.bukkit.Bukkit
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -51,7 +53,9 @@ class StallRentExtensionService(
             // Rent-free stall — no-op extension still bumps the timer
             // so the sign updates immediately.
             val pushed = pushTimer(stall.nextRentAt)
-            stalls.save(stall.copy(nextRentAt = pushed, state = StallState.OWNED))
+            val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
+            stalls.save(updated)
+            fireStateChanged(stallId.value, stall.state, updated.state)
             return Result.Extended(pushed, 0L)
         }
 
@@ -61,7 +65,9 @@ class StallRentExtensionService(
 
         val pushed = pushTimer(stall.nextRentAt)
         try {
-            stalls.save(stall.copy(nextRentAt = pushed, state = StallState.OWNED))
+            val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
+            stalls.save(updated)
+            fireStateChanged(stallId.value, stall.state, updated.state)
         } catch (e: Exception) {
             log.severe(
                 "StallRentExtensionService.extend: persist failed for ${stallId.value} " +
@@ -86,5 +92,15 @@ class StallRentExtensionService(
         Duration.parse(config.rent.collectionInterval)
     } catch (_: java.time.format.DateTimeParseException) {
         Duration.ofDays(1)
+    }
+
+    private fun fireStateChanged(stallId: String, previous: StallState, current: StallState) {
+        try {
+            Bukkit.getServer()?.pluginManager?.callEvent(
+                StallStateChangedEvent(stallId, previous, current)
+            )
+        } catch (e: Exception) {
+            log.warning("Failed to fire StallStateChangedEvent for $stallId: ${e.message}")
+        }
     }
 }

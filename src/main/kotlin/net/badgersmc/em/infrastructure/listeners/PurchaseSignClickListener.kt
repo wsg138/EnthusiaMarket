@@ -118,7 +118,9 @@ open class PurchaseSignClickListener(
     ) {
         val key = ConfirmKey(actor, locationKey)
         val now = Instant.now()
-        val window = Duration.ofSeconds(config.signs.confirmWindowSec.toLong())
+        val windowSec = config.signs.confirmWindowSec.coerceAtLeast(1)
+        val window = Duration.ofSeconds(windowSec.toLong())
+        pendingConfirms.entries.removeIf { Duration.between(it.value, now) > window }
 
         val pending = pendingConfirms[key]
         val isFreshConfirm = pending != null && Duration.between(pending, now) <= window

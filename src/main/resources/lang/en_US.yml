@@ -70,6 +70,8 @@ purchase_sign:
     confirm_extend: "<prefix><yellow>Right-click again within <seconds>s to extend rent on</yellow> <aqua><stall>"
     extended: "<prefix><green>Rent extended on</green> <aqua><stall></aqua> <gray>(paid <gold><amount><gray>)"
     not_owner: "<prefix><red>You do not own</red> <aqua><stall>"
+  owned:
+    overdue: "<prefix><red>Overdue"
 
 stall:
   members:
