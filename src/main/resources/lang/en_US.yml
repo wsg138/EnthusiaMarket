@@ -129,7 +129,10 @@ shop:
     bedrock_placeholder: "<yellow>[Shop] Bedrock form would open here (TDD-60)"
     guild_unavailable: "<red>LumaGuilds integration is not available"
     success: "<green>Shop created!"
-    invalid_input: "<red>Invalid item or price"
+    invalid_input: "<red>Invalid amount or price — both must be positive whole numbers"
+    no_permission: "<red>You do not have permission to create shops (enthusiamarket.shop.create)"
+    needs_wallsign: "<red>Shop signs must be wall-mounted on the side of a container"
+    no_held_item: "<red>Hold the item you want to trade in your main hand before placing the sign"
   edit:
     not_owner: "<red>You don't own this shop"
     frozen: "<red>Shop frozen"
