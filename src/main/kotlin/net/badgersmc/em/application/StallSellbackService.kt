@@ -3,6 +3,7 @@ package net.badgersmc.em.application
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -42,6 +43,7 @@ class StallSellbackService(
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
+    private val regionMembers: RegionMemberSync,
 ) {
 
     private val log = Logger.getLogger(StallSellbackService::class.java.name)
@@ -129,6 +131,20 @@ class StallSellbackService(
                     "cause=${e.message}"
             )
             return ExecuteResult.Rejected("Stall reset failed; contact an admin (refund was paid)")
+        }
+
+        // Strip WG owner + member rights from the released region so
+        // the previous owner can no longer build inside a stall they
+        // no longer own. The next buyer's StallBuyoutService.buy call
+        // will re-set the owner.
+        try {
+            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        } catch (e: Exception) {
+            log.warning(
+                "StallSellbackService: WG owner/member clear failed for stall " +
+                    "${stallId.value}. The DB owner is UNOWNED but WG perms may need a " +
+                    "manual /rg removeowner. cause=${e.message}"
+            )
         }
 
         fireStateChanged(stallId.value, previousState, StallState.UNOWNED)

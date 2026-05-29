@@ -32,6 +32,26 @@ class WorldGuardRegionMemberSync : RegionMemberSync {
         }
     }
 
+    override fun setOwner(world: String, regionId: String, player: UUID) {
+        withRegion(world, regionId) { region ->
+            // Replace, don't append — a stall transfer shouldn't leave
+            // the previous owner with build rights. Use the domain
+            // clear-then-add pattern WG exposes via DefaultDomain.
+            region.owners.removeAll()
+            region.owners.addPlayer(player)
+            // Members survive the owner swap so co-owners explicitly
+            // re-trusted by the new owner persist if the new owner
+            // doesn't immediately /em stall members clear.
+        }
+    }
+
+    override fun clearOwnersAndMembers(world: String, regionId: String) {
+        withRegion(world, regionId) { region ->
+            region.owners.removeAll()
+            region.members.removeAll()
+        }
+    }
+
     private inline fun withRegion(
         world: String,
         regionId: String,

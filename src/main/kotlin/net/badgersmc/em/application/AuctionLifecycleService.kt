@@ -70,6 +70,7 @@ class AuctionLifecycleService(
     private val config: EnthusiaMarketConfig,
     private val limits: LimitResolutionService,
     private val sellOffers: SellOfferRepository,
+    private val regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync,
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
@@ -385,6 +386,14 @@ class AuctionLifecycleService(
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
         stallRepository.save(updatedStall)
         auctionRepository.save(auction.close())
+        try {
+            regionMembers.setOwner(updatedStall.world, updatedStall.regionId, bid.bidder)
+        } catch (e: Exception) {
+            logger.warning(
+                "settleWithWinner: WG owner sync failed for stall ${updatedStall.id.value}; " +
+                    "winner may need op until resync. cause=${e.message}"
+            )
+        }
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
         // 2. Pay seller (after state is persisted — if this fails, seller funds are still held)
