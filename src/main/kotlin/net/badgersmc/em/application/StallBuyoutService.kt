@@ -87,9 +87,9 @@ class StallBuyoutService(
             try {
                 regionMembers.setOwner(result.stall.world, result.stall.regionId, java.util.UUID.fromString(result.stall.owner.id))
             } catch (e: Exception) {
-                logger.warning(
+                log.warning(
                     "StallBuyoutService: WG owner sync failed for guild stall ${stallId.value}; " +
-                    "DB owner is correct. cause=${e.message}"
+                        "DB owner is correct. cause=${e.message}"
                 )
             }
         }
