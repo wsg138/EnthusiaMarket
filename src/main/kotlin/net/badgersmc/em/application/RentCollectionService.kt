@@ -140,6 +140,10 @@ class RentCollectionService(
                         )
                     )
                         regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+                    } catch (_: Exception) {
+                        // DB is authoritative; WG can be resynced via /em rg resync.
+                        // Stall is already UNOWNED — eviction stands.
+                    }
                     ProcessResult.Evicted
                 } else {
                     // Grace not yet expired — do nothing

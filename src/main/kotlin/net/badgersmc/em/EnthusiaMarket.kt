@@ -100,9 +100,6 @@ open class EnthusiaMarket : JavaPlugin() {
                 plugin = this,
                 nexus = ctx,
             )
-            // Explicitly resolve SignPlaceListener (might be missed by scan).
-            val signListener = ctx.getBean<SignPlaceListener>()
-            Bukkit.getPluginManager().registerEvents(signListener, this)
         } catch (e: Exception) {
             throw RuntimeException("Failed to register listeners — disabling plugin. ${e.message}", e)
         }

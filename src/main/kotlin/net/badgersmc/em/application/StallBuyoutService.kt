@@ -52,7 +52,6 @@ class StallBuyoutService(
         data object AlreadyOwned : Result
         data object NotInGuild : Result
         data object NoGuildPermission : Result
-        data object GuildWgSyncNotSupported : Result
         data class Rejected(val reason: String) : Result
     }
 
@@ -81,9 +80,20 @@ class StallBuyoutService(
         ) {
             return Result.NoGuildPermission
         }
-        // WG sync for guilds not yet wired — reject until
-        // a guild→region bridge exists (see PR #21 review comments).
-        return Result.GuildWgSyncNotSupported
+        // WG sync for guilds not yet wired — attempt best-effort,
+        // but don't block the purchase. DB is authoritative; /em rg resync can fix WG.
+        val result = buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
+        if (result is Result.Purchased) {
+            try {
+                regionMembers.setOwner(result.stall.world, result.stall.regionId, java.util.UUID.fromString(result.stall.owner.id))
+            } catch (e: Exception) {
+                logger.warning(
+                    "StallBuyoutService: WG owner sync failed for guild stall ${stallId.value}; " +
+                    "DB owner is correct. cause=${e.message}"
+                )
+            }
+        }
+        return result
     }
 
     private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Result {

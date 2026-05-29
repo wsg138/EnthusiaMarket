@@ -116,8 +116,6 @@ open class PurchaseSignClickListener(
                 lang.msg("purchase_sign.msg.not_in_guild")
             is StallBuyoutService.Result.NoGuildPermission ->
                 lang.msg("purchase_sign.msg.no_guild_permission")
-            is StallBuyoutService.Result.GuildWgSyncNotSupported ->
-                lang.msg("purchase_sign.msg.guild_wg_sync_not_supported")
             is StallBuyoutService.Result.Rejected ->
                 lang.msg("purchase_sign.msg.rejected", "reason" to result.reason)
         }
