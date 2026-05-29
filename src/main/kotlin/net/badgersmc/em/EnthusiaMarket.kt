@@ -90,8 +90,8 @@ open class EnthusiaMarket : JavaPlugin() {
 
         // Phase 6: Discover every @Listener-annotated bean in the scan
         // package, resolve it from DI, and register it with Bukkit.
-        // Replaces the per-listener getBean+@PostConstruct dance that
-        // broke twice when new listeners weren't pulled by any command.
+        // Fail-closed: any listener that can't be resolved/registered
+        // will disable the plugin rather than leave sign flows dead.
         try {
             net.badgersmc.nexus.paper.listeners.registerNexusListeners(
                 basePackage = "net.badgersmc.em",
@@ -99,9 +99,11 @@ open class EnthusiaMarket : JavaPlugin() {
                 plugin = this,
                 nexus = ctx,
             )
+            // Explicitly resolve SignPlaceListener (might be missed by scan).
+            val signListener = ctx.getBean<SignPlaceListener>()
+            Bukkit.getPluginManager().registerEvents(signListener, this)
         } catch (e: Exception) {
-            logger.severe("Failed to register Nexus @Listener beans: ${e.message}")
-            e.printStackTrace()
+            throw RuntimeException("Failed to register listeners — disabling plugin. ${e.message}", e)
         }
 
         logger.info("EnthusiaMarket enabled (v${description.version})")

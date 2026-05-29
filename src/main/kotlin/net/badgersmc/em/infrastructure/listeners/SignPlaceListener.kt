@@ -78,21 +78,25 @@ open class SignPlaceListener(
         val data = block.blockData
         if (data !is WallSign) {
             player.sendMessage(lang.msg("shop.create.needs_wallsign"))
+            event.isCancelled = true
             return
         }
         val attached = block.getRelative(data.facing.oppositeFace)
         if (attached.state !is Container) {
             player.sendMessage(lang.msg("shop.create.needs_container"))
+            event.isCancelled = true
             return
         }
 
         // Sign must be inside a stall the player can manage.
         val stall = findStallAt(block.location) ?: run {
             player.sendMessage(lang.msg("shop.create.not_in_stall"))
+            event.isCancelled = true
             return
         }
         if (!canManageStall(stall, player)) {
             player.sendMessage(lang.msg("shop.create.no_authority"))
+            event.isCancelled = true
             return
         }
 
@@ -104,6 +108,7 @@ open class SignPlaceListener(
             ) != null
         ) {
             player.sendMessage(lang.msg("shop.create.already_shop"))
+            event.isCancelled = true
             return
         }
 
@@ -114,6 +119,12 @@ open class SignPlaceListener(
             .trim().toLongOrNull()
         if (amount == null || amount <= 0 || price == null || price <= 0) {
             player.sendMessage(lang.msg("shop.create.invalid_input"))
+            event.isCancelled = true
+            return
+        }
+        if (price > Int.MAX_VALUE.toLong()) {
+            player.sendMessage(lang.msg("shop.create.invalid_input"))
+            event.isCancelled = true
             return
         }
 
@@ -121,6 +132,7 @@ open class SignPlaceListener(
         val held = player.inventory.itemInMainHand
         if (held.type == Material.AIR || held.amount <= 0) {
             player.sendMessage(lang.msg("shop.create.no_held_item"))
+            event.isCancelled = true
             return
         }
         val sellStack = held.clone().apply { this.amount = 1 }
