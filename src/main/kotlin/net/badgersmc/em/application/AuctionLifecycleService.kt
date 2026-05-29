@@ -379,21 +379,19 @@ class AuctionLifecycleService(
             throw IllegalStateException("Failed to withdraw winning bid from ${bid.bidder}")
         }
 
-        // 1. Persist state changes (stall awarded + auction closed)
-        // If this fails, the caller will retry — we'll need to refund the winner manually.
-        // The alternative of persisting after payment risks double-paying on retry.
+        // 1. Create updated stall (in memory)
         val awardAt = Instant.now()
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
+
+        // 2. Sync region BEFORE persisting — if this fails,
+        // the winner was charged but we surface the error so the
+        // caller can arrange a refund. Not swallowing = no silent permission drift.
+        regionMembers.setOwner(updatedStall.world, updatedStall.regionId, bid.bidder)
+
+        // 3. Persist state changes (stall awarded + auction closed)
         stallRepository.save(updatedStall)
         auctionRepository.save(auction.close())
-        try {
-            regionMembers.setOwner(updatedStall.world, updatedStall.regionId, bid.bidder)
-        } catch (e: Exception) {
-            logger.warning(
-                "settleWithWinner: WG owner sync failed for stall ${updatedStall.id.value}; " +
-                    "winner may need op until resync. cause=${e.message}"
-            )
-        }
+
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
         // 2. Pay seller (after state is persisted — if this fails, seller funds are still held)

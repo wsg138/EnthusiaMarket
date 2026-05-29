@@ -139,12 +139,7 @@ class RentCollectionService(
                             nextRentAt = null,
                         )
                     )
-                    try {
                         regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                    } catch (_: Exception) {
-                        // Already logged inside the adapter; eviction
-                        // proceeds either way.
-                    }
                     ProcessResult.Evicted
                 } else {
                     // Grace not yet expired — do nothing

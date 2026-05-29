@@ -68,6 +68,7 @@ purchase_sign:
     purchased_guild: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for your guild — you paid</gray> <gold><price>"
     not_in_guild: "<prefix><red>You are not in a guild — cannot buy for guild"
     no_guild_permission: "<prefix><red>You do not have MANAGE_SHOPS in your guild"
+    guild_wg_sync_not_supported: "<prefix><red>Guild buyouts not supported yet — WG sync not wired. Contact an admin."
     stall_missing: "<prefix><red>Stall not found:</red> <stall>"
     auction_live: "<prefix><yellow>Auction is live on</yellow> <aqua><stall></aqua> <gray>— use /em bid"
     already_owned: "<prefix><gray>This stall is already owned"

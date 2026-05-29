@@ -52,6 +52,7 @@ class StallBuyoutService(
         data object AlreadyOwned : Result
         data object NotInGuild : Result
         data object NoGuildPermission : Result
+        data object GuildWgSyncNotSupported : Result
         data class Rejected(val reason: String) : Result
     }
 
@@ -80,7 +81,9 @@ class StallBuyoutService(
         ) {
             return Result.NoGuildPermission
         }
-        return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
+        // WG sync for guilds not yet wired — reject until
+        // a guild→region bridge exists (see PR #21 review comments).
+        return Result.GuildWgSyncNotSupported
     }
 
     private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Result {

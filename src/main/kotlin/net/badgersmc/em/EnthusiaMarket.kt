@@ -3,6 +3,7 @@ package net.badgersmc.em
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang
+import net.badgersmc.em.infrastructure.listeners.SignPlaceListener
 import net.badgersmc.nexus.core.NexusContext
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.i18n.Locale

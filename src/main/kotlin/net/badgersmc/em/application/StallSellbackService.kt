@@ -110,9 +110,18 @@ class StallSellbackService(
             return ExecuteResult.Rejected("Stall reset failed; contact an admin")
         }
 
-        // Pay refund. If deposit fails the stall is already UNOWNED;
-        // we surface a clear rejection — never lose money silently.
+        // Pay refund. If deposit fails, rollback stall to previous state.
         if (refund > 0 && !economy.deposit(actor, refund)) {
+            try {
+                stalls.save(stall.copy(
+                    state = previousState,
+                    owner = stall.owner,
+                    ownerSince = stall.ownerSince,
+                    winningBid = stall.winningBid,
+                    members = stall.members,
+                    nextRentAt = stall.nextRentAt,
+                ))
+            } catch (_: Exception) { }
             return ExecuteResult.Rejected("Failed to deposit refund of $refund to your account")
         }
 

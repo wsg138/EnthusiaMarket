@@ -33,7 +33,7 @@ open class PurchaseSignBreakListener(
     private val lang: LangService,
 ) : Listener {
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onBreak(event: BlockBreakEvent) {
         val block = event.block
         if (!isSignMaterial(block.type)) return
