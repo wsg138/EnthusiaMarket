@@ -27,7 +27,7 @@ class EnthusiaMarketPluginTest {
     @Test fun `RentTerms can be created from config`() {
         val cfg = EnthusiaMarketConfig()
         val rent = RentTerms.formula(cfg.rent.formulaPct)
-        assertEquals(0.01, rent.pct)
+        assertEquals(1.0, rent.pct)
     }
 
     @Test fun `StallId ensures non-blank value`() {

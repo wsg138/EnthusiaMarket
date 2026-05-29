@@ -18,6 +18,8 @@ admin:
     failure: "<prefix><red>reload failed: <reason>"
   list:
     line: "  <aqua><id></aqua> <gray>[<state>]</gray> region=<world>:<region>"
+  rg_resync:
+    result: "<prefix>WG resync: fixed=<green><fixed></green> skipped=<yellow><skipped></yellow> errors=<red><errors>"
   auction:
     start:
       success: "<prefix><green>Auction created:</green> <id> <gray>for stall</gray> <stall> <gray>starting at</gray> <gold><starting_bid>"
@@ -53,6 +55,7 @@ purchase_sign:
     line2: "<yellow><owner>"
     line3: "<gray>Rent: <time>"
     line4: "<aqua>Right-click"
+    overdue: "<red>Overdue"
   missing:
     line1: "<dark_gray>[<gold>EM</gold>]"
     line2: "<red>?<stall>"
@@ -62,6 +65,9 @@ purchase_sign:
     invalid_price: "<prefix><red>Sign line 3 must be a positive whole number; got:</red> <price>"
     no_permission: "<prefix><red>You don't have permission to create purchase signs"
     purchased: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for</gray> <gold><price>"
+    purchased_guild: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for your guild — you paid</gray> <gold><price>"
+    not_in_guild: "<prefix><red>You are not in a guild — cannot buy for guild"
+    no_guild_permission: "<prefix><red>You do not have MANAGE_SHOPS in your guild"
     stall_missing: "<prefix><red>Stall not found:</red> <stall>"
     auction_live: "<prefix><yellow>Auction is live on</yellow> <aqua><stall></aqua> <gray>— use /em bid"
     already_owned: "<prefix><gray>This stall is already owned"
@@ -70,8 +76,6 @@ purchase_sign:
     confirm_extend: "<prefix><yellow>Right-click again within <seconds>s to extend rent on</yellow> <aqua><stall>"
     extended: "<prefix><green>Rent extended on</green> <aqua><stall></aqua> <gray>(paid <gold><amount><gray>)"
     not_owner: "<prefix><red>You do not own</red> <aqua><stall>"
-  owned:
-    overdue: "<prefix><red>Overdue"
 
 stall:
   members:
@@ -84,6 +88,20 @@ stall:
     not_authorised: "<prefix><red>You do not have permission to manage</red> <stall>"
     rejected: "<prefix><red>Cannot add member: <reason>"
     unknown_player: "<prefix><red>Unknown player:</red> <player>"
+
+sellback:
+  warn:
+    header: "<prefix><yellow>Sellback quote for</yellow> <aqua><stall></aqua><yellow>: refund <gold><refund></gold> (<periods> period(s) prepaid, current period excluded). Confirm within <seconds>s."
+    wipe: "<gray>This will delete <yellow><shops></yellow> shop(s) bound to the stall."
+    belongings: "<red>Any items or chests inside the region will stay where they are — you are responsible for removing them BEFORE selling back. They are not refunded."
+    schematic: "<gray>Schematic restore is pending TDD-270 — region geometry will NOT be reverted yet."
+    confirm: "<aqua>Run /em sellback confirm <stall></aqua> <gray>to proceed."
+  success: "<prefix><green>Stall</green> <aqua><stall></aqua> <green>released. Refunded</green> <gold><refund></gold> <green>and wiped</green> <yellow><shops></yellow> <green>shop(s)."
+  stall_not_found: "<prefix><red>Stall not found:</red> <stall>"
+  not_owned: "<prefix><red>Stall is not currently owned:</red> <stall>"
+  not_authorised: "<prefix><red>You do not own or have authority over</red> <aqua><stall>"
+  no_pending: "<prefix><gray>No pending sellback for</gray> <aqua><stall></aqua> <gray>— run /em sellback <stall> first."
+  rejected: "<prefix><red>Sellback failed: <reason>"
 
 offer:
   created: "<prefix><green>Offer listed:</green> <aqua><stall></aqua> <gray>for</gray> <gold><price>"
@@ -113,7 +131,10 @@ shop:
     bedrock_placeholder: "<yellow>[Shop] Bedrock form would open here (TDD-60)"
     guild_unavailable: "<red>LumaGuilds integration is not available"
     success: "<green>Shop created!"
-    invalid_input: "<red>Invalid item or price"
+    invalid_input: "<red>Invalid amount or price — both must be positive whole numbers"
+    no_permission: "<red>You do not have permission to create shops (enthusiamarket.shop.create)"
+    needs_wallsign: "<red>Shop signs must be wall-mounted on the side of a container"
+    no_held_item: "<red>Hold the item you want to trade in your main hand before placing the sign"
   edit:
     not_owner: "<red>You don't own this shop"
     frozen: "<red>Shop frozen"
@@ -138,6 +159,8 @@ gui:
     cost_name: "<gold><bold>COST:</bold></gold> <white><cost>x per trade"
     buy_name: "<green><bold>BUY</bold>"
     buy_lore_click: "<gray>Click to purchase"
+    sell_action_name: "<yellow><bold>SELL</bold>"
+    sell_action_lore_click: "<gray>Click to sell to this shop"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"

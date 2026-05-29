@@ -48,10 +48,18 @@ class StallRentExtensionService(
         }
         if (!stall.canManage(actor, guildProvider)) return Result.NotAuthorised
 
-        val amount = stall.rentTerms.dailyRent(stall.winningBid)
+        // Floor to at least 1 unit whenever the stall had a real buy
+        // price. Default rent.formulaPct (0.01) on a 1000-coin stall
+        // computes to 0.0001 → toLong() = 0, which previously let
+        // players infinite-extend for free. The floor closes that hole
+        // until operators tune formulaPct (typically 1.0 = 1% per
+        // period). True rent-free stalls (winningBid <= 0) keep the
+        // no-charge path so admin-gifted regions don't surprise-bill.
+        val computed = stall.rentTerms.dailyRent(stall.winningBid)
+        val amount = if (stall.winningBid > 0L) maxOf(computed, 1L) else computed
         if (amount <= 0) {
-            // Rent-free stall — no-op extension still bumps the timer
-            // so the sign updates immediately.
+            // Truly rent-free (winningBid == 0). Bump the timer for
+            // sign-display purposes; no economy involvement.
             val pushed = pushTimer(stall.nextRentAt)
             val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
             stalls.save(updated)

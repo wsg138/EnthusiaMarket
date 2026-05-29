@@ -3,6 +3,7 @@ package net.badgersmc.em
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang
+import net.badgersmc.em.infrastructure.listeners.SignPlaceListener
 import net.badgersmc.nexus.core.NexusContext
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.i18n.Locale
@@ -87,6 +88,21 @@ open class EnthusiaMarket : JavaPlugin() {
             classLoader = this::class.java.classLoader,
             plugin = this
         )
+
+        // Phase 6: Discover every @Listener-annotated bean in the scan
+        // package, resolve it from DI, and register it with Bukkit.
+        // Fail-closed: any listener that can't be resolved/registered
+        // will disable the plugin rather than leave sign flows dead.
+        try {
+            net.badgersmc.nexus.paper.listeners.registerNexusListeners(
+                basePackage = "net.badgersmc.em",
+                classLoader = this::class.java.classLoader,
+                plugin = this,
+                nexus = ctx,
+            )
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to register listeners — disabling plugin. ${e.message}", e)
+        }
 
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }

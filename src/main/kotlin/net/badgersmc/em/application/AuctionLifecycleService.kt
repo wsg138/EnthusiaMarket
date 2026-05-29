@@ -70,6 +70,7 @@ class AuctionLifecycleService(
     private val config: EnthusiaMarketConfig,
     private val limits: LimitResolutionService,
     private val sellOffers: SellOfferRepository,
+    private val regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync,
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
@@ -378,14 +379,24 @@ class AuctionLifecycleService(
             throw IllegalStateException("Failed to withdraw winning bid from ${bid.bidder}")
         }
 
-        // 1. Persist state changes (stall awarded + auction closed)
-        // If this fails, the caller will retry — we'll need to refund the winner manually.
-        // The alternative of persisting after payment risks double-paying on retry.
+        // 1. Create updated stall + persist state changes (stall awarded + auction closed)
+        // Persist FIRST so the DB is authoritative even if WG sync fails.
         val awardAt = Instant.now()
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
         stallRepository.save(updatedStall)
         auctionRepository.save(auction.close())
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
+
+        // 2. Sync region AFTER persist (best-effort).
+        // If this fails, the DB is correct; /em rg resync can fix WG.
+        try {
+            regionMembers.setOwner(updatedStall.world, updatedStall.regionId, bid.bidder)
+        } catch (e: Exception) {
+            logger.warning(
+                "settleWithWinner: WG owner sync failed for stall ${updatedStall.id.value}; " +
+                    "DB owner is correct. cause=${e.message}"
+            )
+        }
 
         // 2. Pay seller (after state is persisted — if this fails, seller funds are still held)
         // Trade-off: if deposit fails, the winner has been charged but the seller hasn't been paid.

@@ -7,14 +7,11 @@ import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.SignChangeEvent
-import org.bukkit.plugin.java.JavaPlugin
 
 /**
  * Registers a [PurchaseSign] when a player writes a sign with:
@@ -30,6 +27,7 @@ import org.bukkit.plugin.java.JavaPlugin
  * Invalid stall id / non-positive price / blank fields → event
  * cancelled with a translated lang message; no binding persisted.
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 open class PurchaseSignCreateListener(
     private val stalls: StallRepository,
@@ -38,13 +36,6 @@ open class PurchaseSignCreateListener(
     private val config: EnthusiaMarketConfig,
     private val lang: LangService,
 ) : Listener {
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
-            ?: return
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler
     fun onSignPlace(event: SignChangeEvent) {
