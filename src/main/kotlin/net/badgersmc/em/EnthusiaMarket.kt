@@ -88,20 +88,19 @@ open class EnthusiaMarket : JavaPlugin() {
             plugin = this
         )
 
-        // Phase 6: Force-instantiate purchase-sign listeners. The
-        // @PostConstruct register() pattern only fires when something
-        // resolves the bean; commands above pull most of the graph
-        // but the sign listeners aren't depended on by any command,
-        // so they'd otherwise stay un-instantiated and never register.
+        // Phase 6: Discover every @Listener-annotated bean in the scan
+        // package, resolve it from DI, and register it with Bukkit.
+        // Replaces the per-listener getBean+@PostConstruct dance that
+        // broke twice when new listeners weren't pulled by any command.
         try {
-            ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignCreateListener::class)
-            ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignClickListener::class)
-            ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignBreakListener::class)
-            ctx.getBean(net.badgersmc.em.infrastructure.listeners.PurchaseSignRefreshListener::class)
-            ctx.getBean(net.badgersmc.em.infrastructure.listeners.SignPlaceListener::class)
-            logger.info("Purchase-sign + shop-sign listeners resolved + registered")
+            net.badgersmc.nexus.paper.listeners.registerNexusListeners(
+                basePackage = "net.badgersmc.em",
+                classLoader = this::class.java.classLoader,
+                plugin = this,
+                nexus = ctx,
+            )
         } catch (e: Exception) {
-            logger.severe("Failed to instantiate sign listeners: ${e.message}")
+            logger.severe("Failed to register Nexus @Listener beans: ${e.message}")
             e.printStackTrace()
         }
 

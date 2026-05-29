@@ -7,16 +7,13 @@ import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
 import net.badgersmc.nexus.i18n.LangService
-import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.Tag
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
-import org.bukkit.plugin.java.JavaPlugin
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -37,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Event is cancelled in every routed branch so the click never falls
  * through to vanilla sign edit behaviour.
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 open class PurchaseSignClickListener(
     private val signs: PurchaseSignRepository,
@@ -56,13 +54,6 @@ open class PurchaseSignClickListener(
      * later) stay safe.
      */
     private val pendingConfirms = ConcurrentHashMap<ConfirmKey, Instant>()
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
-            ?: return
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler
     fun onClick(event: PlayerInteractEvent) {

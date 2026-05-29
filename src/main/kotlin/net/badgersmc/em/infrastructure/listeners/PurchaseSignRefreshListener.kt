@@ -6,12 +6,10 @@ import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
-import org.bukkit.plugin.java.JavaPlugin
 
 /**
  * Re-renders every purchase sign bound to a stall whenever its state
@@ -21,18 +19,12 @@ import org.bukkit.plugin.java.JavaPlugin
  * Bukkit's `Sign#line` API is main-thread only; the listener already
  * runs there for Bukkit events, so no scheduler hop is needed.
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 open class PurchaseSignRefreshListener(
     private val signs: PurchaseSignRepository,
     private val renderer: PurchaseSignRenderer,
 ) : Listener {
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
-            ?: return
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler
     fun onStallStateChanged(event: StallStateChangedEvent) {

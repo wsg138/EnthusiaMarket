@@ -11,7 +11,6 @@ import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
@@ -45,6 +44,7 @@ import org.bukkit.plugin.java.JavaPlugin
  * finished sign opens the existing purchase/sell flow via
  * [ShopInteractListener] + ContainerTradeService.
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 open class SignPlaceListener(
     private val stallRepository: StallRepository,
@@ -52,13 +52,6 @@ open class SignPlaceListener(
     private val guildProvider: GuildProvider,
     private val lang: LangService,
 ) : Listener {
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
-            ?: return
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler
     fun onSignPlace(event: SignChangeEvent) {

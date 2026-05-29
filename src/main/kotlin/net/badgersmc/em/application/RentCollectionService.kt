@@ -2,6 +2,7 @@ package net.badgersmc.em.application
 
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
@@ -30,7 +31,8 @@ data class RentReport(
 class RentCollectionService(
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,
-    private val config: EnthusiaMarketConfig
+    private val config: EnthusiaMarketConfig,
+    private val regionMembers: RegionMemberSync,
 ) {
 
     private val activeStates = setOf(StallState.OWNED, StallState.GRACE)
@@ -125,15 +127,24 @@ class RentCollectionService(
                 // Already in GRACE — check if grace period has elapsed
                 val ownerSince = stall.ownerSince
                 if (ownerSince != null && isPastGrace(ownerSince, now)) {
-                    // Evict the stall
+                    // Evict the stall — clear DB ownership AND WG perms
+                    // so the evicted owner immediately loses build
+                    // rights on the region.
                     stallRepository.save(
                         stall.copy(
                             state = StallState.UNOWNED,
                             owner = OwnerRef.unowned(),
                             ownerSince = null,
-                            winningBid = 0L
+                            winningBid = 0L,
+                            nextRentAt = null,
                         )
                     )
+                    try {
+                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+                    } catch (_: Exception) {
+                        // Already logged inside the adapter; eviction
+                        // proceeds either way.
+                    }
                     ProcessResult.Evicted
                 } else {
                     // Grace not yet expired — do nothing

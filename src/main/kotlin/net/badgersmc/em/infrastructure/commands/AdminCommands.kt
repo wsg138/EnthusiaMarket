@@ -7,6 +7,9 @@ import net.badgersmc.em.application.MassAuctionResult
 import net.badgersmc.em.application.SellOfferService
 import net.badgersmc.em.application.StallMemberService
 import net.badgersmc.em.application.StallSellbackService
+import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.stall.OwnerType
+import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
@@ -40,6 +43,7 @@ class AdminCommands(
     private val stallMembers: StallMemberService,
     private val sellOffers: SellOfferService,
     private val sellback: StallSellbackService,
+    private val regionMembers: RegionMemberSync,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -363,6 +367,7 @@ class AdminCommands(
         @Context sender: Player,
         @Arg("stall") stall: String,
     ) {
+        prunePendingSellbacks()
         when (val r = sellback.quote(StallId(stall), sender.uniqueId)) {
             is StallSellbackService.QuoteResult.NotFound ->
                 sender.sendMessage(lang.msg("sellback.stall_not_found", "stall" to stall))
@@ -381,6 +386,7 @@ class AdminCommands(
                     "seconds" to sellbackConfirmWindow.seconds,
                 ))
                 sender.sendMessage(lang.msg("sellback.warn.wipe", "shops" to r.quote.shopCount))
+                sender.sendMessage(lang.msg("sellback.warn.belongings"))
                 sender.sendMessage(lang.msg("sellback.warn.schematic"))
                 sender.sendMessage(lang.msg("sellback.warn.confirm", "stall" to stall))
             }
@@ -421,6 +427,59 @@ class AdminCommands(
                 lang.msg("sellback.rejected", "reason" to r.reason)
         }
         sender.sendMessage(msg)
+    }
+
+    // ----- WG resync (operator backfill) -----
+
+    @Subcommand("rg resync")
+    @Permission("enthusiamarket.admin")
+    fun rgResync(@Context sender: CommandSender) {
+        var fixed = 0
+        var skipped = 0
+        var errors = 0
+        for (stall in stalls.all()) {
+            when (stall.state) {
+                StallState.OWNED, StallState.GRACE -> when (stall.owner.type) {
+                    OwnerType.SOLO -> try {
+                        val uuid = UUID.fromString(stall.owner.id)
+                        regionMembers.setOwner(stall.world, stall.regionId, uuid)
+                        fixed++
+                    } catch (_: Exception) {
+                        errors++
+                    }
+                    OwnerType.GUILD -> skipped++  // no auto WG bridge for guilds yet
+                    OwnerType.NONE -> Unit
+                }
+                StallState.UNOWNED -> try {
+                    regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+                    fixed++
+                } catch (_: Exception) {
+                    errors++
+                }
+                // Active auctions left alone — the winning bid will
+                // run setOwner via settleWithWinner at expiry.
+                StallState.AUCTIONING,
+                StallState.RE_AUCTIONING,
+                StallState.EMERGENCY_AUCTIONING -> skipped++
+            }
+        }
+        sender.sendMessage(lang.msg(
+            "admin.rg_resync.result",
+            "fixed" to fixed, "skipped" to skipped, "errors" to errors,
+        ))
+    }
+
+    /**
+     * Drop expired entries from [pendingSellbacks] so the map doesn't
+     * leak across stagings that never confirm. Called inline on every
+     * sellback subcommand — keeps the cost O(n) on small n with no
+     * background scheduler.
+     */
+    private fun prunePendingSellbacks() {
+        val now = java.time.Instant.now()
+        pendingSellbacks.entries.removeIf {
+            java.time.Duration.between(it.value, now) > sellbackConfirmWindow
+        }
     }
 
     /** Extract sender UUID, preferring Player sender. */

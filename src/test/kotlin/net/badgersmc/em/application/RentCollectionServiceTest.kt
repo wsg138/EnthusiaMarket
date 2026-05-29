@@ -93,7 +93,7 @@ class RentCollectionServiceTest {
         val cfg = config(gracePeriod = gracePeriod)
 
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, economy, cfg),
+            service = RentCollectionService(stallRepo, economy, cfg, mockk(relaxed = true)),
             stallRepo = stallRepo,
             economy = economy,
             config = cfg
