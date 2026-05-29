@@ -138,7 +138,8 @@ class RentCollectionService(
                             winningBid = 0L,
                             nextRentAt = null,
                         )
-                    )
+                        )
+                    try {
                         regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
                     } catch (_: Exception) {
                         // DB is authoritative; WG can be resynced via /em rg resync.
