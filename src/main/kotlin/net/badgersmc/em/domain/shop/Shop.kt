@@ -50,7 +50,22 @@ data class Shop(
     val frozen: Boolean = false,
     val adminShop: Boolean = false,
     val guildId: UUID? = null,
-    val creatorId: UUID? = null
+    val creatorId: UUID? = null,
+    /**
+     * Trade direction (REQ-006 / sign-shop semantics).
+     *
+     * - [SignDirection.SELL]: owner sells stock to the public. Buyer
+     *   clicks → pays [costAmount], receives [sellAmount] of [sellItem]
+     *   from the container. Routes to ContainerTradeService.executeSell.
+     * - [SignDirection.BUY]: owner buys items from the public. Seller
+     *   clicks → gives [sellAmount] of [sellItem] to the container,
+     *   receives [costAmount] from the owner's balance. Routes to
+     *   ContainerTradeService.executeBuy.
+     *
+     * Defaults to SELL so legacy rows (created before V012) read as a
+     * normal "owner sells items" shop on upgrade.
+     */
+    val direction: SignDirection = SignDirection.SELL,
 ) {
     init {
         require(sellAmount > 0) { "sellAmount must be positive, was $sellAmount" }

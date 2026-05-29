@@ -157,6 +157,8 @@ gui:
     cost_name: "<gold><bold>COST:</bold></gold> <white><cost>x per trade"
     buy_name: "<green><bold>BUY</bold>"
     buy_lore_click: "<gray>Click to purchase"
+    sell_action_name: "<yellow><bold>SELL</bold>"
+    sell_action_lore_click: "<gray>Click to sell to this shop"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"

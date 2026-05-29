@@ -6,6 +6,7 @@ import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.events.ShopCreatedEvent
@@ -67,8 +68,8 @@ open class SignPlaceListener(
         val firstLine = plain.serialize(lines[0]).trim().uppercase()
 
         val direction = when (firstLine) {
-            "[BUY]", "BUY" -> "BUY"
-            "[SELL]", "SELL" -> "SELL"
+            "[BUY]", "BUY" -> SignDirection.BUY
+            "[SELL]", "SELL" -> SignDirection.SELL
             else -> return
         }
 
@@ -151,12 +152,13 @@ open class SignPlaceListener(
             costItem = ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1)),
             costAmount = price.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             creatorId = player.uniqueId,
+            direction = direction,
         )
         shopRepository.upsert(shop)
 
         // Auto-format the four lines.
-        val headerColor = if (direction == "BUY") NamedTextColor.GOLD else NamedTextColor.AQUA
-        event.line(0, AdventureComponent.text("[$direction]", headerColor))
+        val headerColor = if (direction == SignDirection.BUY) NamedTextColor.GOLD else NamedTextColor.AQUA
+        event.line(0, AdventureComponent.text("[${direction.name}]", headerColor))
         event.line(1, AdventureComponent.text("${amount}x ${held.type.name.lowercase()}", NamedTextColor.WHITE))
         event.line(2, AdventureComponent.text("$price", NamedTextColor.GOLD))
         event.line(3, AdventureComponent.text("[Shop]", NamedTextColor.GOLD))

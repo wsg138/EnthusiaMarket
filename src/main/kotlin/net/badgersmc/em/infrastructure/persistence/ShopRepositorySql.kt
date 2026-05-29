@@ -103,8 +103,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                  container_world, container_x, container_y, container_z,
                  sell_item, sell_amount, cost_item, cost_amount,
                  trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
-                 guild_id, creator_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 guild_id, creator_id, direction)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
             conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS).use { ps ->
                 bind(ps, shop)
@@ -128,11 +128,11 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                      container_world = ?, container_x = ?, container_y = ?, container_z = ?,
                      sell_item = ?, sell_amount = ?, cost_item = ?, cost_amount = ?,
                      trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
-                     guild_id = ?, creator_id = ?
+                     guild_id = ?, creator_id = ?, direction = ?
                    WHERE id = ?"""
             ).use { ps ->
                 bind(ps, shop)
-                ps.setLong(22, shop.id)
+                ps.setLong(23, shop.id)
                 ps.executeUpdate()
             }
         }
@@ -160,6 +160,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ps.setBoolean(19, shop.adminShop)
         if (shop.guildId != null) ps.setString(20, shop.guildId.toString()) else ps.setNull(20, java.sql.Types.VARCHAR)
         if (shop.creatorId != null) ps.setString(21, shop.creatorId.toString()) else ps.setNull(21, java.sql.Types.VARCHAR)
+        ps.setString(22, shop.direction.name)
     }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Shop? {
@@ -217,7 +218,12 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             frozen = rs.getBoolean("frozen"),
             adminShop = rs.getBoolean("admin_shop"),
             guildId = guildId,
-            creatorId = creatorId
+            creatorId = creatorId,
+            direction = runCatching {
+                net.badgersmc.em.domain.shop.SignDirection.valueOf(
+                    rs.getString("direction") ?: "SELL"
+                )
+            }.getOrDefault(net.badgersmc.em.domain.shop.SignDirection.SELL),
         )
     }
 }

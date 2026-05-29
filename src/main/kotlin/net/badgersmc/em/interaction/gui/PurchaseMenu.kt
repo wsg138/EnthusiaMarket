@@ -7,6 +7,7 @@ import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ContainerTradeResult
 import net.badgersmc.em.application.ContainerTradeService
 import net.badgersmc.em.domain.shop.Shop
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import net.kyori.adventure.text.Component
@@ -15,9 +16,19 @@ import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 
 /**
- * IFramework ChestGui showing the shop's sell/cost items and trade buttons (REQ-013).
+ * Trade GUI for a sign shop. Direction-aware (REQ-006):
  *
- * BUY executes an actual trade via [ContainerTradeService.executeBuy].
+ * - **SELL** sign (owner sells): the clicker is the buyer. Button
+ *   calls [ContainerTradeService.executeSell] which withdraws
+ *   [Shop.costAmount] from the clicker, deposits to the owner, and
+ *   moves [Shop.sellAmount] of [Shop.sellItem] from the chest to
+ *   the clicker.
+ * - **BUY** sign (owner buys): the clicker is the seller. Button
+ *   calls [ContainerTradeService.executeBuy] which moves the items
+ *   from the clicker into the chest and pays the clicker.
+ *
+ * Pre-V012 the menu always wired executeBuy, so [SELL] shops were
+ * unreachable for actual purchases.
  */
 class PurchaseMenu(
     private val shop: Shop,
@@ -45,13 +56,31 @@ class PurchaseMenu(
             lang.msg("gui.shop.cost_name", "cost" to shop.costAmount)
         )), 6, 1)
 
+        // Direction-aware action button. SELL sign → player buys
+        // from owner. BUY sign → player sells to owner. The lang key
+        // picks the verb that matches the player's perspective.
+        val buttonKey = if (shop.direction == SignDirection.SELL) {
+            "gui.shop.buy_name"
+        } else {
+            "gui.shop.sell_action_name"
+        }
+        val buttonLoreKey = if (shop.direction == SignDirection.SELL) {
+            "gui.shop.buy_lore_click"
+        } else {
+            "gui.shop.sell_action_lore_click"
+        }
+
         pane.addItem(GuiItem(decorated(
             Material.LIME_STAINED_GLASS_PANE,
-            lang.msg("gui.shop.buy_name"),
-            listOf(lang.msg("gui.shop.buy_lore_click"))
+            lang.msg(buttonKey),
+            listOf(lang.msg(buttonLoreKey))
         )) { event ->
             event.isCancelled = true
-            when (val result = tradeService.executeBuy(shop, player.uniqueId)) {
+            val result = when (shop.direction) {
+                SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
+                SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
+            }
+            when (result) {
                 is ContainerTradeResult.Success -> player.sendMessage(
                     lang.msg("shop.trade.success", "message" to result.message)
                 )
