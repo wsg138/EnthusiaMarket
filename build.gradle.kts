@@ -17,7 +17,8 @@ repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://oss.sonatype.org/content/repositories/snapshots")
     maven("https://jitpack.io")
-    maven("https://maven.enginehub.org/repo/") // WorldGuard
+    maven("https://maven.enginehub.org/repo/") // WorldGuard + WorldEdit
+    maven("https://repo.fastasyncworldedit.com/releases") // FastAsyncWorldEdit
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
 
     // Nexus releases — served via JitPack (https://jitpack.io). No token
@@ -36,6 +37,12 @@ dependencies {
         exclude(group = "org.bukkit", module = "bukkit")
     }
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.9")
+    // WorldEdit + FAWE — backs the SchematicService adapter (REQ-270..272).
+    // compileOnly: provided by the WorldEdit/FAWE plugins at runtime (softdepend).
+    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0")
+    testImplementation("com.sk89q.worldedit:worldedit-bukkit:7.3.0")
+    compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.11.0")
+    testImplementation("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.11.0")
     compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
     compileOnly("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
     testImplementation("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
@@ -50,17 +57,21 @@ dependencies {
     // Paper's runtime library loader). Transitive kotlin-reflect, coroutines, and
     // kaml come along on compile/test classpath but are excluded from the shadowJar
     // below (Paper downloads them at runtime via the libraries: block in plugin.yml).
-    implementation("com.github.BadgersMC.Nexus:nexus-core:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-resources:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-i18n:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-persistence:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-scheduler:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-gui:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-bedrock:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-listeners:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-vault:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-loader:v2.1.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-core:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-resources:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-i18n:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-persistence:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-scheduler:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper-gui:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper-bedrock:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper-listeners:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-vault:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper-loader:v2.2.1")
+    // WorldEdit / FAWE facade + SchematicService — backs stall schematic
+    // capture/restore (REQ-270..272). WE/FAWE themselves stay compileOnly
+    // below; this module only adds the thin Kotlin facade over them.
+    implementation("com.github.BadgersMC.Nexus:nexus-worldedit:v2.2.1")
 
     // Runtime-downloaded by Paper via plugin.yml `libraries:` — kept on compile +
     // test classpath but excluded from the shaded jar to shrink it from ~27 MB

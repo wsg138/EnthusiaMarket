@@ -26,6 +26,33 @@ class EnthusiaMarketConfig {
     var lang: Lang = Lang()
     @Comment("Purchase-sign trigger token + permissions (REQ-250..253)")
     var signs: Signs = Signs()
+    @Comment("Stall schematic snapshot/restore on claim/unclaim (REQ-270..274)")
+    var schematics: Schematics = Schematics()
+    @Comment("Stall boundary particle outline rendering (REQ-220 region kinds)")
+    var particles: Particles = Particles()
+
+    class Particles {
+        @Comment("Master switch for stall boundary particle outlines.")
+        var enabled: Boolean = true
+        @Comment(
+            "Maximum particle spawns scheduled per server tick across all stalls. " +
+                "Caps render cost on busy servers; excess is deferred to later ticks."
+        )
+        var maxPerTick: Int = 200
+    }
+
+    class Schematics {
+        @Comment(
+            "Master switch. When false, stall transitions occur without geometry " +
+                "capture or restore (REQ-273)."
+        )
+        var enabled: Boolean = true
+        @Comment(
+            "Directory (under the plugin data folder) where <stallId>.schem files " +
+                "are written. Created on enable."
+        )
+        var directory: String = "schematics"
+    }
 
     class Signs {
         @Comment("First-line token a player writes to register a purchase sign (e.g. [em]).")

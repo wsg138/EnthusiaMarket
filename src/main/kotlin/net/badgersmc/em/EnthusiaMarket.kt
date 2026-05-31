@@ -49,6 +49,18 @@ open class EnthusiaMarket : JavaPlugin() {
         // Phase 3: Read config from Nexus for database + i18n + scheduler bootstrap.
         val cfg = ctx.getBean<EnthusiaMarketConfig>()
 
+        // Ensure the schematic snapshot directory exists so the first capture
+        // never fails on a missing folder (REQ-270, INFRA-20).
+        val schematicsDir = File(dataFolder, cfg.schematics.directory)
+        if (!schematicsDir.exists() && !schematicsDir.mkdirs()) {
+            logger.warning("Failed to create schematics directory: ${schematicsDir.absolutePath}")
+        }
+        // Ship the default entity-limit groups (REQ-220) on first run so
+        // operators have a template to edit; never overwrite local edits.
+        if (!File(dataFolder, "entitylimits.yml").exists()) {
+            saveResource("entitylimits.yml", false)
+        }
+
         // i18n service — wired manually since LangService lives outside the EM scan package.
         val lang = LangService(this, Locale(cfg.lang.locale), EnthusiaMarketLang::class.java)
         ctx.registerBean("langService", LangService::class, lang)

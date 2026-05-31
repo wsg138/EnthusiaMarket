@@ -4,6 +4,7 @@ import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -44,6 +45,7 @@ class StallSellbackService(
     private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
     private val regionMembers: RegionMemberSync,
+    private val schematics: SchematicService = SchematicService.Disabled,
 ) {
 
     private val log = Logger.getLogger(StallSellbackService::class.java.name)
@@ -149,9 +151,18 @@ class StallSellbackService(
 
         fireStateChanged(stallId.value, previousState, StallState.UNOWNED)
 
-        // TODO: TDD-270/271 — when SchematicService lands, call
-        //       schematicService.restore(stallId, stall.region) here
-        //       to revert the geometry to the pre-claim snapshot.
+        // REQ-271 — revert the geometry to the pre-claim snapshot now the
+        // stall is UNOWNED. Best-effort: a failed restore must not roll back
+        // the completed sellback (REQ-272/273). Gated on schematics.enabled.
+        if (config.schematics.enabled) {
+            val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+            if (restore is SchematicService.Result.Failure) {
+                log.warning(
+                    "StallSellbackService.execute: schematic restore failed for stall " +
+                        "${stallId.value}; geometry left as-is. cause=${restore.cause.message}"
+                )
+            }
+        }
 
         return ExecuteResult.Sold(refund, wiped)
     }

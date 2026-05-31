@@ -3,6 +3,7 @@ package net.badgersmc.em.application
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
@@ -33,7 +34,10 @@ class RentCollectionService(
     private val economy: EconomyProvider,
     private val config: EnthusiaMarketConfig,
     private val regionMembers: RegionMemberSync,
+    private val schematics: SchematicService = SchematicService.Disabled,
 ) {
+
+    private val log = java.util.logging.Logger.getLogger(RentCollectionService::class.java.name)
 
     private val activeStates = setOf(StallState.OWNED, StallState.GRACE)
 
@@ -144,6 +148,18 @@ class RentCollectionService(
                     } catch (_: Exception) {
                         // Already logged inside the adapter; eviction
                         // proceeds either way.
+                    }
+                    // REQ-271 — restore the pre-claim geometry now the stall is
+                    // UNOWNED. Best-effort: a failed paste must not roll back the
+                    // eviction (REQ-272/273). Gated on schematics.enabled.
+                    if (config.schematics.enabled) {
+                        val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+                        if (restore is SchematicService.Result.Failure) {
+                            log.warning(
+                                "Eviction: schematic restore failed for stall ${stall.id.value}; " +
+                                    "geometry left as-is. cause=${restore.cause.message}"
+                            )
+                        }
                     }
                     ProcessResult.Evicted
                 } else {

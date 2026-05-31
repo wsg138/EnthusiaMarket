@@ -30,10 +30,13 @@ Top-level direct dependencies with pinned versions. Transitive pins live in the 
 | io.papermc.paper:paper-api | 1.21.11-R0.1-SNAPSHOT | Server API (compileOnly) |
 | com.github.MilkBowl:VaultAPI | 1.7 | Economy abstraction (compileOnly) |
 | com.sk89q.worldguard:worldguard-bukkit | 7.0.9 | Region source for stalls (compileOnly) |
+| com.sk89q.worldedit:worldedit-bukkit | 7.3.0 | Schematic capture/restore of stall geometry (compileOnly, softdepend; REQ-270..274) |
+| com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit | 2.11.0 | Async paste path preferred when present (compileOnly, softdepend; REQ-272) |
 | org.geysermc.floodgate:api | 2.2.5-SNAPSHOT | Detect Bedrock players (compileOnly) |
 | org.geysermc.cumulus:cumulus | 2.0.0-SNAPSHOT | Bedrock UI forms (compileOnly) |
-| net.badgersmc:nexus-core | 1.6.0 | DI container, @ConfigFile YAML config, coroutines (shaded, relocated) |
-| net.badgersmc:nexus-paper | 1.6.0 | Paper Brigadier @Command/@Subcommand system, BukkitDispatcher (shaded, relocated) |
+| com.github.BadgersMC.Nexus:nexus-core | v2.2.1 | DI container, @ConfigFile YAML config, coroutines (shaded, relocated) |
+| com.github.BadgersMC.Nexus:nexus-paper | v2.2.1 | Paper Brigadier @Command/@Subcommand system, BukkitDispatcher (shaded, relocated) |
+| com.github.BadgersMC.Nexus:nexus-worldedit | v2.2.1 | WE/FAWE facade (WorldEditAdapter save/load + isFawePresent) behind the SchematicService port (shaded, relocated) |
 | com.zaxxer:HikariCP | 5.1.0 | Connection pool |
 | org.xerial:sqlite-jdbc | 3.45.1.0 | Default embedded DB |
 | org.mariadb.jdbc:mariadb-java-client | 3.3.2 | Production DB option |
@@ -46,6 +49,7 @@ External APIs and on-the-wire schemas this project depends on. Snapshot each in 
 | Schema | Source of truth | Snapshot location |
 |---|---|---|
 | WorldGuard region API | maven.enginehub.org WG 7.0.9 javadocs | `docs/refs/worldguard-7.0.9.md` (TODO) |
+| WorldEdit clipboard/schematic API | maven.enginehub.org WE 7.3.0 javadocs | `docs/refs/worldedit-7.3.0.md` (TODO) |
 | Vault Economy interface | Vault 1.7 javadocs | `docs/refs/vault-economy-1.7.md` (TODO) |
 | Cumulus form schema | Floodgate/Cumulus 2.0 docs | `docs/refs/cumulus-2.0.md` (TODO) |
 | LumaGuilds public API | LumaGuilds plugin repo | `docs/refs/lumaguilds-api.md` (TODO) |
