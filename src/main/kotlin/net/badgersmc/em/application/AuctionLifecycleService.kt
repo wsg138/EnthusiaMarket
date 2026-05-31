@@ -337,6 +337,7 @@ class AuctionLifecycleService(
         return SettlementReport(settled = settled, errors = errors)
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun settleWithWinner(auction: Auction) {
         val bid = auction.highBid ?: return
         val stall = stallRepository.findById(auction.stallId)

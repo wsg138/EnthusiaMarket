@@ -83,6 +83,7 @@ class StallBuyoutService(
         return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
     }
 
+    @Suppress("LongMethod")
     private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Result {
         if (price <= 0) return Result.Rejected("Sign price is invalid")
 

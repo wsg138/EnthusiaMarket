@@ -66,7 +66,7 @@ class PurchaseSignRenderer(
         )
     }
 
-    private fun ownedLines(sign: PurchaseSign, stall: Stall): List<Component> {
+    private fun ownedLines(@Suppress("UnusedParameter") sign: PurchaseSign, stall: Stall): List<Component> {
         val ownerName = owners.displayNameFor(stall.owner)
         val nextRent = stall.nextRentAt ?: fallbackNextRent(stall)
         return listOf(

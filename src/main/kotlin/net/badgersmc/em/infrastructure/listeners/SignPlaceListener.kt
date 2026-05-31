@@ -54,6 +54,7 @@ open class SignPlaceListener(
 ) : Listener {
 
     @EventHandler
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount", "ComplexCondition")
     fun onSignPlace(event: SignChangeEvent) {
         val player = event.player
         val plain = PlainTextComponentSerializer.plainText()

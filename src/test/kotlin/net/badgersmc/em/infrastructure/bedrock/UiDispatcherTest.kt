@@ -22,7 +22,6 @@ class UiDispatcherTest {
 
     companion object {
         private const val UI_DISPATCHER_CLASS = "net.badgersmc.em.infrastructure.bedrock.UiDispatcher"
-        private const val BEDROCK_UNAVAILABLE_MSG = "§cBedrock forms are not available on this server"
     }
 
     private val testUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")

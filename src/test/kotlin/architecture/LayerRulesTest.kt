@@ -1,3 +1,4 @@
+@file:Suppress("InvalidPackageDeclaration")
 package net.badgersmc.em.architecture
 
 import com.lemonappdev.konsist.api.Konsist

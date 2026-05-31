@@ -14,7 +14,6 @@ import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import java.util.Base64
 import java.util.UUID
-import java.util.logging.Logger
 
 sealed class ContainerTradeResult {
     data class Success(val message: String) : ContainerTradeResult()
@@ -39,7 +38,6 @@ open class ContainerTradeService(
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider?,
-    private val logger: Logger
 ) {
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
@@ -218,14 +216,14 @@ open class ContainerTradeService(
         }
     }
 
-    open protected fun getContainer(shop: Shop): Container? {
+    protected open fun getContainer(shop: Shop): Container? {
         val world = Bukkit.getWorld(shop.containerWorld) ?: return null
         return world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state as? Container
     }
 
-    open protected fun getPlayer(uuid: UUID): Player? = Bukkit.getPlayer(uuid)
+    protected open fun getPlayer(uuid: UUID): Player? = Bukkit.getPlayer(uuid)
 
-    open protected fun deserializeStack(base64: String): ItemStack? {
+    protected open fun deserializeStack(base64: String): ItemStack? {
         return try {
             val bytes = Base64.getDecoder().decode(base64)
             val stream = java.io.ByteArrayInputStream(bytes)

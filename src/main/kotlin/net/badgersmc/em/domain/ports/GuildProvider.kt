@@ -16,6 +16,7 @@ interface GuildProvider {
      */
     fun hasShopPermission(player: UUID, guildId: String, permission: GuildPermission): Boolean
 
+    @Suppress("DeprecatedBlockTag")
     /**
      * Legacy string-based permission check by rank name.
      * @deprecated Use [hasShopPermission] with [GuildPermission] instead.

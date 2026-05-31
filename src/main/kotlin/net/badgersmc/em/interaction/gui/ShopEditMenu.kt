@@ -23,6 +23,7 @@ class ShopEditMenu(
     private val lang: LangService
 ) : Menu {
 
+    @Suppress("LongMethod")
     override fun open(player: Player) {
         if (player.uniqueId != shop.owner && !player.hasPermission("enthusiamarket.admin")) {
             player.sendMessage(lang.msg("shop.edit.not_owner"))

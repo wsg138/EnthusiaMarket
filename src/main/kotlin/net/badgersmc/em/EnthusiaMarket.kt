@@ -23,6 +23,7 @@ open class EnthusiaMarket : JavaPlugin() {
     private var nexus: NexusContext? = null
     private var scheduler: NexusScheduler? = null
 
+    @Suppress("LongMethod")
     override fun onEnable() {
         dataFolder.mkdirs()
 
@@ -113,7 +114,7 @@ open class EnthusiaMarket : JavaPlugin() {
             )
         } catch (e: Exception) {
             logger.severe("Failed to register Nexus @Listener beans: ${e.message}")
-            e.printStackTrace()
+            logger.log(java.util.logging.Level.SEVERE, "Listener registration failure", e)
         }
 
         logger.info("EnthusiaMarket enabled (v${description.version})")

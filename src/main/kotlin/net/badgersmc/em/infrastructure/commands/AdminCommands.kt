@@ -30,6 +30,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
 @Command(name = "em", description = "EnthusiaMarket administrative commands", aliases = ["enthusiamarket"])
+@Suppress("LongParameterList")
 class AdminCommands(
     private val service: ImportStallsService,
     private val stalls: StallRepository,
@@ -37,7 +38,7 @@ class AdminCommands(
     private val auctionService: AuctionLifecycleService,
     private val configManager: ConfigManager,
     private val auctions: AuctionRepository,
-    private val plugin: JavaPlugin,
+    @Suppress("UnusedPrivateProperty") private val plugin: JavaPlugin,
     private val lang: LangService,
     private val nexusScheduler: NexusScheduler,
     private val stallMembers: StallMemberService,
@@ -433,6 +434,7 @@ class AdminCommands(
 
     @Subcommand("rg resync")
     @Permission("enthusiamarket.admin")
+    @Suppress("NestedBlockDepth")
     fun rgResync(@Context sender: CommandSender) {
         var fixed = 0
         var skipped = 0

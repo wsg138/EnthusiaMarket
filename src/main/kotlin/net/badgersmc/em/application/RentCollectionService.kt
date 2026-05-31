@@ -85,6 +85,7 @@ class RentCollectionService(
         )
     }
 
+    @Suppress("LongMethod")
     private fun processStall(stall: Stall, now: Instant): ProcessResult {
         // Skip non-player-owned stalls (guild bank integration not yet available)
         if (stall.owner.type != OwnerType.SOLO) {

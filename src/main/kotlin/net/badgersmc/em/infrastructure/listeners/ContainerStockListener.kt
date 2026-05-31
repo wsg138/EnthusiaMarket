@@ -18,7 +18,6 @@ import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.inventory.DoubleChestInventory
 import org.bukkit.inventory.Inventory
 import org.bukkit.plugin.java.JavaPlugin
-import java.util.logging.Logger
 
 /**
  * Monitors container inventory changes and refreshes linked shop sign text (REQ-017).
@@ -27,7 +26,6 @@ import java.util.logging.Logger
 @Component
 class ContainerStockListener(
     private val shopRepository: ShopRepository,
-    private val logger: Logger,
     private val lang: LangService
 ) : Listener {
 

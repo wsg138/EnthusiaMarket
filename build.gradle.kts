@@ -1,9 +1,21 @@
+buildscript {
+    repositories {
+        maven("https://plugins.gradle.org/m2/")
+        mavenCentral()
+    }
+    dependencies {
+        classpath("io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.8")
+    }
+}
+
 plugins {
     kotlin("jvm") version "2.0.0"
     id("com.gradleup.shadow") version "8.3.6"
     jacoco
     idea
 }
+
+apply(plugin = "io.gitlab.arturbosch.detekt")
 
 jacoco {
     toolVersion = "0.8.12"
@@ -113,6 +125,11 @@ kotlin {
     jvmToolchain(21)
 }
 
+configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
+    config.setFrom(file("config/detekt/detekt.yml"))
+    buildUponDefaultConfig = true
+}
+
 tasks {
     test {
         useJUnitPlatform()
@@ -158,4 +175,5 @@ tasks {
         }
     }
     build { dependsOn(shadowJar) }
+    check { dependsOn("detekt") }
 }
