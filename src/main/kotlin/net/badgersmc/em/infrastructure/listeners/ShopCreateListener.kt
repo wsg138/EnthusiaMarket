@@ -21,6 +21,7 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.Event
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.ItemStack
 import org.bukkit.plugin.java.JavaPlugin
 import java.util.logging.Logger
 
@@ -33,6 +34,8 @@ open class ShopCreateListener(
     private val stallRepository: StallRepository,
     private val shopRepository: ShopRepository,
     private val lang: LangService,
+    private val menuFactory: net.badgersmc.em.interaction.MenuFactory,
+    private val logger: java.util.logging.Logger,
     private val guildProvider: GuildProvider? = null
 ) : Listener {
 
@@ -90,10 +93,40 @@ open class ShopCreateListener(
 
         event.setUseInteractedBlock(Event.Result.DENY)
 
-        // Note: ShopCreatedEvent is fired after successful persistence in the shop creation flow
+        // Capture the held item as the sell item (REQ-012).
+        val sellItemB64 = captureSellItem(event.player.inventory.itemInMainHand)
+        if (sellItemB64 == null) {
+            event.player.sendMessage(lang.msg("shop.create.no_held_item"))
+            return
+        }
 
-        // Open CreateShopMenu — for now just a placeholder
-        event.player.sendMessage(lang.msg("shop.create.menu_placeholder"))
+        val signLoc = block.location
+        val containerLoc = attachedBlock.location
+        val player = event.player
+        if (menuFactory.shouldUseBedrockMenus(player)) {
+            net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
+                player, player.uniqueId, stall.id.value, signLoc, containerLoc,
+                sellItemB64, shopRepository, logger, lang,
+            ).open(player)
+        } else {
+            net.badgersmc.em.interaction.gui.CreateShopMenu(
+                stall.id.value, player.uniqueId, signLoc, containerLoc,
+                sellItemB64, shopRepository, lang,
+            ).open(player)
+        }
+    }
+
+    companion object {
+        /**
+         * Capture the player's main-hand item as a base64 sell item, or null
+         * when the hand is empty. Amount is normalised to 1 (per-trade amount
+         * is chosen in the menu). Mirrors SignPlaceListener.
+         */
+        fun captureSellItem(held: ItemStack): String? {
+            if (held.type == org.bukkit.Material.AIR || held.amount <= 0) return null
+            val one = held.clone().apply { amount = 1 }
+            return net.badgersmc.em.application.ItemStackSerializer.serialize(one)
+        }
     }
 
     open fun findStallAt(location: Location): Stall? {
