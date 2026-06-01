@@ -91,8 +91,14 @@ class EnthusiaMarketConfig {
     class Market {
         @Comment("World name where stall regions exist")
         var world: String = "world"
-        @Comment("WorldGuard region prefix for stall detection")
-        var regionPrefix: String = "stall_"
+        @Comment("WorldGuard region prefix for stall detection (production regions are stall1..stall71, no underscore)")
+        var regionPrefix: String = "stall"
+        @Comment(
+            "WorldGuard priority stamped on stall regions during /em import. " +
+                "Must exceed the surrounding safezone priority (market=10, spawn=10) " +
+                "so stall member build-rights override the safezone deny."
+        )
+        var stallPriority: Int = 20
     }
 
     class Rent {
