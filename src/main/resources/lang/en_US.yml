@@ -12,7 +12,7 @@ common:
 
 admin:
   import:
-    result: "<prefix>import: created=<green><created></green> skipped=<yellow><skipped></yellow> <gray>(world=<world>, prefix=<region_prefix>)"
+    result: "<prefix>import: created=<green><created></green> skipped=<yellow><skipped></yellow> provisioned=<green><provisioned></green> <gray>(world=<world>, prefix=<region_prefix>)"
   reload:
     success: "<prefix>config reloaded <gray>(world=<world>, prefix=<region_prefix>)"
     failure: "<prefix><red>reload failed: <reason>"

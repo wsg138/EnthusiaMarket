@@ -59,6 +59,7 @@ class AdminCommands(
                 "admin.import.result",
                 "created" to r.created,
                 "skipped" to r.skipped,
+                "provisioned" to r.provisioned,
                 KEY_WORLD to config.market.world,
                 KEY_REGION_PREFIX to config.market.regionPrefix
             )
