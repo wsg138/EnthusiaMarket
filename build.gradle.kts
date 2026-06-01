@@ -1,3 +1,5 @@
+import net.badgersmc.nexus.permissions.Default
+
 buildscript {
     repositories {
         maven("https://plugins.gradle.org/m2/")
@@ -131,6 +133,61 @@ kotlin {
 configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
     config.setFrom(file("config/detekt/detekt.yml"))
     buildUponDefaultConfig = true
+}
+
+tasks.named("generateNexusPermissions") {
+    mustRunAfter("processResources")
+}
+
+configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
+    tree {
+        node("enthusiamarket.*", default = Default.OP, description = "All EnthusiaMarket permissions") {
+            child("admin")
+            child("player")
+        }
+        node("enthusiamarket.admin", default = Default.OP, description = "Administrative commands") {
+            child("import")
+            child("list")
+            child("evict")
+            child("reload")
+            child("setowner")
+            child("refund")
+        }
+        node("enthusiamarket.auction.cancel.force", default = Default.OP, description = "Force-cancel any auction")
+        node("enthusiamarket.player", default = Default.TRUE, description = "Player-facing commands")
+        // Player stall permissions — standalone nodes so the merger
+        // emits (e.g.) enthusiamarket.stall.buy not
+        // enthusiamarket.player.stall.buy. The child-inheritance
+        // model (nested under player) doesn't match Paper's convention
+        // of flat permission node names for code-checked perms.
+        node("enthusiamarket.stall.rent", default = Default.TRUE, description = "Rent a stall")
+        node("enthusiamarket.stall.bid", default = Default.TRUE, description = "Bid on a stall auction")
+        node("enthusiamarket.stall.buy", default = Default.TRUE, description = "Buy a stall via sell offer")
+        node("enthusiamarket.stall.offer", default = Default.TRUE, description = "Create/cancel a sell offer")
+        node("enthusiamarket.stall.sellback", default = Default.TRUE, description = "Voluntarily relinquish a stall")
+        node("enthusiamarket.stall.members", default = Default.TRUE, description = "Manage stall members")
+        node("enthusiamarket.stall.manage.own", default = Default.TRUE, description = "Manage own stalls")
+        node("enthusiamarket.stall.manage.guild", default = Default.TRUE, description = "Manage guild-owned stalls")
+        node("enthusiamarket.stall.favorite", default = Default.TRUE, description = "Favorite a stall")
+        node("enthusiamarket.stall.info", default = Default.TRUE, description = "View stall info card")
+        node("enthusiamarket.stall.outline", default = Default.TRUE, description = "View stall particle outline")
+        // Shop permissions
+        node("enthusiamarket.shop.create", default = Default.TRUE, description = "Create a shop")
+        node("enthusiamarket.shop.break", default = Default.TRUE, description = "Break a shop sign")
+        node("enthusiamarket.shop.buy", default = Default.TRUE, description = "Buy from a shop")
+        node("enthusiamarket.shop.sell", default = Default.TRUE, description = "Sell to a shop")
+        // Auction permissions
+        node("enthusiamarket.auction.start", default = Default.TRUE, description = "Start an auction")
+        node("enthusiamarket.auction.bid", default = Default.TRUE, description = "Bid in an auction")
+        node("enthusiamarket.auction.cancel", default = Default.TRUE, description = "Cancel own auction")
+        node("enthusiamarket.auction.list", default = Default.TRUE, description = "List auctions")
+        // Bedrock form
+        node("enthusiamarket.bedrock.form", default = Default.TRUE, description = "Use Bedrock forms")
+        // Admin-scoped stall tooling (entity limits, kind, recount).
+        node("enthusiamarket.stall.setkind", default = Default.OP, description = "Set a stall's region kind")
+        node("enthusiamarket.stall.entitylimit", default = Default.OP, description = "Set per-stall entity-limit override")
+        node("enthusiamarket.stall.recount", default = Default.OP, description = "Force entity-count rescan for a stall")
+    }
 }
 
 tasks {
