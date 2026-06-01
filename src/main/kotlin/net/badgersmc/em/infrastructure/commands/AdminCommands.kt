@@ -449,7 +449,12 @@ class AdminCommands(
                 StallState.OWNED, StallState.GRACE -> when (stall.owner.type) {
                     OwnerType.SOLO -> try {
                         val uuid = UUID.fromString(stall.owner.id)
+                        // Rebuild full ACL: clear first, set owner, then replay members.
+                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
                         regionMembers.setOwner(stall.world, stall.regionId, uuid)
+                        for (memberId in stall.members) {
+                            regionMembers.addMember(stall.world, stall.regionId, memberId)
+                        }
                         fixed++
                     } catch (_: Exception) {
                         errors++

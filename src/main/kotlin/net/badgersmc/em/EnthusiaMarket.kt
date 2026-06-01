@@ -3,6 +3,7 @@ package net.badgersmc.em
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang
+import net.badgersmc.em.infrastructure.listeners.SignPlaceListener
 import net.badgersmc.nexus.core.NexusContext
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.i18n.Locale
@@ -23,7 +24,7 @@ open class EnthusiaMarket : JavaPlugin() {
     private var nexus: NexusContext? = null
     private var scheduler: NexusScheduler? = null
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "TooGenericExceptionThrown")
     override fun onEnable() {
         dataFolder.mkdirs()
 
@@ -107,8 +108,8 @@ open class EnthusiaMarket : JavaPlugin() {
 
         // Phase 6: Discover every @Listener-annotated bean in the scan
         // package, resolve it from DI, and register it with Bukkit.
-        // Replaces the per-listener getBean+@PostConstruct dance that
-        // broke twice when new listeners weren't pulled by any command.
+        // Fail-closed: any listener that can't be resolved/registered
+        // will disable the plugin rather than leave sign flows dead.
         try {
             net.badgersmc.nexus.paper.listeners.registerNexusListeners(
                 basePackage = "net.badgersmc.em",
@@ -117,8 +118,7 @@ open class EnthusiaMarket : JavaPlugin() {
                 nexus = ctx,
             )
         } catch (e: Exception) {
-            logger.severe("Failed to register Nexus @Listener beans: ${e.message}")
-            logger.log(java.util.logging.Level.SEVERE, "Listener registration failure", e)
+            throw RuntimeException("Failed to register listeners — disabling plugin. ${e.message}", e)
         }
 
         // Particle outline render loop (REQ-240/241): every 4 ticks, plan

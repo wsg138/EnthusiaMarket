@@ -19,6 +19,7 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.logging.Logger
+import kotlin.math.ceil
 
 /**
  * Voluntary relinquish flow: owner runs `/em sellback <stall>` and
@@ -76,6 +77,8 @@ class StallSellbackService(
     fun quote(stallId: StallId, actor: UUID): QuoteResult {
         val stall = stalls.findById(stallId) ?: return QuoteResult.NotFound
         if (stall.state !in OWNERSHIP_STATES) return QuoteResult.NotOwned
+        // 🔴 Guild-owned stalls: no guild-bank payout target yet → reject.
+        if (stall.owner.type == OwnerType.GUILD) return QuoteResult.NotAuthorised
         if (!stall.canManage(actor, guildProvider)) return QuoteResult.NotAuthorised
 
         val (refund, periods) = computeRefund(stall)
@@ -87,35 +90,14 @@ class StallSellbackService(
     fun execute(stallId: StallId, actor: UUID): ExecuteResult {
         val stall = stalls.findById(stallId) ?: return ExecuteResult.NotFound
         if (stall.state !in OWNERSHIP_STATES) return ExecuteResult.NotOwned
+        // 🔴 Guild-owned stalls: no guild-bank payout target yet → reject.
+        if (stall.owner.type == OwnerType.GUILD) return ExecuteResult.NotAuthorised
         if (!stall.canManage(actor, guildProvider)) return ExecuteResult.NotAuthorised
 
         val (refund, _) = computeRefund(stall)
         val boundShops = shops.findByStall(stallId.value)
 
-        // Pay refund FIRST. If deposit fails the player keeps ownership
-        // and we surface a clear rejection — never lose money silently.
-        if (refund > 0 && !economy.deposit(actor, refund)) {
-            return ExecuteResult.Rejected("Failed to deposit refund of $refund to your account")
-        }
-
-        // Wipe shops bound to the stall. If a shop delete throws the
-        // refund has already been paid; we log and continue rather than
-        // try to claw back the refund (would surprise the player).
-        var wiped = 0
-        for (shop in boundShops) {
-            try {
-                shops.delete(shop.id)
-                wiped++
-            } catch (e: Exception) {
-                log.warning(
-                    "StallSellbackService.execute: failed to delete shop ${shop.id} " +
-                        "bound to stall ${stallId.value}; continuing. cause=${e.message}"
-                )
-            }
-        }
-
-        // Reset the stall to UNOWNED. Clear ownership, winning bid, rent
-        // timer, and member roster — fresh slate for the next owner.
+        // Reset stall to UNOWNED FIRST — ownership durable before money moves.
         val previousState = stall.state
         try {
             val cleared = stall.copy(
@@ -128,12 +110,36 @@ class StallSellbackService(
             )
             stalls.save(cleared)
         } catch (e: Exception) {
-            log.severe(
-                "StallSellbackService.execute: stall reset failed for ${stallId.value} " +
-                    "after refunding $refund + wiping $wiped shops. Manual cleanup required. " +
-                    "cause=${e.message}"
-            )
-            return ExecuteResult.Rejected("Stall reset failed; contact an admin (refund was paid)")
+            return ExecuteResult.Rejected("Stall reset failed; contact an admin")
+        }
+
+        // Pay refund. If deposit fails, rollback stall to previous state.
+        if (refund > 0 && !economy.deposit(actor, refund)) {
+            try {
+                stalls.save(stall.copy(
+                    state = previousState,
+                    owner = stall.owner,
+                    ownerSince = stall.ownerSince,
+                    winningBid = stall.winningBid,
+                    members = stall.members,
+                    nextRentAt = stall.nextRentAt,
+                ))
+            } catch (_: Exception) { }
+            return ExecuteResult.Rejected("Failed to deposit refund of $refund to your account")
+        }
+
+        // Wipe shops bound to the stall.
+        var wiped = 0
+        for (shop in boundShops) {
+            try {
+                shops.delete(shop.id)
+                wiped++
+            } catch (e: Exception) {
+                log.warning(
+                    "StallSellbackService.execute: failed to delete shop ${shop.id} " +
+                        "bound to stall ${stallId.value}; continuing. cause=${e.message}"
+                )
+            }
         }
 
         // Strip WG owner + member rights from the released region so
@@ -188,7 +194,8 @@ class StallSellbackService(
 
         // Whole periods of prepayment (current period inclusive), then
         // subtract one for the non-refundable current period.
-        val periodsTotal = (remaining.seconds / interval.seconds).toInt()
+        // Use ceiling division to correctly count partial periods.
+        val periodsTotal = ceil(remaining.seconds.toDouble() / interval.seconds).toInt()
         val refundable = (periodsTotal - 1).coerceAtLeast(0)
         if (refundable <= 0) return 0L to 0
 

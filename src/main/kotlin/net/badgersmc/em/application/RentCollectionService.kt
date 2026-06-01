@@ -143,12 +143,12 @@ class RentCollectionService(
                             winningBid = 0L,
                             nextRentAt = null,
                         )
-                    )
+                        )
                     try {
                         regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
                     } catch (_: Exception) {
-                        // Already logged inside the adapter; eviction
-                        // proceeds either way.
+                        // DB is authoritative; WG can be resynced via /em rg resync.
+                        // Stall is already UNOWNED — eviction stands.
                     }
                     // REQ-271 — restore the pre-claim geometry now the stall is
                     // UNOWNED. Best-effort: a failed paste must not roll back the

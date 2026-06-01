@@ -65,7 +65,7 @@ purchase_sign:
     invalid_price: "<prefix><red>Sign line 3 must be a positive whole number; got:</red> <price>"
     no_permission: "<prefix><red>You don't have permission to create purchase signs"
     purchased: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for</gray> <gold><price>"
-    purchased_guild: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for your guild for</gray> <gold><price>"
+    purchased_guild: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for your guild — you paid</gray> <gold><price>"
     not_in_guild: "<prefix><red>You are not in a guild — cannot buy for guild"
     no_guild_permission: "<prefix><red>You do not have MANAGE_SHOPS in your guild"
     stall_missing: "<prefix><red>Stall not found:</red> <stall>"
@@ -115,7 +115,7 @@ stall:
 
 sellback:
   warn:
-    header: "<prefix><yellow>Sellback quote for</yellow> <aqua><stall></aqua><yellow>: refund <gold><refund></gold> (<periods> period(s) prepaid, today excluded). Confirm within <seconds>s."
+    header: "<prefix><yellow>Sellback quote for</yellow> <aqua><stall></aqua><yellow>: refund <gold><refund></gold> (<periods> period(s) prepaid, current period excluded). Confirm within <seconds>s."
     wipe: "<gray>This will delete <yellow><shops></yellow> shop(s) bound to the stall."
     belongings: "<red>Any items or chests inside the region will stay where they are — you are responsible for removing them BEFORE selling back. They are not refunded."
     schematic: "<gray>Schematic restore is pending TDD-270 — region geometry will NOT be reverted yet."

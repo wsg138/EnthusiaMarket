@@ -39,9 +39,9 @@ class WorldGuardRegionMemberSync : RegionMemberSync {
             // clear-then-add pattern WG exposes via DefaultDomain.
             region.owners.removeAll()
             region.owners.addPlayer(player)
-            // Members survive the owner swap so co-owners explicitly
-            // re-trusted by the new owner persist if the new owner
-            // doesn't immediately /em stall members clear.
+            // Also clear members on owner transfer — old trusted players
+            // must be explicitly re-trusted by the new owner.
+            region.members.removeAll()
         }
     }
 
