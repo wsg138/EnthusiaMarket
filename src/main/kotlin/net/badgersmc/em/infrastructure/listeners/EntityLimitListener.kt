@@ -105,16 +105,25 @@ class EntityLimitListener(
         return if (id.startsWith(config.market.regionPrefix)) id else null
     }
 
-    /** Authoritative live scan of capped entity counts within the stall region. */
+    /**
+     * Authoritative live scan of capped entity counts within the stall region.
+     * Bounded to the region's cuboid via [org.bukkit.World.getNearbyEntities]
+     * (REQ-221) — scanning the whole world per boundary hit would spike a tick
+     * on a busy server. Stall regions are cuboids, so the bounding box equals
+     * the region; no per-entity region re-resolution needed.
+     */
     private fun scanCounts(stallId: String): Map<String, Int> {
         val stall = stalls.findById(StallId(stallId)) ?: return emptyMap()
         val world = org.bukkit.Bukkit.getWorld(stall.world) ?: return emptyMap()
+        val b = regions.bounds(stall.world, stall.regionId) ?: return emptyMap()
+        val box = org.bukkit.util.BoundingBox(
+            b.minX.toDouble(), b.minY.toDouble(), b.minZ.toDouble(),
+            (b.maxX + 1).toDouble(), (b.maxY + 1).toDouble(), (b.maxZ + 1).toDouble(),
+        )
         val counts = HashMap<String, Int>()
-        for (entity: Entity in world.entities) {
-            if (resolveStall(entity.location) == stallId) {
-                val t = entity.type.name.lowercase()
-                counts[t] = (counts[t] ?: 0) + 1
-            }
+        for (entity: Entity in world.getNearbyEntities(box)) {
+            val t = entity.type.name.lowercase()
+            counts[t] = (counts[t] ?: 0) + 1
         }
         return counts
     }
