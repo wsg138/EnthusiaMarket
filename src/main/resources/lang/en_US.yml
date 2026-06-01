@@ -146,8 +146,6 @@ shop:
     needs_container: "<red>Sign must be attached to a container (chest, barrel, shulker)"
     not_in_stall: "<red>Sign must be inside a registered stall"
     no_authority: "<red>You do not own or rent this stall"
-    menu_placeholder: "<yellow>[Shop] Create menu would open here (TDD-52)"
-    bedrock_placeholder: "<yellow>[Shop] Bedrock form would open here (TDD-60)"
     guild_unavailable: "<red>LumaGuilds integration is not available"
     success: "<green>Shop created!"
     invalid_input: "<red>Invalid amount or price — both must be positive whole numbers"
