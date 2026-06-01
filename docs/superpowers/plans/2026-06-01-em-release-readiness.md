@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship EnthusiaMarket for next-week release by fixing the WorldGuard region-provisioning gap (27/71 stalls unbuildable), the permission-declaration drift bug, and wiring the four shipped-but-dead features (entity limits, region info card, particle outline).
+**Goal:** Ship EnthusiaMarket for next-week release by fixing the WorldGuard region-provisioning gap (27/71 stalls unbuildable), the permission-declaration drift bug, the Bedrock shop-creation item-serialization corruption bug, and wiring the shipped-but-dead features (entity limits, region info card, particle outline, shop creation/edit menus).
 
 **Architecture:** Hexagonal/SPEAR — domain ports, application services, infrastructure adapters. New outbound port `RegionProvisioner` (WG flag/priority writer) mirrors the existing `RegionMemberSync` pattern. Permission tree moves from hand-maintained `paper-plugin.yml` to a build-time Kotlin DSL. Entity-limit kind is a stored column on `Stall` resolved in the spawn hot-path.
 
@@ -2579,6 +2579,630 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
+## Workstream G — Shop creation/edit menus (TDD-52 + TDD-60)
+
+Wire the two `shop.create` placeholder paths to real menus and fix the Bedrock
+item-serialization corruption bug. Build order: after C, before D. Depends only on the
+existing shop domain.
+
+**Traced codebase facts (confirmed 2026-06-01 — do not re-derive):**
+- Shared codec: `net.badgersmc.em.application.ItemStackSerializer` — `serialize(ItemStack): String`, `deserialize(String): ItemStack?`. Reuse; never duplicate base64 logic.
+- Held-item precedent: `SignPlaceListener.kt:122-127` — `player.inventory.itemInMainHand`; reject `Material.AIR`/`amount<=0` with `shop.create.no_held_item`; `held.clone().apply { amount = 1 }`; serialize.
+- `Shop.sellItem`/`costItem` are base64 ItemStacks. `costItem` is a UI hint only — store `ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1))`. Real price is `costAmount` (Int, Vault currency via EconomyProvider).
+- Platform routing: `MenuFactory.shouldUseBedrockMenus(player): Boolean` (already injected into `ShopInteractListener`). `UiDispatcher.dispatch()` is dead (zero callers) — delete `UiDispatcher` + its test.
+- IFramework GUI pattern to mirror: `interaction/gui/PurchaseMenu.kt` (`ChestGui`, `StaticPane`, `GuiItem`, `gui.show(player)`); implements `net.badgersmc.em.interaction.Menu` (`fun open(player: Player)`).
+- `Shop` required fields + `init` invariants: `sellAmount>0`, `costAmount>0`, `stallId` non-blank (see `domain/shop/Shop.kt`). `ShopRepository.upsert(shop): Shop`.
+- `ShopCreateListener` already resolves stall + container + authority; the placeholder is at the very end (line ~95, `shop.create.menu_placeholder`). It has `shopRepository`, `lang`, `stallRepository`, `guildProvider` injected.
+- `ShopInteractListener` line ~58 is the **purchase** path (right-click existing shop). Bedrock branch wrongly sends `shop.create.bedrock_placeholder`; replace with `BedrockPurchaseForm`. Java already opens `PurchaseMenu`.
+- `BedrockCreateShopForm` stores `sellItem = itemName` (raw string) — corruption bug. `BedrockPurchaseForm` + `BedrockShopEditForm` already exist. `BedrockMenuBase(player, logger, lang)` base class; `buildForm(): Form`.
+
+**File structure:**
+- Create: `src/main/kotlin/net/badgersmc/em/application/ShopFactory.kt` — pure `Shop`-builder (testable, no Bukkit beyond ItemStack).
+- Create: `src/main/kotlin/net/badgersmc/em/interaction/gui/CreateShopMenu.kt` — IFramework GUI.
+- Modify: `src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockCreateShopForm.kt` — base64 sell item, price+amount only.
+- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListener.kt` — capture main-hand, route via MenuFactory.
+- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopInteractListener.kt` — Bedrock purchase form wiring.
+- Delete: `src/main/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcher.kt` + `src/test/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcherTest.kt`.
+- Modify: `src/main/resources/lang/en_US.yml` — add `gui.shop.create.*`; remove the two `*_placeholder` keys once unused.
+
+### Task G.1: ShopFactory — pure Shop builder
+
+Extracts the `Shop`-construction logic shared by both menu paths so it is unit-testable without Bukkit GUI/Cumulus. Mirrors `SignPlaceListener`'s field mapping exactly.
+
+**Files:**
+- Create: `src/main/kotlin/net/badgersmc/em/application/ShopFactory.kt`
+- Test: `src/test/kotlin/net/badgersmc/em/application/ShopFactoryTest.kt`
+
+- [ ] **Step 1: Write the failing test**
+
+```kotlin
+package net.badgersmc.em.application
+
+import net.badgersmc.em.domain.shop.SignDirection
+import org.bukkit.Material
+import org.bukkit.inventory.ItemStack
+import org.mockbukkit.mockbukkit.MockBukkit
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import java.util.UUID
+
+class ShopFactoryTest {
+
+    @BeforeTest fun setup() { MockBukkit.mock() }
+    @AfterTest fun teardown() { MockBukkit.unmock() }
+
+    @Test fun `builds a SELL shop with base64 sell item and emerald cost hint`() {
+        val sellStack = ItemStack(Material.DIAMOND, 5)
+        val sellItemB64 = ItemStackSerializer.serialize(sellStack.clone().apply { amount = 1 })
+        val owner = UUID.randomUUID()
+        val shop = ShopFactory.build(
+            stallId = "stall1", owner = owner, creator = owner,
+            signWorld = "world", signX = 1, signY = 2, signZ = 3,
+            containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
+            sellItemBase64 = sellItemB64, sellAmount = 5, price = 100,
+            direction = SignDirection.SELL,
+        )
+        assertEquals("stall1", shop.stallId)
+        assertEquals(5, shop.sellAmount)
+        assertEquals(100, shop.costAmount)
+        assertEquals(SignDirection.SELL, shop.direction)
+        // sellItem round-trips to a diamond.
+        val decoded = ItemStackSerializer.deserialize(shop.sellItem)
+        assertNotNull(decoded)
+        assertEquals(Material.DIAMOND, decoded.type)
+        // costItem is the emerald UI hint.
+        val cost = ItemStackSerializer.deserialize(shop.costItem)
+        assertNotNull(cost)
+        assertEquals(Material.EMERALD, cost.type)
+    }
+
+    @Test fun `price above Int MAX is clamped`() {
+        val owner = UUID.randomUUID()
+        val sell = ItemStackSerializer.serialize(ItemStack(Material.DIRT, 1))
+        val shop = ShopFactory.build(
+            stallId = "s", owner = owner, creator = owner,
+            signWorld = "world", signX = 0, signY = 0, signZ = 0,
+            containerWorld = "world", containerX = 0, containerY = 0, containerZ = 0,
+            sellItemBase64 = sell, sellAmount = 1, price = Long.MAX_VALUE,
+            direction = SignDirection.SELL,
+        )
+        assertEquals(Int.MAX_VALUE, shop.costAmount)
+    }
+}
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopFactoryTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: FAIL — `ShopFactory` not defined.
+
+- [ ] **Step 3: Implement ShopFactory**
+
+```kotlin
+package net.badgersmc.em.application
+
+import net.badgersmc.em.domain.shop.Shop
+import net.badgersmc.em.domain.shop.SignDirection
+import org.bukkit.Material
+import org.bukkit.inventory.ItemStack
+import java.util.UUID
+
+/**
+ * Pure builder for [Shop] from menu/form inputs (REQ-012). Centralises the
+ * field mapping shared by CreateShopMenu (Java) and BedrockCreateShopForm so
+ * both paths produce identical, correct base64-serialised shops. Mirrors the
+ * mapping in SignPlaceListener: sellItem is a base64 ItemStack, costItem is an
+ * EMERALD UI hint, real price flows through costAmount (Vault).
+ */
+object ShopFactory {
+
+    @Suppress("LongParameterList")
+    fun build(
+        stallId: String,
+        owner: UUID,
+        creator: UUID,
+        signWorld: String, signX: Int, signY: Int, signZ: Int,
+        containerWorld: String, containerX: Int, containerY: Int, containerZ: Int,
+        sellItemBase64: String,
+        sellAmount: Int,
+        price: Long,
+        direction: SignDirection,
+    ): Shop = Shop(
+        stallId = stallId,
+        owner = owner,
+        signWorld = signWorld, signX = signX, signY = signY, signZ = signZ,
+        containerWorld = containerWorld, containerX = containerX, containerY = containerY, containerZ = containerZ,
+        sellItem = sellItemBase64,
+        sellAmount = sellAmount,
+        costItem = ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1)),
+        costAmount = price.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(),
+        creatorId = creator,
+        direction = direction,
+    )
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopFactoryTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd /d/BadgersMC-Dev/EnthusiaMarket && git add src/main/kotlin/net/badgersmc/em/application/ShopFactory.kt src/test/kotlin/net/badgersmc/em/application/ShopFactoryTest.kt
+git commit -m "feat(application): ShopFactory pure Shop builder for menus (TDD-52)
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+### Task G.2: Fix BedrockCreateShopForm (base64 sell item, price+amount only)
+
+**Files:**
+- Modify: `src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockCreateShopForm.kt`
+
+- [ ] **Step 1: Replace the form to take a pre-captured base64 sell item**
+
+Rewrite `BedrockCreateShopForm.kt`. The listener captures the main-hand item and passes its base64 + the per-trade amount source; the form asks only price + amount:
+
+```kotlin
+package net.badgersmc.em.interaction.bedrock
+
+import net.badgersmc.em.application.ShopFactory
+import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.nexus.i18n.LangService
+import org.bukkit.Location
+import org.bukkit.entity.Player
+import org.geysermc.cumulus.form.CustomForm
+import org.geysermc.cumulus.response.CustomFormResponse
+import java.util.UUID
+import java.util.logging.Logger
+
+/**
+ * Bedrock Cumulus CustomForm for creating a shop (REQ-012, TDD-60).
+ *
+ * The sell item is the player's main-hand item, captured by the listener and
+ * passed in as a base64-serialised ItemStack ([sellItemBase64]) — NOT a raw
+ * material name (the previous implementation stored "diamond" which broke
+ * deserialization). The form collects only price + per-trade amount.
+ */
+class BedrockCreateShopForm(
+    player: Player,
+    private val stallOwner: UUID,
+    private val stallId: String,
+    private val signLoc: Location,
+    private val containerLoc: Location,
+    private val sellItemBase64: String,
+    private val shopRepository: ShopRepository,
+    logger: Logger,
+    lang: LangService,
+) : BedrockMenuBase(player, logger, lang) {
+
+    override fun buildForm(): CustomForm {
+        return CustomForm.builder()
+            .title("Create Shop")
+            .label("Set your shop's price and amount. Sell item = the item in your hand.")
+            .input("Price per trade", "e.g. 100", "100")
+            .input("Amount per trade", "e.g. 1", "1")
+            .validResultHandler { response: CustomFormResponse ->
+                val priceText = response.asInput(1) ?: ""
+                val amountText = response.asInput(2) ?: "1"
+                val price = priceText.toLongOrNull()
+                val amount = amountText.toIntOrNull() ?: 1
+                if (price == null || price <= 0 || amount <= 0) {
+                    player.sendMessage(lang.legacy("shop.create.invalid_input"))
+                    return@validResultHandler
+                }
+                val shop = ShopFactory.build(
+                    stallId = stallId, owner = stallOwner, creator = player.uniqueId,
+                    signWorld = signLoc.world?.name ?: "world",
+                    signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
+                    containerWorld = containerLoc.world?.name ?: "world",
+                    containerX = containerLoc.blockX, containerY = containerLoc.blockY, containerZ = containerLoc.blockZ,
+                    sellItemBase64 = sellItemBase64, sellAmount = amount, price = price,
+                    direction = SignDirection.SELL,
+                )
+                shopRepository.upsert(shop)
+                player.sendMessage(lang.legacy("shop.create.success"))
+            }
+            .build()
+    }
+}
+```
+
+- [ ] **Step 2: Build to confirm the form compiles**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. If `BedrockMenuBaseTest` references the old constructor, it does not (it builds an anonymous subclass) — but if any test constructs `BedrockCreateShopForm` directly, update it to pass `sellItemBase64`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+cd /d/BadgersMC-Dev/EnthusiaMarket && git add src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockCreateShopForm.kt
+git commit -m "fix(bedrock): create form stores base64 sell item, not raw name (TDD-60)
+
+Previously stored sellItem='diamond' which fails deserializeStack at trade
+time. Now takes the main-hand item as base64 (captured by listener) and
+asks only price + amount.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+### Task G.3: CreateShopMenu (IFramework GUI)
+
+A minimal `ChestGui` mirroring `PurchaseMenu`: shows the captured sell item, a price control, an amount control, and a confirm button. To keep scope tight for release, price/amount use fixed-step +/- buttons with sane defaults (anvil text-entry deferred). The confirm button calls `ShopFactory.build` + `shopRepository.upsert`.
+
+**Files:**
+- Create: `src/main/kotlin/net/badgersmc/em/interaction/gui/CreateShopMenu.kt`
+
+- [ ] **Step 1: Implement CreateShopMenu**
+
+```kotlin
+package net.badgersmc.em.interaction.gui
+
+import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
+import com.github.stefvanschie.inventoryframework.gui.GuiItem
+import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
+import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.application.ShopFactory
+import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.nexus.i18n.LangService
+import net.badgersmc.em.interaction.Menu
+import net.kyori.adventure.text.Component
+import org.bukkit.Location
+import org.bukkit.Material
+import org.bukkit.entity.Player
+import org.bukkit.inventory.ItemStack
+import java.util.UUID
+
+/**
+ * Java IFramework GUI for creating a sign shop (REQ-012, TDD-52). The sell
+ * item is the player's main-hand item (captured by the listener, passed as
+ * base64). Price + per-trade amount are adjusted with +/- buttons; confirm
+ * builds the Shop via [ShopFactory] and persists it.
+ */
+class CreateShopMenu(
+    private val stallId: String,
+    private val stallOwner: UUID,
+    private val signLoc: Location,
+    private val containerLoc: Location,
+    private val sellItemBase64: String,
+    private val shopRepository: ShopRepository,
+    private val lang: LangService,
+) : Menu {
+
+    private var price: Long = 100
+    private var amount: Int = 1
+
+    override fun open(player: Player) {
+        render(player)
+    }
+
+    private fun render(player: Player) {
+        val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.create.title")))
+        val pane = StaticPane(9, 3)
+
+        // Sell item preview (decoded from base64).
+        val preview = ItemStackSerializer.deserialize(sellItemBase64) ?: ItemStack(Material.BARRIER)
+        pane.addItem(GuiItem(preview), 2, 1)
+
+        // Price controls.
+        pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.create.price_up", "price" to price))) {
+            it.isCancelled = true; price += 10; render(player)
+        }, 4, 0)
+        pane.addItem(GuiItem(decorated(Material.EMERALD, lang.msg("gui.shop.create.price", "price" to price))), 4, 1)
+        pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.create.price_down", "price" to price))) {
+            it.isCancelled = true; price = (price - 10).coerceAtLeast(1); render(player)
+        }, 4, 2)
+
+        // Amount controls.
+        pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.create.amount_up", "amount" to amount))) {
+            it.isCancelled = true; amount += 1; render(player)
+        }, 6, 0)
+        pane.addItem(GuiItem(decorated(Material.PAPER, lang.msg("gui.shop.create.amount", "amount" to amount))), 6, 1)
+        pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.create.amount_down", "amount" to amount))) {
+            it.isCancelled = true; amount = (amount - 1).coerceAtLeast(1); render(player)
+        }, 6, 2)
+
+        // Confirm.
+        pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.create.confirm"))) {
+            it.isCancelled = true
+            val shop = ShopFactory.build(
+                stallId = stallId, owner = stallOwner, creator = player.uniqueId,
+                signWorld = signLoc.world?.name ?: "world",
+                signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
+                containerWorld = containerLoc.world?.name ?: "world",
+                containerX = containerLoc.blockX, containerY = containerLoc.blockY, containerZ = containerLoc.blockZ,
+                sellItemBase64 = sellItemBase64, sellAmount = amount, price = price,
+                direction = SignDirection.SELL,
+            )
+            shopRepository.upsert(shop)
+            player.closeInventory()
+            player.sendMessage(lang.msg("shop.create.success"))
+        }, 8, 2)
+
+        gui.addPane(pane)
+        gui.show(player)
+    }
+
+    private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
+        val item = ItemStack(material)
+        val meta = item.itemMeta ?: return item
+        meta.displayName(name)
+        if (lore.isNotEmpty()) meta.lore(lore)
+        item.itemMeta = meta
+        return item
+    }
+}
+```
+
+- [ ] **Step 2: Add the gui.shop.create.* lang keys**
+
+In `en_US.yml`, under the `gui:` → `shop:` section (where `gui.shop.title` lives), add a `create:` block:
+
+```yaml
+    create:
+      title: "<dark_gray>Create Shop"
+      price: "<green>Price: <gold>{price}"
+      price_up: "<green>+10 (now {price})"
+      price_down: "<red>-10 (now {price})"
+      amount: "<green>Amount: <gold>{amount}"
+      amount_up: "<green>+1 (now {amount})"
+      amount_down: "<red>-1 (now {amount})"
+      confirm: "<green>Confirm & create shop"
+```
+
+- [ ] **Step 3: Build to confirm the menu compiles**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. Confirm the `GuiItem { event -> }` click-consumer signature matches the IFramework version in use (mirror `PurchaseMenu`'s `GuiItem(...) { event -> ... }`).
+
+- [ ] **Step 4: Commit**
+
+```bash
+cd /d/BadgersMC-Dev/EnthusiaMarket && git add src/main/kotlin/net/badgersmc/em/interaction/gui/CreateShopMenu.kt src/main/resources/lang/en_US.yml
+git commit -m "feat(gui): CreateShopMenu IFramework shop-creation GUI (TDD-52)
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+### Task G.4: Route ShopCreateListener through MenuFactory
+
+**Files:**
+- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListener.kt`
+- Test: `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListenerRoutingTest.kt`
+
+- [ ] **Step 1: Write the failing test for held-item capture + routing decision**
+
+The routing + capture logic is extracted into a pure companion helper so it is testable without firing a real `PlayerInteractEvent`. Test that an empty hand is rejected and a held item yields base64:
+
+```kotlin
+package net.badgersmc.em.infrastructure.listeners
+
+import org.bukkit.Material
+import org.bukkit.inventory.ItemStack
+import org.mockbukkit.mockbukkit.MockBukkit
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertNull
+import kotlin.test.assertNotNull
+
+class ShopCreateListenerRoutingTest {
+
+    @BeforeTest fun setup() { MockBukkit.mock() }
+    @AfterTest fun teardown() { MockBukkit.unmock() }
+
+    @Test fun `empty hand yields null sell item`() {
+        val air = ItemStack(Material.AIR)
+        assertNull(ShopCreateListener.captureSellItem(air))
+    }
+
+    @Test fun `held item yields base64 with amount normalised to one`() {
+        val held = ItemStack(Material.DIAMOND, 16)
+        val b64 = ShopCreateListener.captureSellItem(held)
+        assertNotNull(b64)
+        val decoded = net.badgersmc.em.application.ItemStackSerializer.deserialize(b64)
+        assertNotNull(decoded)
+        kotlin.test.assertEquals(Material.DIAMOND, decoded.type)
+        kotlin.test.assertEquals(1, decoded.amount)
+    }
+}
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.ShopCreateListenerRoutingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: FAIL — `captureSellItem` not defined.
+
+- [ ] **Step 3: Add the companion helper + MenuFactory routing to ShopCreateListener**
+
+Inject `MenuFactory` and the plugin `Logger` into the constructor. Add the companion and replace the placeholder line. Update the constructor:
+
+```kotlin
+@Component
+open class ShopCreateListener(
+    private val stallRepository: StallRepository,
+    private val shopRepository: ShopRepository,
+    private val lang: LangService,
+    private val menuFactory: net.badgersmc.em.interaction.MenuFactory,
+    private val logger: java.util.logging.Logger,
+    private val guildProvider: GuildProvider? = null
+) : Listener {
+```
+
+Add the companion (after the class opening brace or near the bottom):
+
+```kotlin
+    companion object {
+        /**
+         * Capture the player's main-hand item as a base64 sell item, or null
+         * when the hand is empty. Amount is normalised to 1 (per-trade amount
+         * is chosen in the menu). Mirrors SignPlaceListener.
+         */
+        fun captureSellItem(held: ItemStack): String? {
+            if (held.type == Material.AIR || held.amount <= 0) return null
+            val one = held.clone().apply { amount = 1 }
+            return net.badgersmc.em.application.ItemStackSerializer.serialize(one)
+        }
+    }
+```
+
+Add the imports `org.bukkit.inventory.ItemStack` and `org.bukkit.Material` (Material is already imported; add ItemStack). Replace the placeholder block at the end of `onSignInteract`:
+
+```kotlin
+        event.setUseInteractedBlock(Event.Result.DENY)
+
+        // Capture the held item as the sell item (REQ-012).
+        val sellItemB64 = captureSellItem(event.player.inventory.itemInMainHand)
+        if (sellItemB64 == null) {
+            event.player.sendMessage(lang.msg("shop.create.no_held_item"))
+            return
+        }
+
+        val signLoc = block.location
+        val containerLoc = attachedBlock.location
+        val player = event.player
+        if (menuFactory.shouldUseBedrockMenus(player)) {
+            net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
+                player, java.util.UUID.fromString(stall.owner.id.takeIf { stall.owner.type == OwnerType.SOLO } ?: player.uniqueId.toString()),
+                stall.id.value, signLoc, containerLoc, sellItemB64, shopRepository, logger, lang,
+            ).open(player)
+        } else {
+            net.badgersmc.em.interaction.gui.CreateShopMenu(
+                stall.id.value,
+                java.util.UUID.fromString(stall.owner.id.takeIf { stall.owner.type == OwnerType.SOLO } ?: player.uniqueId.toString()),
+                signLoc, containerLoc, sellItemB64, shopRepository, lang,
+            ).open(player)
+        }
+```
+
+Note: the shop owner for a GUILD-owned stall is the creating player (shops are player-or-guild scoped via `creatorId`/`guildId`); using `player.uniqueId` when not SOLO matches `SignPlaceListener` (`owner = player.uniqueId`). Simplify to `owner = player.uniqueId` if the guild-shop attribution is handled elsewhere — confirm against `SignPlaceListener` which uses `owner = player.uniqueId` unconditionally. Prefer that: pass `player.uniqueId` as owner for both branches to match existing behaviour.
+
+- [ ] **Step 4: Simplify owner to player.uniqueId (match SignPlaceListener)**
+
+Replace both `java.util.UUID.fromString(...)` owner expressions with `player.uniqueId` to match the proven `SignPlaceListener` mapping (`owner = player.uniqueId`). Final branches:
+
+```kotlin
+        if (menuFactory.shouldUseBedrockMenus(player)) {
+            net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
+                player, player.uniqueId, stall.id.value, signLoc, containerLoc,
+                sellItemB64, shopRepository, logger, lang,
+            ).open(player)
+        } else {
+            net.badgersmc.em.interaction.gui.CreateShopMenu(
+                stall.id.value, player.uniqueId, signLoc, containerLoc,
+                sellItemB64, shopRepository, lang,
+            ).open(player)
+        }
+```
+
+- [ ] **Step 5: Run the test to verify it passes**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.ShopCreateListenerRoutingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: PASS
+
+- [ ] **Step 6: Build + fix any ShopCreateListener test constructor breakage**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. If an existing `ShopCreateListenerTest` constructs the listener, add `menuFactory = mockk(relaxed = true)` and `logger = mockk(relaxed = true)` args.
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd /d/BadgersMC-Dev/EnthusiaMarket && git add src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListener.kt src/test/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListenerRoutingTest.kt
+git commit -m "feat(listeners): ShopCreateListener captures held item + routes to menu (TDD-52)
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+### Task G.5: Wire ShopInteractListener Bedrock purchase form + delete UiDispatcher
+
+**Files:**
+- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopInteractListener.kt`
+- Delete: `src/main/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcher.kt`
+- Delete: `src/test/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcherTest.kt`
+
+- [ ] **Step 1: Confirm BedrockPurchaseForm constructor signature**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && sed -n '1,40p' src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockPurchaseForm.kt`
+Expected: shows the constructor params (likely `(player, shop, tradeService, logger, lang)`). Note the exact params for Step 2.
+
+- [ ] **Step 2: Replace the Bedrock placeholder branch with the real form**
+
+In `ShopInteractListener.kt`, the listener needs a `Logger` to construct the form. Add `private val logger: java.util.logging.Logger,` to the constructor. Replace the placeholder branch in `onSignRightClick`:
+
+```kotlin
+        if (menuFactory.shouldUseBedrockMenus(player)) {
+            openBedrockPurchaseForm(player, shop)
+        } else {
+            openPurchaseMenu(player, shop)
+        }
+```
+
+And add the open method (mirroring `openPurchaseMenu`, using the confirmed constructor params from Step 1 — adjust arg order to match):
+
+```kotlin
+    /** Open the Bedrock purchase form. Open for testability. */
+    open fun openBedrockPurchaseForm(player: Player, shop: Shop) {
+        net.badgersmc.em.interaction.bedrock.BedrockPurchaseForm(
+            player, shop, tradeService, logger, lang
+        ).open(player)
+    }
+```
+
+If `BedrockPurchaseForm`'s constructor differs from `(player, shop, tradeService, logger, lang)`, adjust to match Step 1's output.
+
+- [ ] **Step 3: Delete the dead UiDispatcher + its test**
+
+```bash
+cd /d/BadgersMC-Dev/EnthusiaMarket && git rm src/main/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcher.kt src/test/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcherTest.kt
+```
+
+- [ ] **Step 4: Grep for any remaining UiDispatcher references**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && grep -rn "UiDispatcher" src/ || echo "no references"`
+Expected: `no references`. If any are found (e.g. a DI registration or import), remove them.
+
+- [ ] **Step 5: Build + fix ShopInteractListener test constructor**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. Add `logger = mockk(relaxed = true)` to any existing `ShopInteractListener` test construction.
+
+- [ ] **Step 6: Remove the now-unused placeholder lang keys**
+
+In `en_US.yml`, delete `shop.create.menu_placeholder` and `shop.create.bedrock_placeholder` (lines ~130-131). Verify nothing references them:
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && grep -rn "menu_placeholder\|bedrock_placeholder" src/ || echo "clean"`
+Expected: `clean`.
+
+- [ ] **Step 7: Full verify**
+
+Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL
+
+- [ ] **Step 8: Mark TDD-52/TDD-60 done + commit**
+
+Update `docs/tasks.md`: mark TDD-52 (CreateShopMenu) and TDD-60 (Bedrock create form) `[x]` with evidence. Then:
+
+```bash
+cd /d/BadgersMC-Dev/EnthusiaMarket && git add -A
+git commit -m "feat(listeners): wire Bedrock purchase form; delete dead UiDispatcher (TDD-60)
+
+ShopInteractListener Bedrock branch now opens the real BedrockPurchaseForm
+instead of a placeholder. UiDispatcher (dead reflection stub, zero callers)
+removed in favour of MenuFactory routing. Placeholder lang keys dropped.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+---
+
 ## Final integration verification
 
 ### Task Z.1: Full green build + manual QA checklist
@@ -2603,6 +3227,12 @@ Append a manual QA checklist to the PR description when opening it. The checklis
   5. `/em stall info stall1` → card shows all 9 fields. Right-click an INFO sign as non-owner → same card.
   6. `/em stall outline stall1 10` → END_ROD border visible for 10s, only to requester.
   7. Confirm offer/sellback/buy/members commands work for a normal player (perm drift fix).
+  8. Shop create (Java): hold an item, left-click+sneak a container sign in your stall →
+     CreateShopMenu opens showing the held item; set price/amount; confirm → shop persists and
+     a buyer can trade it. Empty hand → rejected with no-held-item message.
+  9. Shop create (Bedrock/Floodgate, or `bedrock.forceForms: true`): same flow → Cumulus form
+     asks price+amount only; created shop's sell item is the held item (NOT a raw name) and
+     trades correctly (regression test for the deserialization bug).
 
 - [ ] **Step 4: Final commit if any cleanup needed**
 
@@ -2625,5 +3255,8 @@ These are known points where the plan depends on signatures that should be confi
 5. **WG `getApplicableRegions` / `BlockVector3`** (Task B.6) — confirm signature for WG 7.0.9.
 6. **WE `BlockVector3.x()/y()/z()`** (Task C.1) — confirm accessor names for WE 7.3.0 (vs `getX()`).
 7. **`KEY_WORLD`/`KEY_REGION_PREFIX`** (Task B.7) — these constants are already referenced in AdminCommands.import; locate their existing declaration and reuse rather than redeclare.
+8. **`BedrockPurchaseForm` constructor** (Task G.5) — confirm exact param order (`sed -n '1,40p'` in the task); the `openBedrockPurchaseForm` call must match.
+9. **IFramework `GuiItem` click-consumer signature** (Task G.3) — mirror `PurchaseMenu`'s `GuiItem(item) { event -> ... }` form for the IF version in use.
+10. **`gui.shop.title` / `gui:` lang section location** (Task G.3) — confirm where the existing `gui.shop.*` keys live so the new `create:` block nests correctly.
 
 Each is a single-symbol confirmation; the surrounding logic is fixed.

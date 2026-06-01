@@ -7,10 +7,12 @@
 
 ## 1. Problem
 
-Audit of EnthusiaMarket (EM) before release found four shipped-but-unwired features,
-a permission-declaration drift bug that locks players out of core commands, and — most
-critically — a WorldGuard region-provisioning gap that means **27 of 71 market stalls
-are unbuildable** and the entity-limit feature governs entities players cannot fully use.
+Audit of EnthusiaMarket (EM) before release found shipped-but-unwired features (entity
+limits, region info card, particle outline, shop creation/edit menus), a permission-
+declaration drift bug that locks players out of core commands, a Bedrock shop-creation
+item-serialization corruption bug, and — most critically — a WorldGuard region-provisioning
+gap that means **27 of 71 market stalls are unbuildable** and the entity-limit feature
+governs entities players cannot fully use.
 
 EM is replacing ARM (Advanced Region Market). ARM is what configured the working stalls'
 region flags. If EM does not take over flag provisioning, newly-carved stalls and the 27
@@ -163,6 +165,70 @@ reflection stays untouched.
   `maxPerTick`.
 - Command `/em stall outline <stall> [seconds]`, default 10s.
 
+### Workstream G — Shop creation/edit menus (TDD-52 + TDD-60)
+
+Wire the two `shop.create` placeholder paths to real menus and fix the Bedrock
+item-serialization corruption bug.
+
+**Codebase reality (traced 2026-06-01) — the side-chat brief adjusted to fit:**
+
+- `UiDispatcher.dispatch()` is **dead code** (zero callers; `Class.forName` reflection
+  stub printing a hardcoded "Stall Menu"). Live platform routing is
+  `MenuFactory.shouldUseBedrockMenus(player)` (already used by `ShopInteractListener`).
+  **G routes through `MenuFactory`, not the dead dispatch stub.** `UiDispatcher` is deleted
+  as part of this workstream (it is referenced only by its own test).
+- A **correct held-item→base64 precedent already exists**: `SignPlaceListener` line 122-127
+  does `player.inventory.itemInMainHand` → reject on `AIR` → `held.clone().apply { amount = 1 }`
+  → `ItemStackSerializer.serialize(sellStack)`. G mirrors this exactly; both menu paths
+  converge on the proven pattern.
+- `Shop.sellItem`/`costItem` are **base64-serialized ItemStacks** (consumed via
+  `ContainerTradeService.deserializeStack`). `costItem` is a **UI hint only** (an EMERALD
+  icon for the GUI "you pay" slot); real money flows through `EconomyProvider` keyed on
+  `costAmount`. Forms/menus ask only price + amount — never an item name.
+- `BedrockCreateShopForm` currently stores `sellItem = itemName` (raw `"diamond"` string).
+  That is a **real corruption bug**: `deserializeStack("diamond")` returns null and the
+  shop's trade button fails at runtime. G fixes it.
+- The shared codec is `net.badgersmc.em.application.ItemStackSerializer` (`serialize` /
+  `deserialize`). Reuse it; do not duplicate base64 logic.
+
+**Held-item create UX:** to create a shop the player looks at the sign (left-click+sneak,
+the existing `ShopCreateListener` trigger) **and holds the item they are selling** in the
+main hand. Empty hand (`Material.AIR`) → reject with `shop.create.no_held_item` (lang key
+already exists, used by `SignPlaceListener`). The held stack (amount normalised to 1) is the
+base64 `sellItem`; the menu/form collects price (`costAmount`) and per-trade amount
+(`sellAmount`).
+
+**Scope:**
+
+1. **`CreateShopMenu`** (new, `interaction/gui/`, implements `Menu`) — opened from
+   `ShopCreateListener` for Java players. Constructor carries the resolved sign location,
+   container location, stall id, owner UUID, the pre-captured base64 `sellItem`, and
+   `ShopRepository` + `LangService`. IFramework `ChestGui` (mirroring `PurchaseMenu`) with
+   inputs for price + per-trade amount (anvil-text or +/- buttons), and a confirm button
+   that builds the `Shop` (using `ItemStackSerializer` for the sell item and the EMERALD
+   `costItem` hint, exactly as `SignPlaceListener` does) and calls `shopRepository.upsert`.
+2. **`BedrockCreateShopForm` fix** — drop the `itemName` input and the raw-string `sellItem`.
+   Take the pre-captured base64 `sellItem` as a constructor param (captured from main hand by
+   the listener). The Cumulus `CustomForm` asks only price + amount. Build the `Shop` with the
+   base64 sell item + EMERALD cost hint.
+3. **`ShopCreateListener` (line ~95)** — replace `menu_placeholder` with: capture main-hand
+   item (reject empty via `shop.create.no_held_item`), serialise to base64, then route by
+   `menuFactory.shouldUseBedrockMenus(player)` → `BedrockCreateShopForm` (Bedrock) or
+   `CreateShopMenu` (Java). Inject `MenuFactory` + `ShopRepository` (repo already injected) +
+   plugin logger.
+4. **`ShopInteractListener` (line ~58)** — this is the **purchase** path (right-click an
+   existing shop sign), not create. Its Bedrock branch currently sends
+   `shop.create.bedrock_placeholder`. Replace with the real `BedrockPurchaseForm` (already
+   exists) for Bedrock; Java already opens `PurchaseMenu`. Fix the misleading lang key usage.
+5. **Delete `UiDispatcher`** + its test (dead reflection stub superseded by `MenuFactory`).
+6. **Lang:** reuse existing `shop.create.no_held_item`, `shop.create.invalid_input`,
+   `shop.create.success`; add `gui.shop.create.*` titles/labels as needed. Remove the two
+   `*_placeholder` keys once unused.
+
+**Build order:** G slots after C, before D. Independent of F/B; depends only on the existing
+shop domain (`Shop`, `ShopRepository`, `ItemStackSerializer`, `MenuFactory`,
+`BedrockPurchaseForm`).
+
 ## 4. Architecture (hexagonal / SPEAR layers)
 
 - **Domain (new):** `RegionKind`, `EntityLimitGroup`, `RegionBounds`, `StallInfo`,
@@ -172,6 +238,9 @@ reflection stays untouched.
 - **Infrastructure (new):** WG `RegionProvisioner` adapter, `EntityLimitListener`,
   info-card MiniMessage renderer, new `AdminCommands` subcommands; `RegionProvider` WG
   adapter gains `bounds`.
+- **Interaction (G):** new `CreateShopMenu` (IFramework GUI); `BedrockCreateShopForm` fixed
+  to base64 sell item; `ShopCreateListener`/`ShopInteractListener` routed via `MenuFactory`;
+  dead `UiDispatcher` deleted. Reuses `ItemStackSerializer` codec.
 - **Build (new):** `nexus-permissions-gradle` plugin generates the permission tree.
 
 Layer rule unchanged: domain imports nothing from application/infra; application imports
@@ -188,6 +257,8 @@ only domain; infra imports all + frameworks. Konsist `LayerRulesTest` continues 
 | Permissions | E2 only (nexus-permissions-gradle); E1 nexus-papi dropped |
 | Region provisioning | Provision-on-import, core + decoration flag set |
 | Provisioning priority | `config.market.stallPriority` (default 20) |
+| Shop menu platform routing | `MenuFactory.shouldUseBedrockMenus`; delete dead `UiDispatcher` |
+| Shop sell item capture | Main-hand → base64 via `ItemStackSerializer` (mirrors SignPlaceListener) |
 
 ## 6. Test strategy
 
@@ -198,6 +269,10 @@ only domain; infra imports all + frameworks. Konsist `LayerRulesTest` continues 
 - Particle budget: assert total particle count per tick ≤ `maxPerTick`.
 - Permissions: verify build-time generation by inspecting staged
   `build/resources/main/paper-plugin.yml`.
+- Shop menus (G): unit-test the pure `Shop`-building helper (main-hand base64 →
+  `Shop` with correct `sellItem`/`costAmount`); assert empty-hand rejection; assert the
+  Bedrock form no longer stores a raw item name. Listener routing tested via the
+  `MenuFactory.shouldUseBedrockMenus` branch (mocked).
 - Full suite green: `./gradlew detekt test shadowJar jacocoTestReport`.
 
 ## 7. Build order (dependency-correct)
@@ -207,14 +282,15 @@ only domain; infra imports all + frameworks. Konsist `LayerRulesTest` continues 
 3. **E2** — permissions DSL (fixes drift; small, independent).
 4. **B** — entity limits (largest; depends on F for placement).
 5. **C** — region info card (needs `RegionProvider.bounds`; independent of B).
-6. **D** — particle outline (fully independent; last).
+6. **G** — shop creation/edit menus (after C, before D; depends only on existing shop domain).
+7. **D** — particle outline (fully independent; last).
 
 Each workstream follows the SPEAR cycle (Spec → Prove → Engine → Arch → Refine) and updates
-`docs/tasks.md` as tasks complete. New tasks TDD-280/281 added for F.
+`docs/tasks.md` as tasks complete. New tasks TDD-280/281 added for F; TDD-52/TDD-60 covered by G.
 
 ## 8. Out of scope (deferred post-release)
 
-- Java inventory GUI (`UiDispatcher` TODO, TDD-43) and Bedrock create-shop forms (TDD-60) —
-  existing placeholders, not release-blocking.
 - E1 `nexus-papi` migration — direction mismatch; existing PAPI consume-side reflection works.
 - Provision-on-claim dynamics (option B for F) — import-time provisioning is sufficient.
+- `BedrockShopEditForm` deeper UX polish beyond wiring it into the edit path — the existing
+  form is functional; G only fixes create-path serialization + routing.
