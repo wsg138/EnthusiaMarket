@@ -47,6 +47,7 @@ class AdminCommands(
     private val regionMembers: RegionMemberSync,
     private val entityCounter: net.badgersmc.em.application.StallEntityCounter,
     private val regionProvider: net.badgersmc.em.domain.ports.RegionProvider,
+    private val stallInfo: net.badgersmc.em.application.StallInfoService,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -516,6 +517,32 @@ class AdminCommands(
         entityCounter.recount(stallId, counts)
         sender.sendMessage(lang.msg("stall.recount.ok", "stall" to stallId, "total" to counts.values.sum()))
     }
+
+    @Subcommand("stall info")
+    @Permission("enthusiamarket.stall.info")
+    fun stallInfo(@Context sender: CommandSender, @Arg("stall") stallId: String) {
+        val info = stallInfo.infoFor(StallId(stallId))
+        if (info == null) {
+            sender.sendMessage(lang.msg("stall.info.missing", "stall" to stallId))
+            return
+        }
+        sender.sendMessage(renderInfoCard(info))
+    }
+
+    private fun renderInfoCard(info: net.badgersmc.em.application.StallInfo) = lang.msg(
+        "stall.info.card",
+        "stall" to info.stallId,
+        "kind" to info.kind,
+        "state" to info.state.name,
+        "owner" to info.ownerName,
+        "members" to info.memberCount,
+        "rent" to info.currentRent,
+        "next" to (info.nextRentAt?.toString() ?: "—"),
+        "width" to info.width,
+        "height" to info.height,
+        "length" to info.length,
+        "available" to if (info.available) "yes" else "no",
+    )
 
     /**
      * Drop expired entries from [pendingSellbacks] so the map doesn't

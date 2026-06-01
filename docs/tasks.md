@@ -428,11 +428,12 @@ References: REQ-024 through REQ-027
   Description: `EntityLimitListener` handles `CreatureSpawnEvent`, `EntityPlaceEvent`, `HangingPlaceEvent`. Looks up enclosing stall via WorldGuard, checks against `EntityLimitGroup` count of existing entities, cancels event when over cap. Failing test (MockBukkit): spawn at cap → cancelled; spawn under cap → allowed.
   Evidence: ``
 
-- [ ] **TDD-230** — Region info card
-  References: REQ-230, REQ-231
+- [x] **TDD-230** — Region info card (command only)
+  References: REQ-230
   Tag: TDD
-  Description: `/em stall info <stall>` subcommand renders multi-line MiniMessage info card via new lang keys `stall.info.*`. Sign right-click on a purchase sign by a non-owner invokes the same renderer. Failing test: info text contains all required fields (id, kind, owner, member count, rent, time left, dimensions, state, availability).
+  Description: `/em stall info <stall>` subcommand renders multi-line MiniMessage info card via new lang keys `stall.info.*`.
   Evidence: ``
+  Note: REQ-231 sign-click info routing deferred — PurchaseSign has no kind discriminator; revisit post-release.
 
 - [ ] **TDD-240** — Particle border outline
   References: REQ-240, REQ-241

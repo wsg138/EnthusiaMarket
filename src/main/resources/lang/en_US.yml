@@ -98,6 +98,15 @@ stall:
   recount:
     ok: "<green>Stall {stall} entity count rescanned ({total} entities)"
     missing: "<red>No stall named {stall}"
+  info:
+    card: |
+      <gold>━━━ Stall {stall} ━━━
+      <gray>Kind: <white>{kind}  <gray>State: <white>{state}
+      <gray>Owner: <white>{owner}  <gray>Members: <white>{members}
+      <gray>Rent: <white>{rent}  <gray>Next: <white>{next}
+      <gray>Size: <white>{width}x{height}x{length}
+      <gray>Available: <white>{available}
+    missing: "<red>No stall named {stall}"
 
 sellback:
   warn:
