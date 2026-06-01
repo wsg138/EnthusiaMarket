@@ -28,6 +28,7 @@ class BedrockCreateShopFormTest {
             stallId,
             signLoc,
             containerLoc,
+            "dummyBase64",
             mockk<ShopRepository>(relaxed = true),
             mockk<Logger>(relaxed = true),
             mockk(relaxed = true)
@@ -46,6 +47,7 @@ class BedrockCreateShopFormTest {
             stallId,
             signLoc,
             containerLoc,
+            "dummyBase64",
             mockk<ShopRepository>(relaxed = true),
             mockk<Logger>(relaxed = true),
             mockk(relaxed = true)
