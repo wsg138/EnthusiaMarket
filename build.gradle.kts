@@ -2,9 +2,11 @@ buildscript {
     repositories {
         maven("https://plugins.gradle.org/m2/")
         mavenCentral()
+        maven("https://jitpack.io")
     }
     dependencies {
         classpath("io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.8")
+        classpath("com.github.BadgersMC.Nexus:nexus-permissions-gradle:v2.2.1")
     }
 }
 
@@ -16,6 +18,7 @@ plugins {
 }
 
 apply(plugin = "io.gitlab.arturbosch.detekt")
+apply(plugin = "net.badgersmc.nexus.permissions")
 
 jacoco {
     toolVersion = "0.8.12"
