@@ -53,7 +53,10 @@ class ParticleBorderService {
         val plans = planParticles(entries.map { it.bounds }, maxPerTick)
         for ((idx, outline) in entries.withIndex()) {
             val player = org.bukkit.Bukkit.getPlayer(outline.player) ?: continue
-            val world = org.bukkit.Bukkit.getWorld(outline.world) ?: player.world
+            // spawnParticle is player-relative — only render when the player is
+            // actually in the outlined stall's world, else the border would draw
+            // at the stall's coords in whatever world the player walked into.
+            if (player.world.name != outline.world) continue
             for ((x, y, z) in plans[idx].points) {
                 player.spawnParticle(org.bukkit.Particle.END_ROD, x + 0.5, y + 0.5, z + 0.5, 1, 0.0, 0.0, 0.0, 0.0)
             }
