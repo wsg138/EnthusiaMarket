@@ -135,6 +135,15 @@ configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
     buildUponDefaultConfig = true
 }
 
+// Expand ${version} in paper-plugin.yml so the descriptor reports the real
+// version instead of the literal token. Runs before generateNexusPermissions
+// (which splices the permissions block into the already-expanded staged file).
+tasks.processResources {
+    filesMatching("paper-plugin.yml") {
+        expand(mapOf("version" to project.version))
+    }
+}
+
 tasks.named("generateNexusPermissions") {
     mustRunAfter("processResources")
 }
