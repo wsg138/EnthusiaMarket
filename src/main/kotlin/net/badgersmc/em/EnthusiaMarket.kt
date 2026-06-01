@@ -94,6 +94,10 @@ open class EnthusiaMarket : JavaPlugin() {
         }
         ctx.registerBean("defaultRent", RentTerms::class, defaultRent)
 
+        // Provisioning priority for stall regions (REQ Workstream F) — a
+        // plain Int bean so ImportStallsService can be DI-constructed.
+        ctx.registerBean("stallPriority", Int::class, cfg.market.stallPriority)
+
         // Phase 5: Register Paper commands (triggers bean creation via DI)
         ctx.registerPaperCommands(
             basePackage = "net.badgersmc.em",
