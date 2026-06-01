@@ -531,6 +531,24 @@ References: REQ-024 through REQ-027
 
 ---
 
+## Post-release backlog (deferred — NOT in the next-week release)
+
+- [ ] **TDD-290 — Emergency auction on grace expiry**
+  References: REQ-280 (DRAFT), REQ-271, REQ-004, REQ-009
+  Tag: TDD
+  Description: Replace the direct GRACE→UNOWNED eviction in `RentCollectionService.processStall`
+  with a transition to `EMERGENCY_AUCTIONING` that opens a system auction for the stall's
+  ownership (reuse `AuctionLifecycleService`). On settlement: high bidder → awarded; no bids →
+  UNOWNED. Fire the schematic restore (REQ-271) when the emergency auction is **created** so the
+  stall is auctioned clean (confirmed intent 2026-06-01). Wire the currently-dead
+  `EMERGENCY_AUCTIONING` (and clarify `RE_AUCTIONING`) `StallState` values — they exist in the
+  enum and are handled defensively in switches, but nothing transitions into them today.
+  Brainstorm/spec REQ-280 out of DRAFT first (open questions: no-bid reset, RE_ vs EMERGENCY_
+  split). Current release behaviour: grace expiry evicts directly + resets immediately.
+  Evidence: ``
+
+---
+
 ## Task authoring rules
 
 1. Every task has exactly ONE tag (`TDD`, `DOC`, or `INFRA`).
