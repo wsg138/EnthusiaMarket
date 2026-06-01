@@ -37,7 +37,7 @@ open class PurchaseSignCreateListener(
     private val lang: LangService,
 ) : Listener {
 
-    @EventHandler
+    @EventHandler(ignoreCancelled = true)
     fun onSignPlace(event: SignChangeEvent) {
         val plain = PlainTextComponentSerializer.plainText()
         val lines = event.lines()

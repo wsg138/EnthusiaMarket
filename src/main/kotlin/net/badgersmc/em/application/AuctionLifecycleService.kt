@@ -470,6 +470,7 @@ class AuctionLifecycleService(
      * in unit-test contexts; the null check on `getServer()` keeps the
      * call safe for callers that don't bootstrap a MockBukkit server.
      */
+    @Suppress("TooGenericExceptionCaught")
     private fun fireStateChanged(stallId: String, previous: StallState, current: StallState) {
         if (previous == current) return
         try {

@@ -14,6 +14,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.EquipmentSlot
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -55,9 +56,10 @@ open class PurchaseSignClickListener(
      */
     private val pendingConfirms = ConcurrentHashMap<ConfirmKey, Instant>()
 
-    @EventHandler
+    @EventHandler(ignoreCancelled = true)
     fun onClick(event: PlayerInteractEvent) {
         if (event.action != Action.RIGHT_CLICK_BLOCK) return
+        if (event.hand != EquipmentSlot.HAND) return
         val block = event.clickedBlock ?: return
         if (!isSignMaterial(block.type)) return
 

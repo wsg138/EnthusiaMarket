@@ -30,7 +30,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
 @Command(name = "em", description = "EnthusiaMarket administrative commands", aliases = ["enthusiamarket"])
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "TooManyFunctions")
 class AdminCommands(
     private val service: ImportStallsService,
     private val stalls: StallRepository,
@@ -45,6 +45,8 @@ class AdminCommands(
     private val sellOffers: SellOfferService,
     private val sellback: StallSellbackService,
     private val regionMembers: RegionMemberSync,
+    private val entityCounter: net.badgersmc.em.application.StallEntityCounter,
+    private val regionProvider: net.badgersmc.em.domain.ports.RegionProvider,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -472,6 +474,49 @@ class AdminCommands(
         ))
     }
 
+    @Subcommand("stall setkind")
+    @Permission("enthusiamarket.stall.setkind")
+    fun stallSetKind(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("kind") kind: String) {
+        val ok = applySetKind(stalls, stallId, kind)
+        sender.sendMessage(
+            if (ok) lang.msg("stall.setkind.ok", "stall" to stallId, "kind" to kind)
+            else lang.msg("stall.setkind.missing", "stall" to stallId)
+        )
+    }
+
+    @Subcommand("stall entitylimit set")
+    @Permission("enthusiamarket.stall.entitylimit")
+    fun stallEntityLimit(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("type") type: String, @Arg("extra") extra: Int) {
+        val ok = applyEntityLimit(stalls, stallId, type, extra)
+        sender.sendMessage(
+            if (ok) lang.msg("stall.entitylimit.ok", "stall" to stallId, "type" to type, "extra" to extra)
+            else lang.msg("stall.entitylimit.missing", "stall" to stallId)
+        )
+    }
+
+    @Subcommand("stall recount")
+    @Permission("enthusiamarket.stall.recount")
+    fun stallRecount(@Context sender: CommandSender, @Arg("stall") stallId: String) {
+        val stall = stalls.findById(StallId(stallId))
+        if (stall == null) {
+            sender.sendMessage(lang.msg("stall.recount.missing", "stall" to stallId))
+            return
+        }
+        val world = org.bukkit.Bukkit.getWorld(stall.world)
+        val counts = HashMap<String, Int>()
+        if (world != null) {
+            for (entity in world.entities) {
+                val id = regionProvider.regionAt(stall.world, entity.location.blockX, entity.location.blockY, entity.location.blockZ)
+                if (id == stallId) {
+                    val t = entity.type.name.lowercase()
+                    counts[t] = (counts[t] ?: 0) + 1
+                }
+            }
+        }
+        entityCounter.recount(stallId, counts)
+        sender.sendMessage(lang.msg("stall.recount.ok", "stall" to stallId, "total" to counts.values.sum()))
+    }
+
     /**
      * Drop expired entries from [pendingSellbacks] so the map doesn't
      * leak across stagings that never confirm. Called inline on every
@@ -490,8 +535,24 @@ class AdminCommands(
         return if (sender is Player) sender.uniqueId else UUID.randomUUID()
     }
 
-    private companion object {
+    internal companion object {
         const val KEY_WORLD = "world"
         const val KEY_REGION_PREFIX = "region_prefix"
+
+        /** Set a stall's region kind. Returns false when the stall is missing. */
+        fun applySetKind(repo: StallRepository, stallId: String, kind: String): Boolean {
+            val stall = repo.findById(StallId(stallId)) ?: return false
+            repo.save(stall.copy(kind = kind))
+            return true
+        }
+
+        /** Set a per-stall per-type entity-limit override. Returns false when missing. */
+        fun applyEntityLimit(repo: StallRepository, stallId: String, type: String, extra: Int): Boolean {
+            val stall = repo.findById(StallId(stallId)) ?: return false
+            val merged = stall.extraEntities.toMutableMap()
+            merged[type.lowercase()] = extra
+            repo.save(stall.copy(extraEntities = merged))
+            return true
+        }
     }
 }

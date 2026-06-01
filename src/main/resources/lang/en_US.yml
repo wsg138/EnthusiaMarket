@@ -89,6 +89,16 @@ stall:
     rejected: "<prefix><red>Cannot add member: <reason>"
     unknown_player: "<prefix><red>Unknown player:</red> <player>"
 
+  setkind:
+    ok: "<green>Stall {stall} kind set to {kind}"
+    missing: "<red>No stall named {stall}"
+  entitylimit:
+    ok: "<green>Stall {stall}: {type} extra allowance set to {extra}"
+    missing: "<red>No stall named {stall}"
+  recount:
+    ok: "<green>Stall {stall} entity count rescanned ({total} entities)"
+    missing: "<red>No stall named {stall}"
+
 sellback:
   warn:
     header: "<prefix><yellow>Sellback quote for</yellow> <aqua><stall></aqua><yellow>: refund <gold><refund></gold> (<periods> period(s) prepaid, today excluded). Confirm within <seconds>s."
