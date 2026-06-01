@@ -19,6 +19,60 @@
 
 ---
 
+## CONFIRMED API SYMBOLS (verified against the real jars on disk, 2026-06-01)
+
+These resolve the high-risk signature-confirmation points (Self-Review items 4, 5, 6). They
+were checked with `javap` against the actual WorldGuard 7.0.9 and WorldEdit 7.3.0 jars in the
+gradle cache, and cross-checked against existing repo usage. **Use these exact symbols; do NOT
+re-derive or guess.** Existing repo precedent: `WorldEditSchematicAdapter.kt:132-137`
+(region bounds) and `ShopCreateListener.kt:104-108` (applicable regions).
+
+**WorldGuard flag constants** — `com.sk89q.worldguard.protection.flags.Flags` (all `public static final StateFlag`):
+- `Flags.BUILD`, `Flags.BLOCK_PLACE`, `Flags.BLOCK_BREAK`, `Flags.USE`, `Flags.INTERACT`,
+  `Flags.CHEST_ACCESS`, `Flags.RIDE`, `Flags.ITEM_FRAME_ROTATE` ← **note: `ITEM_FRAME_ROTATE`, NOT `ITEM_FRAME_ROTATION`.**
+
+**Flag state + groups:**
+- State enum: `com.sk89q.worldguard.protection.flags.StateFlag.State.ALLOW` / `.DENY`.
+- Region group enum: `com.sk89q.worldguard.protection.flags.RegionGroup.MEMBERS` / `.ALL` (also OWNERS, NON_MEMBERS, NON_OWNERS).
+- Group flag accessor (Kotlin property form): `flag.regionGroupFlag` (Java `Flag.getRegionGroupFlag(): RegionGroupFlag`).
+- Set a flag: `region.setFlag(Flags.BUILD, StateFlag.State.ALLOW)` and
+  `region.setFlag(Flags.BUILD.regionGroupFlag, RegionGroup.MEMBERS)`. Signature is
+  `<T extends Flag<V>, V> void setFlag(T, V)` — type-safe; the State/RegionGroup value must match the flag.
+
+**ProtectedRegion** — `com.sk89q.worldguard.protection.regions.ProtectedRegion`:
+- `region.priority = 20` (Kotlin) ↔ `setPriority(int)` / `getPriority()`.
+- `region.id` ↔ `getId(): String`.
+- `region.minimumPoint` / `region.maximumPoint` ↔ `getMinimumPoint()/getMaximumPoint(): BlockVector3`.
+
+**RegionManager** — `com.sk89q.worldguard.protection.managers.RegionManager`:
+- `getRegion(String): ProtectedRegion?`
+- `getApplicableRegions(BlockVector3): ApplicableRegionSet`
+- `getApplicableRegionsIDs(BlockVector3): List<String>` ← **simplest for `regionAt`** (no iteration needed).
+- `getRegions(): Map<String, ProtectedRegion>`
+
+**ApplicableRegionSet** — `com.sk89q.worldguard.protection.ApplicableRegionSet`:
+- Is `Iterable<ProtectedRegion>` (so `for (region in applicable)` works) and has `getRegions(): Set<ProtectedRegion>`.
+
+**BlockVector3** — `com.sk89q.worldedit.math.BlockVector3`:
+- Accessors `x()`, `y()`, `z()` ALL exist (also `getX()/getY()/getZ()/getBlockX()`). **The plan's `.x()/.y()/.z()` form is correct — use it.**
+- Static factory: `BlockVector3.at(int, int, int)` and `at(double, double, double)`.
+
+**BukkitAdapter** (worldedit-bukkit) — proven in repo:
+- `BukkitAdapter.adapt(bukkitWorld)` → WE world for `regionContainer.get(...)`.
+- `BukkitAdapter.asBlockVector(location): BlockVector3` ← use for location→vector instead of manual `BlockVector3.at`.
+
+**Plan-code adjustments implied by the above (apply when you reach the task):**
+- **Task B.6 `regionAt`:** prefer `regionManager.getApplicableRegionsIDs(BlockVector3.at(x, y, z))`
+  and pick the highest-priority stall id. Since IDs alone don't carry priority, either iterate
+  `getApplicableRegions(...)` (Iterable<ProtectedRegion>) and `maxByOrNull { it.priority }?.id`
+  (the plan's approach — valid), OR filter `getApplicableRegionsIDs` to the stall prefix and
+  take the first. The plan's `getApplicableRegions(...).regions.maxByOrNull { it.priority }?.id`
+  is confirmed valid (`.regions` = `getRegions()` Set). Keep it.
+- **Task F.2:** the plan already uses `ITEM_FRAME_ROTATE` — confirmed correct, no change.
+- **Task C.1 `bounds`:** `min.x()/min.y()/min.z()` confirmed valid, no change.
+
+---
+
 ## Workstream 0 — Config fixes (no code)
 
 ### Task 0.1: Fix regionPrefix and add stallPriority
@@ -222,7 +276,7 @@ class WorldGuardRegionProvisioner : RegionProvisioner {
 - [ ] **Step 2: Build to confirm WG flag API references resolve**
 
 Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. If a flag field name is wrong (e.g. `ITEM_FRAME_ROTATE`), the compiler names the unresolved symbol — check `com.sk89q.worldguard.protection.flags.Flags` for the exact constant and fix.
+Expected: BUILD SUCCESSFUL. The flag constants (`BUILD`, `BLOCK_PLACE`, `BLOCK_BREAK`, `USE`, `INTERACT`, `CHEST_ACCESS`, `RIDE`, `ITEM_FRAME_ROTATE`), `StateFlag.State.ALLOW`, `RegionGroup.MEMBERS/.ALL`, and `flag.regionGroupFlag` are all PRE-CONFIRMED against the real jar (see "CONFIRMED API SYMBOLS"). The code as pasted compiles — if it does not, you mistyped, not the plan.
 
 - [ ] **Step 3: Commit**
 
@@ -1589,7 +1643,7 @@ Expected: PASS
 - [ ] **Step 7: Build to confirm WG regionAt API resolves**
 
 Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. If `getApplicableRegions`/`BlockVector3` signatures differ, consult WG 7.0.9 — `RegionManager.getApplicableRegions(BlockVector3)` returns `ApplicableRegionSet` which is iterable over `ProtectedRegion`.
+Expected: BUILD SUCCESSFUL. PRE-CONFIRMED: `RegionManager.getApplicableRegions(BlockVector3): ApplicableRegionSet` (Iterable<ProtectedRegion>; `.regions` = `getRegions()` Set), `BlockVector3.at(int,int,int)`, `region.priority`/`region.id`. Code as pasted compiles.
 
 - [ ] **Step 8: Update other RegionProvider mocks if compile breaks tests**
 
@@ -1881,7 +1935,7 @@ In `RegionProvider.kt`, add the nested data class and method:
     }
 ```
 
-Note: WorldEdit 7.3.0 `BlockVector3` exposes `.x()`, `.y()`, `.z()`. If the repo's WE version uses `.getX()`, adjust. Confirm via compile.
+Note: PRE-CONFIRMED — WorldEdit 7.3.0 `BlockVector3` exposes `.x()`, `.y()`, `.z()` (and `.getX()` etc.). Use `.x()/.y()/.z()` as pasted. Repo precedent: `WorldEditSchematicAdapter.kt` uses `region.minimumPoint`/`maximumPoint` (both return BlockVector3).
 
 - [ ] **Step 5: Run the test + compile to verify pass**
 
@@ -3251,9 +3305,9 @@ These are known points where the plan depends on signatures that should be confi
 1. **`OwnerNameResolver.displayNameFor`** (Task C.2) — confirm it takes `OwnerRef` vs `UUID`; mirror `PurchaseSignRenderer`'s call. Adjust StallInfoService + its test mock.
 2. **`RentTerms.amountFor`** (Task C.2) — confirm the method name/signature for computing rent from winning bid. The codebase test TDD-20 references `RentTerms.amountFor(stall)`; it may take a Stall or a Long. Adjust `currentRent`.
 3. **`PurchaseSign.Kind.INFO`** (Task C.3) — confirm the enum exists with an INFO value (TDD-250 specified BUY|RENT|EXTEND|INFO). If the sign model names it differently, adjust the branch.
-4. **WG flag constants** (Task F.2) — `Flags.ITEM_FRAME_ROTATE` exact name; confirm against `com.sk89q.worldguard.protection.flags.Flags`.
-5. **WG `getApplicableRegions` / `BlockVector3`** (Task B.6) — confirm signature for WG 7.0.9.
-6. **WE `BlockVector3.x()/y()/z()`** (Task C.1) — confirm accessor names for WE 7.3.0 (vs `getX()`).
+4. **WG flag constants** (Task F.2) — ✅ **PRE-PINNED** in the "CONFIRMED API SYMBOLS" section above. `Flags.ITEM_FRAME_ROTATE` (not ...ROTATION) + all core flags verified against the real jar. Use as written; no confirmation needed.
+5. **WG `getApplicableRegions` / `BlockVector3`** (Task B.6) — ✅ **PRE-PINNED** above. `getApplicableRegions(BlockVector3): ApplicableRegionSet` (Iterable, `.regions` Set), `getApplicableRegionsIDs(BlockVector3): List<String>`. The plan's `.regions.maxByOrNull { it.priority }?.id` is confirmed valid.
+6. **WE `BlockVector3.x()/y()/z()`** (Task C.1) — ✅ **PRE-PINNED** above. Both `.x()` and `.getX()` exist; the plan's `.x()/.y()/.z()` is correct. No change.
 7. **`KEY_WORLD`/`KEY_REGION_PREFIX`** (Task B.7) — these constants are already referenced in AdminCommands.import; locate their existing declaration and reuse rather than redeclare.
 8. **`BedrockPurchaseForm` constructor** (Task G.5) — confirm exact param order (`sed -n '1,40p'` in the task); the `openBedrockPurchaseForm` call must match.
 9. **IFramework `GuiItem` click-consumer signature** (Task G.3) — mirror `PurchaseMenu`'s `GuiItem(item) { event -> ... }` form for the IF version in use.
