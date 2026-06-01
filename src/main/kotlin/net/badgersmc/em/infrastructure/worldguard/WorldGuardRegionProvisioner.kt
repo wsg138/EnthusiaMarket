@@ -41,6 +41,11 @@ class WorldGuardRegionProvisioner : RegionProvisioner {
             return false
         }
         applyFlags(region, priority)
+        try {
+            regionManager.save()
+        } catch (e: com.sk89q.worldguard.protection.managers.storage.StorageException) {
+            log.warning("RegionProvisioner: flags applied in-memory but save failed for $regionId: ${e.message}")
+        }
         return true
     }
 
