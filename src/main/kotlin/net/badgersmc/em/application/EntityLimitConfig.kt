@@ -3,6 +3,8 @@ package net.badgersmc.em.application
 import net.badgersmc.em.domain.stall.EntityLimitGroup
 import org.bukkit.configuration.file.YamlConfiguration
 import java.io.File
+import java.util.Locale
+import java.util.logging.Logger
 
 /**
  * Loads entitylimits.yml (REQ-220) into a map of region-kind name ->
@@ -12,6 +14,7 @@ import java.io.File
 object EntityLimitConfig {
 
     private const val TOTAL_KEY = "_total"
+    private val log = Logger.getLogger(EntityLimitConfig::class.java.name)
 
     /** Parse a YAML string (used by tests and the file loader). */
     fun parse(yaml: String): Map<String, EntityLimitGroup> {
@@ -24,15 +27,31 @@ object EntityLimitConfig {
             val perType = LinkedHashMap<String, Int>()
             for (key in section.getKeys(false)) {
                 val value = section.getInt(key)
-                if (key == TOTAL_KEY) total = value else perType[key.lowercase()] = value
+                if (key == TOTAL_KEY) total = value else perType[key.lowercase(Locale.ROOT)] = value
             }
             out[kind] = EntityLimitGroup(total, perType)
         }
         return out
     }
 
-    /** Load from a file on disk. */
-    fun load(file: File): Map<String, EntityLimitGroup> = parse(file.readText())
+    /**
+     * Load from a file on disk. Returns an empty map (all entities unlimited)
+     * when the file is missing or malformed, rather than crashing plugin
+     * enable — the listener that consumes this is constructed at startup.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    fun load(file: File): Map<String, EntityLimitGroup> {
+        if (!file.exists()) {
+            log.warning("entitylimits.yml not found at ${file.absolutePath}; entity limits disabled")
+            return emptyMap()
+        }
+        return try {
+            parse(file.readText(Charsets.UTF_8))
+        } catch (e: Exception) {
+            log.warning("Failed to parse entitylimits.yml (${e.message}); entity limits disabled")
+            emptyMap()
+        }
+    }
 
     /**
      * Resolve a group for a given region [kind]. Falls back to the

@@ -87,7 +87,7 @@ class EntityLimitListener(
     @EventHandler
     fun onEntityDeath(event: EntityDeathEvent) {
         val stallId = resolveStall(event.entity.location) ?: return
-        counter.decrement(stallId, event.entityType.name.lowercase())
+        counter.decrement(stallId, event.entityType.name.lowercase(java.util.Locale.ROOT))
     }
 
     private fun checkAndMaybeCancel(loc: Location, entityTypeName: String): Boolean {
@@ -95,7 +95,7 @@ class EntityLimitListener(
         val stall = stalls.findById(StallId(stallId)) ?: return false
         val baseGroup = EntityLimitConfig.groupFor(groups, stall.kind)
         val group = baseGroup.mergeExtras(stall.extraTotal, stall.extraEntities)
-        val type = entityTypeName.lowercase()
+        val type = entityTypeName.lowercase(java.util.Locale.ROOT)
         return decide(stallId, type, group, counter, ::scanCounts)
     }
 
@@ -122,7 +122,7 @@ class EntityLimitListener(
         )
         val counts = HashMap<String, Int>()
         for (entity: Entity in world.getNearbyEntities(box)) {
-            val t = entity.type.name.lowercase()
+            val t = entity.type.name.lowercase(java.util.Locale.ROOT)
             counts[t] = (counts[t] ?: 0) + 1
         }
         return counts

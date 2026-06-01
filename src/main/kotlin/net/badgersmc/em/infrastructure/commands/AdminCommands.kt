@@ -510,14 +510,18 @@ class AdminCommands(
             return
         }
         val world = org.bukkit.Bukkit.getWorld(stall.world)
+        val bounds = regionProvider.bounds(stall.world, stall.regionId)
         val counts = HashMap<String, Int>()
-        if (world != null) {
-            for (entity in world.entities) {
-                val id = regionProvider.regionAt(stall.world, entity.location.blockX, entity.location.blockY, entity.location.blockZ)
-                if (id == stallId) {
-                    val t = entity.type.name.lowercase()
-                    counts[t] = (counts[t] ?: 0) + 1
-                }
+        if (world != null && bounds != null) {
+            // Bounded scan over the region's cuboid (not the whole world) — a
+            // stall region is a cuboid, so its bounding box equals the region.
+            val box = org.bukkit.util.BoundingBox(
+                bounds.minX.toDouble(), bounds.minY.toDouble(), bounds.minZ.toDouble(),
+                (bounds.maxX + 1).toDouble(), (bounds.maxY + 1).toDouble(), (bounds.maxZ + 1).toDouble(),
+            )
+            for (entity in world.getNearbyEntities(box)) {
+                val t = entity.type.name.lowercase(java.util.Locale.ROOT)
+                counts[t] = (counts[t] ?: 0) + 1
             }
         }
         entityCounter.recount(stallId, counts)

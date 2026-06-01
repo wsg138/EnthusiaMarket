@@ -90,27 +90,27 @@ stall:
     unknown_player: "<prefix><red>Unknown player:</red> <player>"
 
   setkind:
-    ok: "<green>Stall {stall} kind set to {kind}"
-    missing: "<red>No stall named {stall}"
+    ok: "<green>Stall <stall> kind set to <kind>"
+    missing: "<red>No stall named <stall>"
   entitylimit:
-    ok: "<green>Stall {stall}: {type} extra allowance set to {extra}"
-    missing: "<red>No stall named {stall}"
+    ok: "<green>Stall <stall>: <type> extra allowance set to <extra>"
+    missing: "<red>No stall named <stall>"
   recount:
-    ok: "<green>Stall {stall} entity count rescanned ({total} entities)"
-    missing: "<red>No stall named {stall}"
+    ok: "<green>Stall <stall> entity count rescanned (<total> entities)"
+    missing: "<red>No stall named <stall>"
   info:
     card: |
-      <gold>━━━ Stall {stall} ━━━
-      <gray>Kind: <white>{kind}  <gray>State: <white>{state}
-      <gray>Owner: <white>{owner}  <gray>Members: <white>{members}
-      <gray>Rent: <white>{rent}  <gray>Next: <white>{next}
-      <gray>Size: <white>{width}x{height}x{length}
-      <gray>Available: <white>{available}
-    missing: "<red>No stall named {stall}"
+      <gold>━━━ Stall <stall> ━━━
+      <gray>Kind: <white><kind>  <gray>State: <white><state>
+      <gray>Owner: <white><owner>  <gray>Members: <white><members>
+      <gray>Rent: <white><rent>  <gray>Next: <white><next>
+      <gray>Size: <white><width>x<height>x<length>
+      <gray>Available: <white><available>
+    missing: "<red>No stall named <stall>"
   outline:
-    ok: "<green>Outlining stall {stall} for {seconds}s"
-    missing: "<red>No stall named {stall}"
-    no_region: "<red>Stall {stall} has no WorldGuard region"
+    ok: "<green>Outlining stall <stall> for <seconds>s"
+    missing: "<red>No stall named <stall>"
+    no_region: "<red>Stall <stall> has no WorldGuard region"
     player_only: "<red>Only players can request an outline"
 
 sellback:
@@ -185,12 +185,12 @@ gui:
     sell_action_lore_click: "<gray>Click to sell to this shop"
     create:
       title: "<dark_gray>Create Shop"
-      price: "<green>Price: <gold>{price}"
-      price_up: "<green>+10 (now {price})"
-      price_down: "<red>-10 (now {price})"
-      amount: "<green>Amount: <gold>{amount}"
-      amount_up: "<green>+1 (now {amount})"
-      amount_down: "<red>-1 (now {amount})"
+      price: "<green>Price: <gold><price>"
+      price_up: "<green>+10 (now <price>)"
+      price_down: "<red>-10 (now <price>)"
+      amount: "<green>Amount: <gold><amount>"
+      amount_up: "<green>+1 (now <amount>)"
+      amount_down: "<red>-1 (now <amount>)"
       confirm: "<green>Confirm & create shop"
   edit:
     title: "<dark_gray>Edit Shop"
