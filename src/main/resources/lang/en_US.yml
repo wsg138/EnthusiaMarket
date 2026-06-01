@@ -180,6 +180,15 @@ gui:
     buy_lore_click: "<gray>Click to purchase"
     sell_action_name: "<yellow><bold>SELL</bold>"
     sell_action_lore_click: "<gray>Click to sell to this shop"
+    create:
+      title: "<dark_gray>Create Shop"
+      price: "<green>Price: <gold>{price}"
+      price_up: "<green>+10 (now {price})"
+      price_down: "<red>-10 (now {price})"
+      amount: "<green>Amount: <gold>{amount}"
+      amount_up: "<green>+1 (now {amount})"
+      amount_down: "<red>-1 (now {amount})"
+      confirm: "<green>Confirm & create shop"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"
