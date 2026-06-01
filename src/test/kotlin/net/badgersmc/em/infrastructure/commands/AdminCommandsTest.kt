@@ -36,9 +36,9 @@ class AdminCommandsTest {
     @Test fun `import delegates to service and reports counts`() {
         val service = mockk<ImportStallsService>()
         val repo = mockk<StallRepository>()
-        every { service.import("world", "stall_") } returns ImportStallsService.Result(3, 1)
+        every { service.import("world", "stall_") } returns ImportStallsService.Result(3, 1, 0)
 
-        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
+        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
         cmd.import(sender)
 
         verify { service.import("world", "stall_") }
@@ -53,7 +53,7 @@ class AdminCommandsTest {
                   null, 0L, RentTerms.formula(1.0))
         )
 
-        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
+        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
         cmd.list(sender)
 
         verify { sender.sendMessage(any<Component>()) }
@@ -101,6 +101,10 @@ class AdminCommandsTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
         cmd.membersAdd(player, "s1", "Alice")
 
@@ -120,6 +124,10 @@ class AdminCommandsTest {
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
             members,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
@@ -150,6 +158,10 @@ class AdminCommandsTest {
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
             members,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),

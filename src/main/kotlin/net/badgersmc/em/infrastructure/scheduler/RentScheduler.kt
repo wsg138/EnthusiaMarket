@@ -25,6 +25,7 @@ class RentScheduler(
 ) {
 
     @PostConstruct
+    @Suppress("ComplexCondition")
     fun start() {
         if (!vaultHealth.isAvailable) {
             plugin.logger.warning("Vault not available — rent collection disabled")

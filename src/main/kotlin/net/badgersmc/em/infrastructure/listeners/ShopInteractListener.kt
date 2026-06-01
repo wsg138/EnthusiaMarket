@@ -26,7 +26,8 @@ open class ShopInteractListener(
     private val shopRepository: ShopRepository,
     private val menuFactory: MenuFactory,
     private val tradeService: ContainerTradeService,
-    private val lang: LangService
+    private val lang: LangService,
+    private val logger: java.util.logging.Logger,
 ) : Listener {
 
     @PostConstruct
@@ -55,8 +56,7 @@ open class ShopInteractListener(
 
         // Platform routing: Bedrock gets Cumulus form, Java gets IFramework
         if (menuFactory.shouldUseBedrockMenus(player)) {
-            // TODO: Implement Bedrock form menu (TDD-60) — placeholder path
-            player.sendMessage(lang.msg("shop.create.bedrock_placeholder"))
+            openBedrockPurchaseForm(player, shop)
         } else {
             openPurchaseMenu(player, shop)
         }
@@ -68,5 +68,16 @@ open class ShopInteractListener(
      */
     open fun openPurchaseMenu(player: Player, shop: Shop) {
         PurchaseMenu(shop, tradeService, lang).open(player)
+    }
+
+    /** Open the Bedrock purchase form with trade callbacks. Open for testability. */
+    open fun openBedrockPurchaseForm(player: Player, shop: Shop) {
+        val uuid = player.uniqueId
+        net.badgersmc.em.interaction.bedrock.BedrockPurchaseForm(
+            player, shop,
+            onBuy = { tradeService.executeBuy(shop, uuid) },
+            onSell = { tradeService.executeSell(shop, uuid) },
+            logger, lang,
+        ).open(player)
     }
 }

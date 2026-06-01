@@ -1,0 +1,28 @@
+# EnthusiaMarket — Entity limit groups by region kind (REQ-220, REQ-221)
+#
+# Each region kind maps to an entity limit group declaring per-entity caps
+# inside a stall's WorldGuard region. The special key `_total` caps the total
+# number of capped entities regardless of type. A value of -1 means unlimited.
+#
+# A stall's region kind is resolved from its WorldGuard region; stalls whose
+# kind has no entry here fall back to the `default` group.
+#
+# Keys are Bukkit EntityType names, lower-cased (e.g. villager, armor_stand).
+
+default:
+  _total: 50
+  villager: 5
+  armor_stand: 10
+  item_frame: 10
+
+shop:
+  _total: 80
+  villager: 10
+  armor_stand: 20
+  item_frame: 20
+
+farm:
+  _total: 120
+  villager: 20
+  armor_stand: 5
+  item_frame: 5

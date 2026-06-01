@@ -12,7 +12,7 @@ common:
 
 admin:
   import:
-    result: "<prefix>import: created=<green><created></green> skipped=<yellow><skipped></yellow> <gray>(world=<world>, prefix=<region_prefix>)"
+    result: "<prefix>import: created=<green><created></green> skipped=<yellow><skipped></yellow> provisioned=<green><provisioned></green> <gray>(world=<world>, prefix=<region_prefix>)"
   reload:
     success: "<prefix>config reloaded <gray>(world=<world>, prefix=<region_prefix>)"
     failure: "<prefix><red>reload failed: <reason>"
@@ -89,6 +89,30 @@ stall:
     rejected: "<prefix><red>Cannot add member: <reason>"
     unknown_player: "<prefix><red>Unknown player:</red> <player>"
 
+  setkind:
+    ok: "<green>Stall <stall> kind set to <kind>"
+    missing: "<red>No stall named <stall>"
+  entitylimit:
+    ok: "<green>Stall <stall>: <type> extra allowance set to <extra>"
+    missing: "<red>No stall named <stall>"
+  recount:
+    ok: "<green>Stall <stall> entity count rescanned (<total> entities)"
+    missing: "<red>No stall named <stall>"
+  info:
+    card: |
+      <gold>━━━ Stall <stall> ━━━
+      <gray>Kind: <white><kind>  <gray>State: <white><state>
+      <gray>Owner: <white><owner>  <gray>Members: <white><members>
+      <gray>Rent: <white><rent>  <gray>Next: <white><next>
+      <gray>Size: <white><width>x<height>x<length>
+      <gray>Available: <white><available>
+    missing: "<red>No stall named <stall>"
+  outline:
+    ok: "<green>Outlining stall <stall> for <seconds>s"
+    missing: "<red>No stall named <stall>"
+    no_region: "<red>Stall <stall> has no WorldGuard region"
+    player_only: "<red>Only players can request an outline"
+
 sellback:
   warn:
     header: "<prefix><yellow>Sellback quote for</yellow> <aqua><stall></aqua><yellow>: refund <gold><refund></gold> (<periods> period(s) prepaid, current period excluded). Confirm within <seconds>s."
@@ -127,8 +151,6 @@ shop:
     needs_container: "<red>Sign must be attached to a container (chest, barrel, shulker)"
     not_in_stall: "<red>Sign must be inside a registered stall"
     no_authority: "<red>You do not own or rent this stall"
-    menu_placeholder: "<yellow>[Shop] Create menu would open here (TDD-52)"
-    bedrock_placeholder: "<yellow>[Shop] Bedrock form would open here (TDD-60)"
     guild_unavailable: "<red>LumaGuilds integration is not available"
     success: "<green>Shop created!"
     invalid_input: "<red>Invalid amount or price — both must be positive whole numbers"
@@ -161,6 +183,15 @@ gui:
     buy_lore_click: "<gray>Click to purchase"
     sell_action_name: "<yellow><bold>SELL</bold>"
     sell_action_lore_click: "<gray>Click to sell to this shop"
+    create:
+      title: "<dark_gray>Create Shop"
+      price: "<green>Price: <gold><price>"
+      price_up: "<green>+10 (now <price>)"
+      price_down: "<red>-10 (now <price>)"
+      amount: "<green>Amount: <gold><amount>"
+      amount_up: "<green>+1 (now <amount>)"
+      amount_down: "<red>-1 (now <amount>)"
+      confirm: "<green>Confirm & create shop"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"

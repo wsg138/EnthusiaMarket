@@ -20,7 +20,7 @@ class EnthusiaMarketPluginTest {
     @Test fun `config can be created with defaults`() {
         val cfg = EnthusiaMarketConfig()
         assertEquals("world", cfg.market.world)
-        assertEquals("stall_", cfg.market.regionPrefix)
+        assertEquals("stall", cfg.market.regionPrefix)
         assertEquals("formula", cfg.rent.mode)
     }
 

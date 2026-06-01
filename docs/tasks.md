@@ -428,13 +428,14 @@ References: REQ-024 through REQ-027
   Description: `EntityLimitListener` handles `CreatureSpawnEvent`, `EntityPlaceEvent`, `HangingPlaceEvent`. Looks up enclosing stall via WorldGuard, checks against `EntityLimitGroup` count of existing entities, cancels event when over cap. Failing test (MockBukkit): spawn at cap → cancelled; spawn under cap → allowed.
   Evidence: ``
 
-- [ ] **TDD-230** — Region info card
-  References: REQ-230, REQ-231
+- [x] **TDD-230** — Region info card (command only)
+  References: REQ-230
   Tag: TDD
-  Description: `/em stall info <stall>` subcommand renders multi-line MiniMessage info card via new lang keys `stall.info.*`. Sign right-click on a purchase sign by a non-owner invokes the same renderer. Failing test: info text contains all required fields (id, kind, owner, member count, rent, time left, dimensions, state, availability).
+  Description: `/em stall info <stall>` subcommand renders multi-line MiniMessage info card via new lang keys `stall.info.*`.
   Evidence: ``
+  Note: REQ-231 sign-click info routing deferred — PurchaseSign has no kind discriminator; revisit post-release.
 
-- [ ] **TDD-240** — Particle border outline
+- [x] **TDD-240** — Particle border outline
   References: REQ-240, REQ-241
   Tag: TDD
   Description: New `ParticleBorderService` (`@Component`). Tracks active outlines as `(player, stall, expiresAt)` triples. Bukkit repeat task at 4-tick interval traces WorldGuard region's bounding box with `Particle.END_ROD` visible only to the requesting player. Hard cap of `particles.maxPerTick` (default 200) — degrade by widening spacing rather than dropping outlines. Failing test: outline added/removed; particle count bound respected.
@@ -482,31 +483,43 @@ References: REQ-024 through REQ-027
   Description: Player commands `/em stall offer <price>`, `/em stall offer cancel`, `/em stall buy <stall>`. Listed in `/em stall info` output (REQ-230). Failing test: cancel by non-owner rejected; cancel by owner closes offer.
   Evidence: docs/requirements.md REQ-260, REQ-262; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt @Subcommand("stall ...") pattern; reverse mutex enforcement on AuctionLifecycleService.createAuction needs new SellOfferRepository dep (constructor sites in test require update; relaxed-mockk default keeps existing tests untouched).
 
-- [ ] **TDD-270** — Schematic capture on first claim
+- [x] **TDD-270** — Schematic capture on first claim
   References: REQ-270, REQ-273, REQ-274
   Tag: TDD
   Description: New `SchematicService` (`@Component`) with WE/FAWE adapter selection at construction time. `capture(stallId, region): Result` saves to `plugins/EnthusiaMarket/schematics/<stallId>.schem`. Hooked from `AuctionLifecycleService.settleWithWinner` BEFORE persisting ownership change. On failure: abort transition + refund + fire `SchematicCaptureFailedEvent`. Honour `schematics.enabled: false` (no-op). Failing test (with FAWE mock): capture invoked once per stall lifetime; capture failure aborts and refunds.
-  Evidence: ``
+  Evidence: Domain port src/main/kotlin/net/badgersmc/em/domain/ports/SchematicService.kt (Result Success/Disabled/Failure; capture/restore; Disabled no-op object — no WE/Bukkit types crossing the boundary). Application hook src/main/kotlin/net/badgersmc/em/application/AuctionLifecycleService.kt settleWithWinner lines 384-409: capture runs AFTER economy.withdraw, BEFORE awardTo/save; on Result.Failure → refund (economy.deposit), revert AUCTIONING→UNOWNED, close auction, fireCaptureFailed, return; gated on config.schematics.enabled (REQ-273). fireCaptureFailed helper (~line 483) mirrors fireStateChanged. Event src/main/kotlin/net/badgersmc/em/events/SchematicCaptureFailedEvent.kt. Infra adapter src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldEditSchematicAdapter.kt (@Component, injects Plugin+EnthusiaMarketConfig; WG RegionContainer → cuboid bounds → ForwardExtentCopy into BlockArrayClipboard → nexus WorldEditAdapter.saveSchematic; idempotent skip when file exists per REQ-270; restore pastes via ClipboardHolder, async via BukkitRunnable when WorldEditAdapter.isFawePresent else inline — REQ-272). Config block EnthusiaMarketConfig.Schematics (enabled, directory). Tests src/test/kotlin/net/badgersmc/em/application/AuctionLifecycleSchematicTest.kt (3 tests: capture-before-award via verifyOrder + exactly-once; capture-failure refunds winner 150L & never saves winner ownership; disabled skips capture). Full suite green.
 
-- [ ] **TDD-271** — Schematic restore on unclaim
+- [x] **TDD-271** — Schematic restore on unclaim
   References: REQ-271, REQ-272
   Tag: TDD
   Description: `SchematicService.restore(stallId, region): Result` pastes the stored schematic. Hooked from rent-eviction, sell-offer-completion (only when going UNOWNED), and `/em stall reset <id>`. FAWE path runs async on the WE worker pool; non-FAWE path runs sync on main thread. Failing test: restore called → region contents replaced.
-  Evidence: ``
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt (5th ctor param schematics defaulted to SchematicService.Disabled; restore called after clearOwnersAndMembers in the GRACE→UNOWNED evict branch, gated on config.schematics.enabled, failure logged not rethrown per REQ-273); voluntary sellback — src/main/kotlin/net/badgersmc/em/application/StallSellbackService.kt (7th ctor param schematics; restore replaces the old TDD-271 TODO after fireStateChanged, best-effort). Tests src/test/kotlin/net/badgersmc/em/application/SchematicRestoreTest.kt (4): eviction restores stall_02; eviction skips restore when disabled; sellback restores stall_01; sellback skips restore when disabled. Full suite green. Deferred (no current code path): `/em stall reset` admin subcommand and lease-expiry transition do not exist yet — wire restore there when those tasks land.
+
+- [x] **TDD-280** — RegionProvisioner port + WG adapter
+  References: REQ-270 (replaces ARM flag set), REQ-271, REQ-272
+  Tag: TDD
+  Description: New domain port `RegionProvisioner.provision(world, regionId, priority): Boolean`. WG infra adapter `WorldGuardRegionProvisioner` stamps priority + core build flags (BUILD, CHEST_ACCESS, BLOCK_PLACE, BLOCK_BREAK, RIDE scoped to MEMBERS), USE to ALL, plus decoration flags (ITEM_FRAME_ROTATE, INTERACT scoped to MEMBERS). All flag constants verified against real WG 7.0.9 jar; see plan §CONFIRMED API SYMBOLS.
+  Evidence: src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvisioner.kt (port interface, idempotent); src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt (@Component, WG adapter, 8 flag writes per region); compileKotlin green; all 6 WG flag constants resolve.
+
+- [x] **TDD-281** — Import wiring of region provisioning
+  References: REQ-270, REQ-273
+  Tag: TDD
+  Description: `ImportStallsService` gains `provisioner: RegionProvisioner` + `stallPriority: Int` constructor params. Calls `provisioner.provision` on every matched region (idempotent) before create/skip decision. Result gains `provisioned: Int` field. Lang message `admin.import.result` reports provisioned count. `stallPriority` registered as DI bean in `EnthusiaMarket.onEnable`.
+  Evidence: src/main/kotlin/net/badgersmc/em/application/ImportStallsService.kt (4 new params + provision loop); src/test/kotlin/net/badgersmc/em/application/ImportStallsServiceTest.kt (4 tests, all pass); src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt (stallPriority bean registration); src/main/resources/lang/en_US.yml (provisioned in result msg); src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt (provisioned pair passed to msg); full verify green (detekt 0, 297 tests, shadowJar).
 
 ### INFRA tasks
 
-- [ ] **INFRA-20** — Schematics + entitylimits resource files
+- [x] **INFRA-20** — Schematics + entitylimits resource files
   References: REQ-220, REQ-270
   Tag: INFRA
   Description: Ship `src/main/resources/entitylimits.yml` with default groups (`default`, `shop`, `farm`) and ensure `plugins/EnthusiaMarket/schematics/` is created on plugin enable. Update `EnthusiaMarketConfig` with a `schematics` block (`enabled`, `directory`) and a `particles` block (`enabled`, `maxPerTick`).
-  Evidence: ``
+  Evidence: src/main/resources/entitylimits.yml ships `default`/`shop`/`farm` groups with per-entity caps + `_total` (REQ-220). EnthusiaMarket.kt onEnable (after cfg read): creates `File(dataFolder, cfg.schematics.directory)` so the first capture never fails on a missing folder, and `saveResource("entitylimits.yml", false)` on first run (never overwrites local edits). EnthusiaMarketConfig.kt: `schematics` block (enabled, directory) shipped with TDD-270; added `particles` block (enabled, maxPerTick). compileKotlin green.
 
-- [ ] **INFRA-21** — WorldEdit + FAWE compile deps
+- [x] **INFRA-21** — WorldEdit + FAWE compile deps
   References: REQ-272
   Tag: INFRA
   Description: Add `compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0")` and `compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.11.0")` to `build.gradle.kts`. Add corresponding `paper-plugin.yml` softdepends. Document in `docs/tech-stack.md`.
-  Evidence: ``
+  Evidence: build.gradle.kts lines 42-45 (compileOnly + testImplementation for worldedit-bukkit 7.3.0 and FastAsyncWorldEdit-Bukkit 2.11.0) + line 21 FAWE maven repo + line 74 nexus-worldedit v2.2.1. paper-plugin.yml dependencies.server: WorldEdit + FastAsyncWorldEdit softdepends (load BEFORE, required false, join-classpath true). docs/tech-stack.md §3: added worldedit-bukkit, FastAsyncWorldEdit-Bukkit, nexus-worldedit rows + corrected nexus coords to v2.2.1; §4: added WE 7.3.0 clipboard/schematic API schema row.
 
 ### INFRA tasks (existing)
 
@@ -514,6 +527,24 @@ References: REQ-024 through REQ-027
   References: REQ-026, REQ-027
   Tag: INFRA
   Description: Create Bukkit event classes under `net.badgersmc.em.events`: ShopCreatedEvent(UUID ownerId), ShopDeletedEvent(UUID ownerId), ShopStockDepletedEvent(UUID ownerId), PostShopTransactionEvent(Player buyer, UUID landlordId, ItemStack item, int quantity, double pricePaid). All extend Event with static HandlerList.
+  Evidence: ``
+
+---
+
+## Post-release backlog (deferred — NOT in the next-week release)
+
+- [ ] **TDD-290 — Emergency auction on grace expiry**
+  References: REQ-280 (DRAFT), REQ-271, REQ-004, REQ-009
+  Tag: TDD
+  Description: Replace the direct GRACE→UNOWNED eviction in `RentCollectionService.processStall`
+  with a transition to `EMERGENCY_AUCTIONING` that opens a system auction for the stall's
+  ownership (reuse `AuctionLifecycleService`). On settlement: high bidder → awarded; no bids →
+  UNOWNED. Fire the schematic restore (REQ-271) when the emergency auction is **created** so the
+  stall is auctioned clean (confirmed intent 2026-06-01). Wire the currently-dead
+  `EMERGENCY_AUCTIONING` (and clarify `RE_AUCTIONING`) `StallState` values — they exist in the
+  enum and are handled defensively in switches, but nothing transitions into them today.
+  Brainstorm/spec REQ-280 out of DRAFT first (open questions: no-bid reset, RE_ vs EMERGENCY_
+  split). Current release behaviour: grace expiry evicts directly + resets immediately.
   Evidence: ``
 
 ---

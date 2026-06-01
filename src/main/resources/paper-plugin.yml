@@ -19,6 +19,14 @@ dependencies:
       load: BEFORE
       required: true
       join-classpath: true
+    WorldEdit:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    FastAsyncWorldEdit:
+      load: BEFORE
+      required: false
+      join-classpath: true
     Vault:
       load: BEFORE
       required: true
@@ -37,37 +45,3 @@ commands:
     description: EnthusiaMarket administrative commands
     usage: /enthusiamarket <subcommand>
     aliases: [em]
-
-permissions:
-  enthusiamarket.*:
-    default: op
-    children:
-      enthusiamarket.admin: true
-      enthusiamarket.player: true
-  enthusiamarket.admin:
-    default: op
-    children:
-      enthusiamarket.admin.import: true
-      enthusiamarket.admin.list: true
-      enthusiamarket.admin.evict: true
-      enthusiamarket.admin.reload: true
-      enthusiamarket.admin.setowner: true
-      enthusiamarket.admin.refund: true
-      enthusiamarket.auction.cancel.force: true
-  enthusiamarket.player:
-    default: true
-    children:
-      enthusiamarket.stall.rent: true
-      enthusiamarket.stall.bid: true
-      enthusiamarket.stall.manage.own: true
-      enthusiamarket.stall.manage.guild: true
-      enthusiamarket.stall.favorite: true
-      enthusiamarket.shop.create: true
-      enthusiamarket.shop.break: true
-      enthusiamarket.shop.buy: true
-      enthusiamarket.shop.sell: true
-      enthusiamarket.auction.start: true
-      enthusiamarket.auction.bid: true
-      enthusiamarket.auction.cancel: true
-      enthusiamarket.auction.list: true
-      enthusiamarket.bedrock.form: true

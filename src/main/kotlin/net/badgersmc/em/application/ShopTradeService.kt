@@ -99,7 +99,7 @@ class ShopTradeService(
      * BUY: player sells item to the stall owner.
      */
     private fun executeBuy(
-        sign: ShopSign, playerUuid: UUID, ownerUuid: UUID,
+        @Suppress("UnusedParameter") sign: ShopSign, playerUuid: UUID, ownerUuid: UUID,
         itemKey: String, amount: Int, price: Long, sellerProceeds: Long
     ): TradeResult {
         if (!items.playerHasItem(playerUuid, itemKey, amount)) {
@@ -120,7 +120,7 @@ class ShopTradeService(
         return TradeResult.Success("Sold $amount x $itemKey for $price ($sellerProceeds after tax)")
     }
 
-    private fun rollbackBuyWithdraw(playerUuid: UUID, itemKey: String, amount: Int, price: Long): TradeResult {
+    private fun rollbackBuyWithdraw(playerUuid: UUID, itemKey: String, amount: Int, @Suppress("UnusedParameter") price: Long): TradeResult {
         if (!items.giveItemToPlayer(playerUuid, itemKey, amount)) {
             logger.warning("Trade rollback: withdraw failed, item return failed")
             return TradeResult.CompensationFailed(
@@ -154,7 +154,7 @@ class ShopTradeService(
      * SELL: player buys item from the stall owner.
      */
     private fun executeSell(
-        sign: ShopSign, playerUuid: UUID, ownerUuid: UUID,
+        @Suppress("UnusedParameter") sign: ShopSign, playerUuid: UUID, ownerUuid: UUID,
         itemKey: String, amount: Int, price: Long, sellerProceeds: Long
     ): TradeResult {
         if (economy.balance(playerUuid) < price) {

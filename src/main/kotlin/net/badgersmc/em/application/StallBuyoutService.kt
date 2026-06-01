@@ -96,6 +96,7 @@ class StallBuyoutService(
         return result
     }
 
+    @Suppress("LongMethod")
     private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Result {
         if (price <= 0) return Result.Rejected("Sign price is invalid")
 

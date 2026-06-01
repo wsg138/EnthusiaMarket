@@ -71,6 +71,8 @@ class AuctionLifecycleService(
     private val limits: LimitResolutionService,
     private val sellOffers: SellOfferRepository,
     private val regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync,
+    private val schematics: net.badgersmc.em.domain.ports.SchematicService =
+        net.badgersmc.em.domain.ports.SchematicService.Disabled,
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
@@ -335,6 +337,7 @@ class AuctionLifecycleService(
         return SettlementReport(settled = settled, errors = errors)
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun settleWithWinner(auction: Auction) {
         val bid = auction.highBid ?: return
         val stall = stallRepository.findById(auction.stallId)
@@ -379,8 +382,37 @@ class AuctionLifecycleService(
             throw IllegalStateException("Failed to withdraw winning bid from ${bid.bidder}")
         }
 
-        // 1. Create updated stall + persist state changes (stall awarded + auction closed)
-        // Persist FIRST so the DB is authoritative even if WG sync fails.
+        // 0.5 REQ-270/273/274 — snapshot the stall geometry BEFORE finalising
+        // ownership. On failure: log, refund the winner, abort the transition,
+        // and emit SchematicCaptureFailedEvent so operators can be notified.
+        // Gated on schematics.enabled (REQ-273) so capture is never attempted
+        // when snapshots are disabled. Idempotent with capture-on-import
+        // (WorldEditSchematicAdapter skips when a snapshot already exists).
+        if (config.schematics.enabled) {
+            val capture = schematics.capture(stall.id.value, stall.world, stall.regionId)
+            if (capture is net.badgersmc.em.domain.ports.SchematicService.Result.Failure) {
+                logger.warning(
+                    "settleWithWinner: schematic capture failed for stall ${stall.id.value}; " +
+                        "aborting award and refunding ${bid.bidder}. cause=${capture.cause.message}"
+                )
+                economy.deposit(bid.bidder, bid.amount)
+                // Mirror the limit-reject path: revert a system-auctioned stall to
+                // UNOWNED and close the auction so it stops re-settling.
+                if (stall.state == StallState.AUCTIONING &&
+                    stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+                ) {
+                    stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                    fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+                }
+                auctionRepository.save(auction.close())
+                fireCaptureFailed(stall.id.value, stall.world, stall.regionId, capture.cause)
+                return
+            }
+        }
+
+        // 1. Persist state changes (stall awarded + auction closed). Persist
+        // FIRST so the DB is authoritative even if WG sync fails. Caller retries
+        // on failure; persisting after payment would risk double-paying.
         val awardAt = Instant.now()
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
         stallRepository.save(updatedStall)
@@ -442,6 +474,7 @@ class AuctionLifecycleService(
      * in unit-test contexts; the null check on `getServer()` keeps the
      * call safe for callers that don't bootstrap a MockBukkit server.
      */
+    @Suppress("TooGenericExceptionCaught")
     private fun fireStateChanged(stallId: String, previous: StallState, current: StallState) {
         if (previous == current) return
         try {
@@ -450,6 +483,16 @@ class AuctionLifecycleService(
             )
         } catch (e: Exception) {
             logger.warning("Failed to fire StallStateChangedEvent for $stallId: ${e.message}")
+        }
+    }
+
+    private fun fireCaptureFailed(stallId: String, world: String, regionId: String, cause: Throwable) {
+        try {
+            org.bukkit.Bukkit.getServer()?.pluginManager?.callEvent(
+                net.badgersmc.em.events.SchematicCaptureFailedEvent(stallId, world, regionId, cause)
+            )
+        } catch (e: Exception) {
+            logger.warning("Failed to fire SchematicCaptureFailedEvent for $stallId: ${e.message}")
         }
     }
 }

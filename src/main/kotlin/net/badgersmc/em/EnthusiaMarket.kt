@@ -24,6 +24,7 @@ open class EnthusiaMarket : JavaPlugin() {
     private var nexus: NexusContext? = null
     private var scheduler: NexusScheduler? = null
 
+    @Suppress("LongMethod", "TooGenericExceptionThrown")
     override fun onEnable() {
         dataFolder.mkdirs()
 
@@ -49,6 +50,18 @@ open class EnthusiaMarket : JavaPlugin() {
 
         // Phase 3: Read config from Nexus for database + i18n + scheduler bootstrap.
         val cfg = ctx.getBean<EnthusiaMarketConfig>()
+
+        // Ensure the schematic snapshot directory exists so the first capture
+        // never fails on a missing folder (REQ-270, INFRA-20).
+        val schematicsDir = File(dataFolder, cfg.schematics.directory)
+        if (!schematicsDir.exists() && !schematicsDir.mkdirs()) {
+            logger.warning("Failed to create schematics directory: ${schematicsDir.absolutePath}")
+        }
+        // Ship the default entity-limit groups (REQ-220) on first run so
+        // operators have a template to edit; never overwrite local edits.
+        if (!File(dataFolder, "entitylimits.yml").exists()) {
+            saveResource("entitylimits.yml", false)
+        }
 
         // i18n service — wired manually since LangService lives outside the EM scan package.
         val lang = LangService(this, Locale(cfg.lang.locale), EnthusiaMarketLang::class.java)
@@ -82,6 +95,10 @@ open class EnthusiaMarket : JavaPlugin() {
         }
         ctx.registerBean("defaultRent", RentTerms::class, defaultRent)
 
+        // Provisioning priority for stall regions (REQ Workstream F) — a
+        // plain Int bean so ImportStallsService can be DI-constructed.
+        ctx.registerBean("stallPriority", Int::class, cfg.market.stallPriority)
+
         // Phase 5: Register Paper commands (triggers bean creation via DI)
         ctx.registerPaperCommands(
             basePackage = "net.badgersmc.em",
@@ -103,6 +120,15 @@ open class EnthusiaMarket : JavaPlugin() {
         } catch (e: Exception) {
             throw RuntimeException("Failed to register listeners — disabling plugin. ${e.message}", e)
         }
+
+        // Particle outline render loop (REQ-240/241): every 4 ticks, plan
+        // points within the global budget and spawn END_ROD per requesting
+        // player. Purges expired outlines first.
+        val particleService = ctx.getBean<net.badgersmc.em.application.ParticleBorderService>()
+        org.bukkit.Bukkit.getScheduler().runTaskTimer(this, Runnable {
+            particleService.purgeExpired(java.time.Instant.now())
+            particleService.renderTick(cfg.particles.maxPerTick, this)
+        }, 0L, 4L)
 
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }

@@ -40,7 +40,10 @@ class BedrockMenuBaseTest {
 
         val menu = object : BedrockMenuBase(player, mockk<Logger>(relaxed = true), mockk(relaxed = true)) {
             override fun buildForm() = SimpleForm.builder().title("Test").content("test").button("OK").build()
-            override fun sendForm(form: Form) { throw RuntimeException("Floodgate not found") }
+            override fun sendForm(form: Form) {
+                @Suppress("TooGenericExceptionThrown")
+                throw RuntimeException("Floodgate not found")
+            }
         }
 
         // Should not throw
@@ -62,6 +65,7 @@ class BedrockMenuBaseTest {
                 buildCalled = true
                 return SimpleForm.builder().title("Test").content("test").button("OK").build()
             }
+            @Suppress("EmptyFunctionBlock")
             override fun sendForm(form: Form) { }
         }
 

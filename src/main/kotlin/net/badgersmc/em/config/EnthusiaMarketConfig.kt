@@ -26,6 +26,33 @@ class EnthusiaMarketConfig {
     var lang: Lang = Lang()
     @Comment("Purchase-sign trigger token + permissions (REQ-250..253)")
     var signs: Signs = Signs()
+    @Comment("Stall schematic snapshot/restore on claim/unclaim (REQ-270..274)")
+    var schematics: Schematics = Schematics()
+    @Comment("Stall boundary particle outline rendering (REQ-220 region kinds)")
+    var particles: Particles = Particles()
+
+    class Particles {
+        @Comment("Master switch for stall boundary particle outlines.")
+        var enabled: Boolean = true
+        @Comment(
+            "Maximum particle spawns scheduled per server tick across all stalls. " +
+                "Caps render cost on busy servers; excess is deferred to later ticks."
+        )
+        var maxPerTick: Int = 200
+    }
+
+    class Schematics {
+        @Comment(
+            "Master switch. When false, stall transitions occur without geometry " +
+                "capture or restore (REQ-273)."
+        )
+        var enabled: Boolean = true
+        @Comment(
+            "Directory (under the plugin data folder) where <stallId>.schem files " +
+                "are written. Created on enable."
+        )
+        var directory: String = "schematics"
+    }
 
     class Signs {
         @Comment("First-line token a player writes to register a purchase sign (e.g. [em]).")
@@ -64,8 +91,14 @@ class EnthusiaMarketConfig {
     class Market {
         @Comment("World name where stall regions exist")
         var world: String = "world"
-        @Comment("WorldGuard region prefix for stall detection")
-        var regionPrefix: String = "stall_"
+        @Comment("WorldGuard region prefix for stall detection (production regions are stall1..stall71, no underscore)")
+        var regionPrefix: String = "stall"
+        @Comment(
+            "WorldGuard priority stamped on stall regions during /em import. " +
+                "Must exceed the surrounding safezone priority (market=10, spawn=10) " +
+                "so stall member build-rights override the safezone deny."
+        )
+        var stallPriority: Int = 20
     }
 
     class Rent {

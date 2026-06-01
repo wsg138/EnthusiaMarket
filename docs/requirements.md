@@ -27,6 +27,10 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 **Unwanted.** IF a stall owner balance is insufficient to cover rent at collection time THEN THE SYSTEM SHALL mark the stall as in default and evict the owner after the grace period configured for that stall.
 
+> **Backlog (REQ-280, post-release):** the grace-expiry path is intended to fire an *emergency
+> auction* for the stall rather than evict directly to UNOWNED. Not built for the current
+> release — see REQ-280.
+
 ### REQ-005 — Sign shop creation (superseded 2026-05-24 by REQ-012)
 
 ~~**Event-driven.** WHEN a player places a shop sign inside a stall they own or rent THE SYSTEM SHALL register the sign as a buy or sell endpoint scoped to that stall region.~~
@@ -292,6 +296,32 @@ Reference: study of `advanced-region-market` (ARM) plugin. Eight features select
 #### REQ-274 — Snapshot failure handling
 
 **Unwanted.** IF a snapshot capture fails THE SYSTEM SHALL log the failure, abort the ownership transition, refund any economy charge incurred during the attempt, and emit a Bukkit event so operators can be notified.
+
+---
+
+## Post-release backlog (DRAFT — not in current release)
+
+#### REQ-280 — Emergency auction on grace expiry (DRAFT, post-release)
+
+**Status:** DRAFT — captured 2026-06-01, deferred from the release. Refines REQ-004.
+
+**Event-driven.** WHEN a stall's grace period for unpaid rent expires THE SYSTEM SHALL,
+instead of evicting the stall directly to UNOWNED, transition it to `EMERGENCY_AUCTIONING`
+and open a system auction for its ownership. WHEN that auction settles with a high bidder
+THE SYSTEM SHALL award the stall to the bidder; WHEN it closes with no bids THE SYSTEM SHALL
+return the stall to UNOWNED.
+
+**Notes / open design questions (resolve in brainstorming before building):**
+- Reset timing: the geometry snapshot restore (REQ-271) should fire **when the emergency
+  auction is created** (the defaulter's build is wiped immediately and the stall is auctioned
+  clean) — confirmed intent 2026-06-01. Confirm whether a no-bid close needs a second reset.
+- The `EMERGENCY_AUCTIONING` and `RE_AUCTIONING` `StallState` enum values already exist and
+  are handled defensively in sign rendering / buyout rejection / rg-resync, but **nothing
+  currently transitions a stall into them** — this REQ wires the missing transition.
+- Current release behaviour (REQ-004): grace expiry evicts directly to UNOWNED + immediate
+  schematic restore in `RentCollectionService.processStall`. REQ-280 supersedes that path.
+- Distinguish `RE_AUCTIONING` (re-auction after a normal owner relinquish?) from
+  `EMERGENCY_AUCTIONING` (forced, non-payment) when specced.
 
 ---
 

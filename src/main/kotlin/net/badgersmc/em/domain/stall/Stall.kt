@@ -33,6 +33,18 @@ data class Stall(
      * the time remaining (REQ-250 extension).
      */
     val nextRentAt: Instant? = null,
+    /**
+     * Region kind (REQ-220), keyed into entitylimits.yml groups. Resolved
+     * at import/claim and stored (migration V013). Defaults to "default".
+     */
+    val kind: String = "default",
+    /**
+     * Per-stall additional entity allowance on top of the kind's group
+     * caps (REQ-222). Key is lower-case EntityType name.
+     */
+    val extraEntities: Map<String, Int> = emptyMap(),
+    /** Per-stall additional total-entity allowance (REQ-222). */
+    val extraTotal: Int = 0,
 ) {
     /**
      * Add [playerUuid] to the member roster. Idempotent — re-adding an

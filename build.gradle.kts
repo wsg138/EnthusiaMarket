@@ -1,9 +1,26 @@
+import net.badgersmc.nexus.permissions.Default
+
+buildscript {
+    repositories {
+        maven("https://plugins.gradle.org/m2/")
+        mavenCentral()
+        maven("https://jitpack.io")
+    }
+    dependencies {
+        classpath("io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.8")
+        classpath("com.github.BadgersMC.Nexus:nexus-permissions-gradle:v2.2.1")
+    }
+}
+
 plugins {
     kotlin("jvm") version "2.0.0"
     id("com.gradleup.shadow") version "8.3.6"
     jacoco
     idea
 }
+
+apply(plugin = "io.gitlab.arturbosch.detekt")
+apply(plugin = "net.badgersmc.nexus.permissions")
 
 jacoco {
     toolVersion = "0.8.12"
@@ -17,7 +34,8 @@ repositories {
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://oss.sonatype.org/content/repositories/snapshots")
     maven("https://jitpack.io")
-    maven("https://maven.enginehub.org/repo/") // WorldGuard
+    maven("https://maven.enginehub.org/repo/") // WorldGuard + WorldEdit
+    maven("https://repo.fastasyncworldedit.com/releases") // FastAsyncWorldEdit
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
 
     // Nexus releases — served via JitPack (https://jitpack.io). No token
@@ -36,6 +54,12 @@ dependencies {
         exclude(group = "org.bukkit", module = "bukkit")
     }
     compileOnly("com.sk89q.worldguard:worldguard-bukkit:7.0.9")
+    // WorldEdit + FAWE — backs the SchematicService adapter (REQ-270..272).
+    // compileOnly: provided by the WorldEdit/FAWE plugins at runtime (softdepend).
+    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0")
+    testImplementation("com.sk89q.worldedit:worldedit-bukkit:7.3.0")
+    compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.11.0")
+    testImplementation("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.11.0")
     compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
     compileOnly("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
     testImplementation("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
@@ -50,17 +74,21 @@ dependencies {
     // Paper's runtime library loader). Transitive kotlin-reflect, coroutines, and
     // kaml come along on compile/test classpath but are excluded from the shadowJar
     // below (Paper downloads them at runtime via the libraries: block in plugin.yml).
-    implementation("com.github.BadgersMC.Nexus:nexus-core:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-resources:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-i18n:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-persistence:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-scheduler:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-gui:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-bedrock:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-listeners:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-vault:v2.1.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-loader:v2.1.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-core:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-resources:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-i18n:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-persistence:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-scheduler:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper-gui:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper-bedrock:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper-listeners:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-vault:v2.2.1")
+    implementation("com.github.BadgersMC.Nexus:nexus-paper-loader:v2.2.1")
+    // WorldEdit / FAWE facade + SchematicService — backs stall schematic
+    // capture/restore (REQ-270..272). WE/FAWE themselves stay compileOnly
+    // below; this module only adds the thin Kotlin facade over them.
+    implementation("com.github.BadgersMC.Nexus:nexus-worldedit:v2.2.1")
 
     // Runtime-downloaded by Paper via plugin.yml `libraries:` — kept on compile +
     // test classpath but excluded from the shaded jar to shrink it from ~27 MB
@@ -100,6 +128,66 @@ dependencies {
 
 kotlin {
     jvmToolchain(21)
+}
+
+configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
+    config.setFrom(file("config/detekt/detekt.yml"))
+    buildUponDefaultConfig = true
+}
+
+tasks.named("generateNexusPermissions") {
+    mustRunAfter("processResources")
+}
+
+configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
+    tree {
+        node("enthusiamarket.*", default = Default.OP, description = "All EnthusiaMarket permissions") {
+            child("admin")
+            child("player")
+        }
+        node("enthusiamarket.admin", default = Default.OP, description = "Administrative commands") {
+            child("import")
+            child("list")
+            child("evict")
+            child("reload")
+            child("setowner")
+            child("refund")
+        }
+        node("enthusiamarket.auction.cancel.force", default = Default.OP, description = "Force-cancel any auction")
+        node("enthusiamarket.player", default = Default.TRUE, description = "Player-facing commands")
+        // Player stall permissions — standalone nodes so the merger
+        // emits (e.g.) enthusiamarket.stall.buy not
+        // enthusiamarket.player.stall.buy. The child-inheritance
+        // model (nested under player) doesn't match Paper's convention
+        // of flat permission node names for code-checked perms.
+        node("enthusiamarket.stall.rent", default = Default.TRUE, description = "Rent a stall")
+        node("enthusiamarket.stall.bid", default = Default.TRUE, description = "Bid on a stall auction")
+        node("enthusiamarket.stall.buy", default = Default.TRUE, description = "Buy a stall via sell offer")
+        node("enthusiamarket.stall.offer", default = Default.TRUE, description = "Create/cancel a sell offer")
+        node("enthusiamarket.stall.sellback", default = Default.TRUE, description = "Voluntarily relinquish a stall")
+        node("enthusiamarket.stall.members", default = Default.TRUE, description = "Manage stall members")
+        node("enthusiamarket.stall.manage.own", default = Default.TRUE, description = "Manage own stalls")
+        node("enthusiamarket.stall.manage.guild", default = Default.TRUE, description = "Manage guild-owned stalls")
+        node("enthusiamarket.stall.favorite", default = Default.TRUE, description = "Favorite a stall")
+        node("enthusiamarket.stall.info", default = Default.TRUE, description = "View stall info card")
+        node("enthusiamarket.stall.outline", default = Default.TRUE, description = "View stall particle outline")
+        // Shop permissions
+        node("enthusiamarket.shop.create", default = Default.TRUE, description = "Create a shop")
+        node("enthusiamarket.shop.break", default = Default.TRUE, description = "Break a shop sign")
+        node("enthusiamarket.shop.buy", default = Default.TRUE, description = "Buy from a shop")
+        node("enthusiamarket.shop.sell", default = Default.TRUE, description = "Sell to a shop")
+        // Auction permissions
+        node("enthusiamarket.auction.start", default = Default.TRUE, description = "Start an auction")
+        node("enthusiamarket.auction.bid", default = Default.TRUE, description = "Bid in an auction")
+        node("enthusiamarket.auction.cancel", default = Default.TRUE, description = "Cancel own auction")
+        node("enthusiamarket.auction.list", default = Default.TRUE, description = "List auctions")
+        // Bedrock form
+        node("enthusiamarket.bedrock.form", default = Default.TRUE, description = "Use Bedrock forms")
+        // Admin-scoped stall tooling (entity limits, kind, recount).
+        node("enthusiamarket.stall.setkind", default = Default.OP, description = "Set a stall's region kind")
+        node("enthusiamarket.stall.entitylimit", default = Default.OP, description = "Set per-stall entity-limit override")
+        node("enthusiamarket.stall.recount", default = Default.OP, description = "Force entity-count rescan for a stall")
+    }
 }
 
 tasks {
@@ -147,4 +235,5 @@ tasks {
         }
     }
     build { dependsOn(shadowJar) }
+    check { dependsOn("detekt") }
 }
