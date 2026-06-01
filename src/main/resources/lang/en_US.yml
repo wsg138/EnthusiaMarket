@@ -107,6 +107,11 @@ stall:
       <gray>Size: <white>{width}x{height}x{length}
       <gray>Available: <white>{available}
     missing: "<red>No stall named {stall}"
+  outline:
+    ok: "<green>Outlining stall {stall} for {seconds}s"
+    missing: "<red>No stall named {stall}"
+    no_region: "<red>Stall {stall} has no WorldGuard region"
+    player_only: "<red>Only players can request an outline"
 
 sellback:
   warn:

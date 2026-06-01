@@ -121,6 +121,15 @@ open class EnthusiaMarket : JavaPlugin() {
             logger.log(java.util.logging.Level.SEVERE, "Listener registration failure", e)
         }
 
+        // Particle outline render loop (REQ-240/241): every 4 ticks, plan
+        // points within the global budget and spawn END_ROD per requesting
+        // player. Purges expired outlines first.
+        val particleService = ctx.getBean<net.badgersmc.em.application.ParticleBorderService>()
+        org.bukkit.Bukkit.getScheduler().runTaskTimer(this, Runnable {
+            particleService.purgeExpired(java.time.Instant.now())
+            particleService.renderTick(cfg.particles.maxPerTick, this)
+        }, 0L, 4L)
+
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }
 

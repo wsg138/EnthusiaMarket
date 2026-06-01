@@ -48,6 +48,7 @@ class AdminCommands(
     private val entityCounter: net.badgersmc.em.application.StallEntityCounter,
     private val regionProvider: net.badgersmc.em.domain.ports.RegionProvider,
     private val stallInfo: net.badgersmc.em.application.StallInfoService,
+    private val particleBorders: net.badgersmc.em.application.ParticleBorderService,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -543,6 +544,31 @@ class AdminCommands(
         "length" to info.length,
         "available" to if (info.available) "yes" else "no",
     )
+
+    @Subcommand("stall outline")
+    @Permission("enthusiamarket.stall.outline")
+    fun stallOutline(@Context sender: CommandSender, @Arg("stall") stallId: String, @Arg("seconds") seconds: Int) {
+        val player = sender as? Player ?: run {
+            sender.sendMessage(lang.msg("stall.outline.player_only"))
+            return
+        }
+        val stall = stalls.findById(StallId(stallId))
+        if (stall == null) {
+            sender.sendMessage(lang.msg("stall.outline.missing", "stall" to stallId))
+            return
+        }
+        val bounds = regionProvider.bounds(stall.world, stall.regionId)
+        if (bounds == null) {
+            sender.sendMessage(lang.msg("stall.outline.no_region", "stall" to stallId))
+            return
+        }
+        val dur = if (seconds <= 0) 10 else seconds
+        particleBorders.addOutline(
+            player.uniqueId, stallId, stall.world, bounds,
+            java.time.Instant.now().plusSeconds(dur.toLong())
+        )
+        sender.sendMessage(lang.msg("stall.outline.ok", "stall" to stallId, "seconds" to dur))
+    }
 
     /**
      * Drop expired entries from [pendingSellbacks] so the map doesn't

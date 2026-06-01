@@ -435,7 +435,7 @@ References: REQ-024 through REQ-027
   Evidence: ``
   Note: REQ-231 sign-click info routing deferred — PurchaseSign has no kind discriminator; revisit post-release.
 
-- [ ] **TDD-240** — Particle border outline
+- [x] **TDD-240** — Particle border outline
   References: REQ-240, REQ-241
   Tag: TDD
   Description: New `ParticleBorderService` (`@Component`). Tracks active outlines as `(player, stall, expiresAt)` triples. Bukkit repeat task at 4-tick interval traces WorldGuard region's bounding box with `Particle.END_ROD` visible only to the requesting player. Hard cap of `particles.maxPerTick` (default 200) — degrade by widening spacing rather than dropping outlines. Failing test: outline added/removed; particle count bound respected.

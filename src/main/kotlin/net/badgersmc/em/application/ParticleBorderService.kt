@@ -16,6 +16,50 @@ class ParticleBorderService {
     /** A planned outline: the world-space points to spawn a particle at. */
     data class OutlinePlan(val points: List<Triple<Double, Double, Double>>)
 
+    private data class ActiveOutline(
+        val player: java.util.UUID,
+        val stallId: String,
+        val world: String,
+        val bounds: RegionBounds,
+        val expiresAt: java.time.Instant,
+    )
+
+    private val active = java.util.concurrent.ConcurrentHashMap<Pair<java.util.UUID, String>, ActiveOutline>()
+
+    fun addOutline(
+        player: java.util.UUID,
+        stallId: String,
+        world: String,
+        bounds: RegionBounds,
+        expiresAt: java.time.Instant,
+    ) {
+        active[player to stallId] = ActiveOutline(player, stallId, world, bounds, expiresAt)
+    }
+
+    fun activeCount(): Int = active.size
+
+    fun purgeExpired(now: java.time.Instant) {
+        active.entries.removeIf { it.value.expiresAt.isBefore(now) }
+    }
+
+    /** Bounds of all active outlines, for the per-tick planner. */
+    fun activeBounds(): List<RegionBounds> =
+        active.values.map { it.bounds }
+
+    /** Spawn particles for the current tick within [maxPerTick]; END_ROD, per-player. */
+    fun renderTick(maxPerTick: Int, plugin: org.bukkit.plugin.Plugin) {
+        if (active.isEmpty()) return
+        val entries = active.values.toList()
+        val plans = planParticles(entries.map { it.bounds }, maxPerTick)
+        for ((idx, outline) in entries.withIndex()) {
+            val player = org.bukkit.Bukkit.getPlayer(outline.player) ?: continue
+            val world = org.bukkit.Bukkit.getWorld(outline.world) ?: player.world
+            for ((x, y, z) in plans[idx].points) {
+                player.spawnParticle(org.bukkit.Particle.END_ROD, x + 0.5, y + 0.5, z + 0.5, 1, 0.0, 0.0, 0.0, 0.0)
+            }
+        }
+    }
+
     companion object {
         /**
          * Plan particle points for every outline so total points <= [maxPerTick].
