@@ -30,8 +30,9 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             conn.prepareStatement(
                 """INSERT INTO stalls
                    (id, region_id, world, state, owner_type, owner_id, owner_since,
-                    winning_bid, rent_mode, rent_pct, rent_flat, members, max_members, next_rent_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                    winning_bid, rent_mode, rent_pct, rent_flat, members, max_members,
+                    next_rent_at, kind, extra_entities, extra_total)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
             ).use { ps ->
                 bind(ps, stall)
                 ps.executeUpdate()
@@ -43,9 +44,10 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         ds.connection.use { conn ->
             conn.prepareStatement(
                 """UPDATE stalls SET
-                     region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
-                     owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
-                     members = ?, max_members = ?, next_rent_at = ?
+                    region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
+                    owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
+                    members = ?, max_members = ?, next_rent_at = ?, kind = ?,
+                    extra_entities = ?, extra_total = ?
                    WHERE id = ?"""
             ).use { ps ->
                 ps.setString(1, stall.regionId)
@@ -63,7 +65,10 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                 ps.setInt(12, stall.maxMembers)
                 if (stall.nextRentAt != null) ps.setLong(13, stall.nextRentAt.toEpochMilli())
                 else ps.setNull(13, java.sql.Types.INTEGER)
-                ps.setString(14, stall.id.value)
+                ps.setString(14, stall.kind)
+                ps.setString(15, encodeExtraEntities(stall.extraEntities))
+                ps.setInt(16, stall.extraTotal)
+                ps.setString(17, stall.id.value)
                 ps.executeUpdate()
             }
         }
@@ -86,6 +91,9 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         ps.setInt(13, stall.maxMembers)
         if (stall.nextRentAt != null) ps.setLong(14, stall.nextRentAt.toEpochMilli())
         else ps.setNull(14, java.sql.Types.INTEGER)
+        ps.setString(15, stall.kind)
+        ps.setString(16, encodeExtraEntities(stall.extraEntities))
+        ps.setInt(17, stall.extraTotal)
     }
 
     private fun encodeMembers(members: Set<UUID>): String =
@@ -98,6 +106,19 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             .filter { it.isNotBlank() }
             .map { UUID.fromString(it.trim()) }
             .toSet()
+    }
+
+    private fun encodeExtraEntities(map: Map<String, Int>): String =
+        if (map.isEmpty()) "" else map.entries.joinToString(",") { "${it.key}:${it.value}" }
+
+    private fun decodeExtraEntities(raw: String?): Map<String, Int> {
+        if (raw.isNullOrEmpty()) return emptyMap()
+        return raw.split(',')
+            .filter { it.isNotBlank() }
+            .associate { entry ->
+                val parts = entry.trim().split(':', limit = 2)
+                parts[0] to (parts.getOrElse(1) { "0" }.toIntOrNull() ?: 0)
+            }
     }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Stall? {
@@ -143,6 +164,9 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             members = decodeMembers(rs.getString("members")),
             maxMembers = rs.getInt("max_members"),
             nextRentAt = rs.getLong("next_rent_at").takeIf { !rs.wasNull() }?.let { Instant.ofEpochMilli(it) },
+            kind = rs.getString("kind"),
+            extraEntities = decodeExtraEntities(rs.getString("extra_entities")),
+            extraTotal = rs.getInt("extra_total"),
         )
     }
 }
