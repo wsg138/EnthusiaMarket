@@ -8,6 +8,7 @@ import net.lumalyte.lg.application.services.BankService
 import net.lumalyte.lg.application.services.GuildService
 import net.lumalyte.lg.application.services.MemberService
 import net.lumalyte.lg.application.services.RankService
+import net.lumalyte.lg.domain.entities.Guild
 import net.lumalyte.lg.domain.entities.RankPermission
 import org.koin.core.context.GlobalContext
 import java.util.UUID
@@ -39,12 +40,7 @@ class LumaGuildsGuildProvider : GuildProvider {
         val guildIds = resolvedMemberService.getPlayerGuilds(player)
         val firstId = guildIds.firstOrNull() ?: return null
         val guild = resolvedGuildService.getGuild(firstId) ?: return null
-        return GuildProvider.GuildRef(
-            guild.id.toString(),
-            guild.name,
-            normalizeToMiniMessage(guild.tag),
-            normalizeToMiniMessage(guild.emoji),
-        )
+        return toGuildRef(guild)
     }
 
     override fun guildById(id: String): GuildProvider.GuildRef? {
@@ -54,13 +50,17 @@ class LumaGuildsGuildProvider : GuildProvider {
             return null
         }
         val guild = resolvedGuildService.getGuild(uuid) ?: return null
-        return GuildProvider.GuildRef(
+        return toGuildRef(guild)
+    }
+
+    /** Map a LumaGuilds guild to [GuildProvider.GuildRef], normalising tag/emoji to MiniMessage. */
+    private fun toGuildRef(guild: Guild): GuildProvider.GuildRef =
+        GuildProvider.GuildRef(
             guild.id.toString(),
             guild.name,
             normalizeToMiniMessage(guild.tag),
             normalizeToMiniMessage(guild.emoji),
         )
-    }
 
     /**
      * Normalise a stored guild tag/emoji to MiniMessage so EM's sign renderer
