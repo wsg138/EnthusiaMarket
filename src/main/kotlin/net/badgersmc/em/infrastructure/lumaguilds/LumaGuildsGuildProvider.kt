@@ -2,10 +2,13 @@ package net.badgersmc.em.infrastructure.lumaguilds
 
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.annotations.Component
+import net.kyori.adventure.text.minimessage.MiniMessage
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.lumalyte.lg.application.services.BankService
 import net.lumalyte.lg.application.services.GuildService
 import net.lumalyte.lg.application.services.MemberService
 import net.lumalyte.lg.application.services.RankService
+import net.lumalyte.lg.domain.entities.Guild
 import net.lumalyte.lg.domain.entities.RankPermission
 import org.koin.core.context.GlobalContext
 import java.util.UUID
@@ -37,7 +40,7 @@ class LumaGuildsGuildProvider : GuildProvider {
         val guildIds = resolvedMemberService.getPlayerGuilds(player)
         val firstId = guildIds.firstOrNull() ?: return null
         val guild = resolvedGuildService.getGuild(firstId) ?: return null
-        return GuildProvider.GuildRef(guild.id.toString(), guild.name)
+        return toGuildRef(guild)
     }
 
     override fun guildById(id: String): GuildProvider.GuildRef? {
@@ -47,8 +50,48 @@ class LumaGuildsGuildProvider : GuildProvider {
             return null
         }
         val guild = resolvedGuildService.getGuild(uuid) ?: return null
-        return GuildProvider.GuildRef(guild.id.toString(), guild.name)
+        return toGuildRef(guild)
     }
+
+    /** Map a LumaGuilds guild to [GuildProvider.GuildRef], normalising tag/emoji to MiniMessage. */
+    private fun toGuildRef(guild: Guild): GuildProvider.GuildRef =
+        GuildProvider.GuildRef(
+            guild.id.toString(),
+            guild.name,
+            normalizeToMiniMessage(guild.tag),
+            normalizeToMiniMessage(guild.emoji),
+        )
+
+    /**
+     * Normalise a stored guild tag/emoji to MiniMessage so EM's sign renderer
+     * (which parses placeholder values as MiniMessage) colours it correctly.
+     *
+     * LumaGuilds stores tags in whatever format the setter passed: the Java
+     * tag-editor menu converts legacy `&` codes to MiniMessage on save, but the
+     * `/guild tag` command and the Bedrock editor store the raw input — so
+     * legacy-coded tags exist in the wild. Mirror LumaGuilds' own
+     * ColorCodeUtils.convertLegacyToMiniMessage: pass MiniMessage through
+     * unchanged, convert legacy `&` codes, and never throw.
+     */
+    private fun normalizeToMiniMessage(raw: String?): String {
+        val value = raw ?: return ""
+        if (value.isEmpty()) return ""
+        // Already MiniMessage (contains a tag) — leave it alone.
+        if (value.contains(MINI_TAG)) return value
+        // No legacy codes either — plain text, nothing to convert.
+        if (!value.contains('&') && !value.contains('§')) return value
+        return try {
+            val legacy = if (value.contains('§')) {
+                LegacyComponentSerializer.legacySection()
+            } else {
+                LegacyComponentSerializer.legacyAmpersand()
+            }
+            MiniMessage.miniMessage().serialize(legacy.deserialize(value))
+        } catch (_: Exception) {
+            value
+        }
+    }
+
 
     override fun isMember(player: UUID, guildId: String): Boolean {
         val uuid = try {
@@ -137,6 +180,7 @@ class LumaGuildsGuildProvider : GuildProvider {
 
     companion object {
         private val SYSTEM_ACTOR_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000")
+        private val MINI_TAG = Regex("<[^>]+>")
     }
 }
 

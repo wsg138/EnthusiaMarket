@@ -48,6 +48,14 @@ open class EnthusiaMarket : JavaPlugin() {
         )
         nexus = ctx
 
+        // Nexus indexes external beans by concrete class + superclasses, NOT
+        // interfaces — so a bean injected as `JavaPlugin` (superclass) resolves
+        // but one injected as `org.bukkit.plugin.Plugin` (interface) does not.
+        // Register the plugin explicitly under the Plugin interface so beans
+        // that depend on `Plugin` (WorldEditSchematicAdapter, EntityLimitListener,
+        // RentScheduler, AuctionScheduler) can be constructed.
+        ctx.registerBean("bukkitPlugin", org.bukkit.plugin.Plugin::class, this)
+
         // Phase 3: Read config from Nexus for database + i18n + scheduler bootstrap.
         val cfg = ctx.getBean<EnthusiaMarketConfig>()
 

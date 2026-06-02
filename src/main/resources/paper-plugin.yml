@@ -39,6 +39,15 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
+    # Vault declares the economy *service*, but the economy *provider*
+    # (EnthusiaCurrency on the BadgersMC network) registers itself on its own
+    # enable. EM checks for a registered provider at enable, so it must load
+    # AFTER the provider — otherwise rent/shops/auctions disable on boot.
+    # Soft dependency: servers without EnthusiaCurrency still load EM.
+    EnthusiaCurrency:
+      load: BEFORE
+      required: false
+      join-classpath: false
 
 commands:
   enthusiamarket:

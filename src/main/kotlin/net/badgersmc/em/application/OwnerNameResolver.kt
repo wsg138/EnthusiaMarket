@@ -45,30 +45,45 @@ class OwnerNameResolver(
             // Bukkit may be unavailable (unit tests etc).
             uuidStr
         }
-        val template = config.signs.ownerNameTemplate
-        return expandPapiIfAvailable(uuid, template, bukkitName)
-            ?: template.replace("%player_name%", bukkitName)
+        // Resolve %player_name% from data we already hold (the owner's name),
+        // rather than delegating it to PAPI's optional "Player" expansion —
+        // that expansion is frequently not installed, in which case PAPI
+        // returns the token unparsed and the raw %player_name% lands on the
+        // sign. After our substitution, run PAPI only for any *remaining*
+        // custom tokens an admin may have added (e.g. %luckperms_prefix%).
+        val withName = config.signs.ownerNameTemplate.replace("%player_name%", bukkitName)
+        return expandPapiIfAvailable(uuid, withName) ?: withName
     }
 
     private fun resolveGuild(guildId: String): String {
         val template = config.signs.guildNameTemplate
-        val guildName = try {
-            guildProvider.guildById(guildId)?.name ?: guildId
+        val guild = try {
+            guildProvider.guildById(guildId)
         } catch (_: Throwable) {
-            guildId
+            null
         }
+        // Pull tag/emoji from the LumaGuilds API directly — NOT a PAPI guild
+        // placeholder, which is player-scoped and can't resolve the owning
+        // guild on a sign. The resolved value is MiniMessage-parsed by the
+        // lang renderer (Placeholder.parsed), so a MiniMessage-formatted tag
+        // renders with colour on the sign.
         return template
-            .replace("%guild_name%", guildName)
+            .replace("%guild_name%", guild?.name ?: guildId)
+            .replace("%guild_tag%", guild?.tag ?: "")
+            .replace("%guild_emoji%", guild?.emoji ?: "")
             .replace("%guild_id%", guildId)
     }
 
     /**
      * Reflectively invoke PlaceholderAPI.setPlaceholders so the plugin
-     * doesn't need a hard PAPI dependency. Returns null when PAPI
-     * isn't loaded or the call fails — caller falls back to manual
-     * placeholder substitution.
+     * doesn't need a hard PAPI dependency. Returns null when PAPI isn't
+     * loaded, the call fails, or there are no tokens left to expand — the
+     * caller then keeps its already name-substituted template.
      */
-    private fun expandPapiIfAvailable(uuid: UUID, template: String, fallbackName: String): String? {
+    private fun expandPapiIfAvailable(uuid: UUID, template: String): String? {
+        // Nothing left to expand — skip the reflection entirely (the common
+        // case once %player_name% has been substituted by the caller).
+        if (!template.contains('%')) return null
         val pm = try {
             Bukkit.getPluginManager()
         } catch (_: Throwable) {
@@ -86,8 +101,8 @@ class OwnerNameResolver(
             method.invoke(null, offlinePlayer, template) as? String
         } catch (_: Throwable) {
             // PAPI present but reflection failed (version mismatch etc) —
-            // surface the fallback so the sign still renders.
-            template.replace("%player_name%", fallbackName)
+            // caller keeps the name-substituted template.
+            null
         }
     }
 }
