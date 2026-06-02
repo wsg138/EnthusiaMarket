@@ -64,7 +64,9 @@ class EnthusiaMarketConfig {
         var ownerNameTemplate: String = "%player_name%"
         @Comment(
             "Template used to render a GUILD owner on OWNED stall signs. " +
-                "Substitutes %guild_name% and %guild_id% against GuildProvider.guildById."
+                "Tokens (resolved from the LumaGuilds API, not PlaceholderAPI): " +
+                "%guild_name%, %guild_tag%, %guild_emoji%, %guild_id%. " +
+                "%guild_tag%/%guild_emoji% may contain MiniMessage and render with colour."
         )
         var guildNameTemplate: String = "%guild_name%"
         @Comment(

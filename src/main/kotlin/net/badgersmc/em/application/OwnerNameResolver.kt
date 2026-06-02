@@ -57,13 +57,20 @@ class OwnerNameResolver(
 
     private fun resolveGuild(guildId: String): String {
         val template = config.signs.guildNameTemplate
-        val guildName = try {
-            guildProvider.guildById(guildId)?.name ?: guildId
+        val guild = try {
+            guildProvider.guildById(guildId)
         } catch (_: Throwable) {
-            guildId
+            null
         }
+        // Pull tag/emoji from the LumaGuilds API directly — NOT a PAPI guild
+        // placeholder, which is player-scoped and can't resolve the owning
+        // guild on a sign. The resolved value is MiniMessage-parsed by the
+        // lang renderer (Placeholder.parsed), so a MiniMessage-formatted tag
+        // renders with colour on the sign.
         return template
-            .replace("%guild_name%", guildName)
+            .replace("%guild_name%", guild?.name ?: guildId)
+            .replace("%guild_tag%", guild?.tag ?: "")
+            .replace("%guild_emoji%", guild?.emoji ?: "")
             .replace("%guild_id%", guildId)
     }
 

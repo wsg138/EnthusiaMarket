@@ -3,7 +3,18 @@ package net.badgersmc.em.domain.ports
 import java.util.UUID
 
 interface GuildProvider {
-    data class GuildRef(val id: String, val name: String)
+    /**
+     * @property tag the guild's display tag (may be MiniMessage-formatted);
+     *   empty when the guild has none. Used by the purchase-sign renderer's
+     *   `%guild_tag%` template token (REQ-250 extension).
+     * @property emoji the guild's emoji/icon string; empty when unset.
+     */
+    data class GuildRef(
+        val id: String,
+        val name: String,
+        val tag: String = "",
+        val emoji: String = "",
+    )
 
     fun guildOf(player: UUID): GuildRef?
     fun guildById(id: String): GuildRef?

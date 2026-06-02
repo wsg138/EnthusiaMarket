@@ -37,7 +37,7 @@ class LumaGuildsGuildProvider : GuildProvider {
         val guildIds = resolvedMemberService.getPlayerGuilds(player)
         val firstId = guildIds.firstOrNull() ?: return null
         val guild = resolvedGuildService.getGuild(firstId) ?: return null
-        return GuildProvider.GuildRef(guild.id.toString(), guild.name)
+        return GuildProvider.GuildRef(guild.id.toString(), guild.name, guild.tag ?: "", guild.emoji ?: "")
     }
 
     override fun guildById(id: String): GuildProvider.GuildRef? {
@@ -47,7 +47,7 @@ class LumaGuildsGuildProvider : GuildProvider {
             return null
         }
         val guild = resolvedGuildService.getGuild(uuid) ?: return null
-        return GuildProvider.GuildRef(guild.id.toString(), guild.name)
+        return GuildProvider.GuildRef(guild.id.toString(), guild.name, guild.tag ?: "", guild.emoji ?: "")
     }
 
     override fun isMember(player: UUID, guildId: String): Boolean {
