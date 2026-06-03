@@ -5,6 +5,7 @@ import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
 import net.badgersmc.em.application.MassAuctionResult
 import net.badgersmc.em.application.SellOfferService
+import net.badgersmc.em.application.StallEvictionService
 import net.badgersmc.em.application.StallMemberService
 import net.badgersmc.em.application.StallSellbackService
 import net.badgersmc.em.domain.ports.RegionMemberSync
@@ -49,6 +50,7 @@ class AdminCommands(
     private val regionProvider: net.badgersmc.em.domain.ports.RegionProvider,
     private val stallInfo: net.badgersmc.em.application.StallInfoService,
     private val particleBorders: net.badgersmc.em.application.ParticleBorderService,
+    private val stallEviction: StallEvictionService,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -577,6 +579,25 @@ class AdminCommands(
             java.time.Instant.now().plusSeconds(dur.toLong())
         )
         sender.sendMessage(lang.msg("stall.outline.ok", "stall" to stallId, "seconds" to dur))
+    }
+
+    // ----- Admin evict (force unclaim) -----
+
+    @Subcommand("evict")
+    @Permission("enthusiamarket.admin.evict")
+    fun evict(
+        @Context sender: CommandSender,
+        @Arg("stall") stall: String,
+    ) {
+        val msg = when (stallEviction.evict(StallId(stall))) {
+            is StallEvictionService.Result.Evicted ->
+                lang.msg("admin.evict.success", "stall" to stall)
+            is StallEvictionService.Result.NotFound ->
+                lang.msg("admin.evict.not_found", "stall" to stall)
+            is StallEvictionService.Result.NotOwned ->
+                lang.msg("admin.evict.not_owned", "stall" to stall)
+        }
+        sender.sendMessage(msg)
     }
 
     /**
