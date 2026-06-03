@@ -36,6 +36,10 @@ admin:
     success: "<prefix><green>Bid placed:</green> <gold><amount></gold> <gray>on auction</gray> <id>"
     failure: "<prefix><red>Bid rejected: <reason>"
     not_found: "<prefix><red>Auction not found"
+  evict:
+    success: "<prefix><green>Evicted</green> <aqua><stall></aqua> <green>— reset to unowned and WG cleared."
+    not_found: "<prefix><red>Stall not found:</red> <stall>"
+    not_owned: "<prefix><yellow>Stall</yellow> <aqua><stall></aqua> <yellow>is not currently owned."
 
 # REQ-250..253 — physical purchase signs. Four lines max per Bukkit sign.
 # Render templates are state-driven by PurchaseSignRenderer.
