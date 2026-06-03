@@ -159,6 +159,7 @@ open class SignPlaceListener(
             costAmount = price.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             creatorId = player.uniqueId,
             direction = direction,
+            searchEnabled = true,
         )
         shopRepository.upsert(shop)
 

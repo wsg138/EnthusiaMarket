@@ -147,6 +147,8 @@ class EnthusiaMarketConfig {
                 "routes to a no-op sink — tax is collected but not paid out."
         )
         var taxDestination: String = "system"
+        @Comment("Whether newly-created shops are searchable by default (/shop search).")
+        var searchDefault: Boolean = true
     }
 
     class LumaGuilds {

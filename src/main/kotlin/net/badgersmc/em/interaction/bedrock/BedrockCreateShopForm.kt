@@ -54,6 +54,7 @@ class BedrockCreateShopForm(
                     containerX = containerLoc.blockX, containerY = containerLoc.blockY, containerZ = containerLoc.blockZ,
                     sellItemBase64 = sellItemBase64, sellAmount = amount, price = price,
                     direction = SignDirection.SELL,
+                    searchEnabled = true,
                 )
                 shopRepository.upsert(shop)
                 player.sendMessage(lang.legacy("shop.create.success"))
