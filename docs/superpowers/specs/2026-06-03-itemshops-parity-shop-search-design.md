@@ -75,7 +75,7 @@ fields.
   - `ShopFactory.build` — gains a `searchEnabled: Boolean` parameter; the creation paths
     (`CreateShopMenu`, `BedrockCreateShopForm`, `SignPlaceListener`) pass `config.shop.search.default`.
   - `ShopRepositorySql` — persist/read the `search_enabled` column.
-- **Persistence — migration V014:** `ALTER TABLE shops ADD COLUMN search_enabled INTEGER NOT NULL DEFAULT 1;`
+- **Persistence — migration V014:** `ALTER TABLE shop_items ADD COLUMN search_enabled INTEGER NOT NULL DEFAULT 1;` (the shop table is `shop_items`)
   (existing rows become searchable — consistent with default-on).
 
 ### Data flow
