@@ -122,6 +122,7 @@ class ShopEditMenu(
         return item
     }
 
+    @Suppress("LongParameterList")
     companion object {
         /** Pure: produce the edited Shop copy. Amounts clamp to >= 1 (Shop.init requires it). */
         fun applyEdits(
