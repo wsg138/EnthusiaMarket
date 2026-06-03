@@ -1,6 +1,7 @@
 package net.badgersmc.em.interaction.gui
 
 import io.mockk.*
+import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.kyori.adventure.text.Component
@@ -18,7 +19,7 @@ class ShopEditMenuTest {
             sellItem = "a", sellAmount = 1, costItem = "b", costAmount = 1,
             frozen = false, hopperAllowIn = true, hopperAllowOut = true)
 
-        val menu = ShopEditMenu(shop, mockk(relaxed = true), mockk(relaxed = true))
+        val menu = ShopEditMenu(shop, mockk(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
         assertNotNull(menu)
     }
 
@@ -29,7 +30,7 @@ class ShopEditMenuTest {
             sellItem = "a", sellAmount = 1, costItem = "b", costAmount = 1,
             frozen = true)
 
-        val menu = ShopEditMenu(shop, mockk(relaxed = true), mockk(relaxed = true))
+        val menu = ShopEditMenu(shop, mockk(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
         assertNotNull(menu)
     }
 
@@ -45,7 +46,7 @@ class ShopEditMenuTest {
             every { hasPermission("enthusiamarket.admin") } returns false
         }
 
-        val menu = ShopEditMenu(shop, mockk(relaxed = true), mockk(relaxed = true))
+        val menu = ShopEditMenu(shop, mockk(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
         menu.open(nonOwner)
 
         verify { nonOwner.sendMessage(any<Component>()) }

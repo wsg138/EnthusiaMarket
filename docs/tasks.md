@@ -557,3 +557,5 @@ References: REQ-024 through REQ-027
 4. Task size ceiling: ~1500 tokens of full briefing. If larger, split.
 5. A task MUST be achievable by a single SPEAR cycle (`spec → prove → engine → arch → refine` for TDD; `spec → arch → refine` for DOC/INFRA).
 6. Mark state as work proceeds: `[~]` when entering `spec`; `[x]` only when `/spear:refine` has cleared state to `idle`.
+
+- [x] ItemShops parity SP1 — /shop management commands (list/edit/trust/untrust/delete/breakdelete)

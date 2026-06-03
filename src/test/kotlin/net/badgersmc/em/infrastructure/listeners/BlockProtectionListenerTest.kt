@@ -3,6 +3,8 @@ package net.badgersmc.em.infrastructure.listeners
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import net.badgersmc.em.application.BreakDeleteMode
+import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import org.bukkit.Location
@@ -96,7 +98,7 @@ class BlockProtectionListenerTest {
 
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -117,7 +119,7 @@ class BlockProtectionListenerTest {
 
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -139,7 +141,7 @@ class BlockProtectionListenerTest {
 
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -163,7 +165,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer(x = 50, y = 64, z = 60)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -186,7 +188,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer(x = 50, y = 64, z = 60)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -206,7 +208,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer()
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -221,7 +223,7 @@ class BlockProtectionListenerTest {
         // block.state returns null by default from relaxed mockk
 
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -238,7 +240,7 @@ class BlockProtectionListenerTest {
         val sign = mockk<Sign>(relaxed = true)
         val block = mockBlock(sign, x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 

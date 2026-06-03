@@ -171,6 +171,22 @@ shop:
   trust:
     open_chat_prompt: "<yellow>Type the name of the player to trust in chat"
     removed: "<green>Removed trusted player"
+  cmd:
+    players_only: "<red>Players only."
+    none_owned: "<gray>You own no shops."
+    list_header: "<gold>Your shops (<count>)"
+    list_line: "<gray>- <white><world> <x>,<y>,<z> <dark_gray>| <green><sell_amt>x <sell> <gray>for <gold><cost>"
+    unknown_player: "<red>Unknown player: <name>"
+    trusted_all: "<green>Trusted <white><name> <green>on all your shops (<count>)."
+    untrusted_all: "<yellow>Untrusted <white><name> <yellow>on all your shops (<count>)."
+    deleted_all: "<yellow>Deleted <count> shop(s)."
+    breakdelete_on: "<green>Break-delete mode enabled for <minutes> minute(s)."
+    breakdelete_off: "<yellow>Break-delete mode disabled."
+    no_permission: "<red>You don't have permission for that."
+  edit:
+    saved: "<green>Shop updated."
+  delete:
+    done: "<yellow>Shop deleted."
 
 gui:
   shop:
@@ -192,6 +208,30 @@ gui:
       amount_up: "<green>+1 (now <amount>)"
       amount_down: "<red>-1 (now <amount>)"
       confirm: "<green>Confirm & create shop"
+    owned:
+      title: "<dark_gray>Your shops (click to edit)"
+      icon: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <white><world> <x>,<y>,<z>"
+    edit:
+      title: "<dark_gray>Edit shop"
+      sell_up: "<green>Sell +1 (<amount>)"
+      sell_amount: "<green>Sell amount: <amount>"
+      sell_down: "<red>Sell -1 (<amount>)"
+      cost_up: "<green>Cost +10 (<cost>)"
+      cost: "<gold>Cost: <cost>"
+      cost_down: "<red>Cost -10 (<cost>)"
+      hopper_in: "<gray>Hopper in: <state>"
+      hopper_out: "<gray>Hopper out: <state>"
+      freeze: "<gray>Freeze: <state>"
+      save: "<green>Save"
+      delete: "<red>Delete"
+    trust:
+      title: "<dark_gray>Trust <name> on…"
+      icon: "<white><world> <x>,<y>,<z> <gray>(<sel>)"
+      confirm: "<green>Confirm"
+    delete:
+      title: "<dark_red>Delete shops"
+      icon: "<white><world> <x>,<y>,<z> <gray>(click to arm)"
+      icon_armed: "<red>Click again to DELETE <white><world> <x>,<y>,<z>"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"

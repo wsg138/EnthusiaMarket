@@ -1,5 +1,7 @@
 package net.badgersmc.em.infrastructure.listeners
 
+import net.badgersmc.em.application.BreakDeleteMode
+import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.ShopDeletedEvent
@@ -25,6 +27,8 @@ import java.util.logging.Logger
 @Component
 class BlockProtectionListener(
     private val shopRepository: ShopRepository,
+    private val breakDelete: BreakDeleteMode,
+    private val management: ShopManagementService,
     private val logger: Logger,
     private val lang: LangService
 ) : Listener {
@@ -42,6 +46,12 @@ class BlockProtectionListener(
         if (block.state is Sign) {
             val shop = findShopBySign(block)
             if (shop != null) {
+                val player = event.player
+                if (shop.owner == player.uniqueId && breakDelete.isActive(player.uniqueId)) {
+                    management.delete(player.uniqueId, shop.id)
+                    player.sendMessage(lang.msg("shop.delete.done"))
+                    return // allow break; shop already deleted
+                }
                 cancelSignBreak(event, shop, event.player)
             }
             return
