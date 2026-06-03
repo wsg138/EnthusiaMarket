@@ -15,12 +15,14 @@ class ShopEditMenuApplyTest {
         sellItem = "old", sellAmount = 1, costItem = "c", costAmount = 10,
         hopperAllowIn = true, hopperAllowOut = true, frozen = false,
         direction = SignDirection.SELL,
+        searchEnabled = true,
     )
 
     @Test fun `applyEdits returns a copy with the edited fields`() {
         val updated = ShopEditMenu.applyEdits(
             shop(), sellItemB64 = "new", sellAmount = 5, costAmount = 99,
             hopperIn = false, hopperOut = false, frozen = true,
+            searchEnabled = true,
         )
         assertEquals("new", updated.sellItem)
         assertEquals(5, updated.sellAmount)
@@ -28,14 +30,17 @@ class ShopEditMenuApplyTest {
         assertEquals(false, updated.hopperAllowIn)
         assertEquals(false, updated.hopperAllowOut)
         assertEquals(true, updated.frozen)
+        assertEquals(true, updated.searchEnabled)
     }
 
     @Test fun `applyEdits clamps amounts to at least one`() {
         val updated = ShopEditMenu.applyEdits(
             shop(), sellItemB64 = "x", sellAmount = 0, costAmount = -5,
             hopperIn = true, hopperOut = true, frozen = false,
+            searchEnabled = false,
         )
         assertEquals(1, updated.sellAmount)
         assertEquals(1, updated.costAmount)
+        assertEquals(false, updated.searchEnabled)
     }
 }

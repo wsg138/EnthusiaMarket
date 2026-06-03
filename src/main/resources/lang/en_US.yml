@@ -226,6 +226,7 @@ gui:
       hopper_in: "<gray>Hopper in: <state>"
       hopper_out: "<gray>Hopper out: <state>"
       freeze: "<gray>Freeze: <state>"
+      search: "<green>Searchable: <gold><state>"
       save: "<green>Save"
       delete: "<red>Delete"
     trust:

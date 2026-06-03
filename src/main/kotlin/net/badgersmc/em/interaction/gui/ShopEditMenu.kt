@@ -34,6 +34,7 @@ class ShopEditMenu(
     private var hopperIn: Boolean = shop.hopperAllowIn
     private var hopperOut: Boolean = shop.hopperAllowOut
     private var frozen: Boolean = shop.frozen
+    private var searchEnabled: Boolean = shop.searchEnabled
 
     override fun open(player: Player) {
         if (player.uniqueId != shop.owner && !player.hasPermission("enthusiamarket.admin")) {
@@ -89,10 +90,15 @@ class ShopEditMenu(
             it.isCancelled = true; frozen = !frozen; render(player)
         }, 6, 2)
 
+        // Search toggle.
+        pane.addItem(GuiItem(decorated(if (searchEnabled) Material.SPYGLASS else Material.GRAY_DYE, lang.msg("gui.shop.edit.search", "state" to searchEnabled))) {
+            it.isCancelled = true; searchEnabled = !searchEnabled; render(player)
+        }, 7, 1)
+
         // Save + delete.
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.edit.save"))) {
             it.isCancelled = true
-            shopRepository.upsert(applyEdits(shop, sellItemB64, sellAmount, costAmount, hopperIn, hopperOut, frozen))
+            shopRepository.upsert(applyEdits(shop, sellItemB64, sellAmount, costAmount, hopperIn, hopperOut, frozen, searchEnabled))
             player.closeInventory()
             player.sendMessage(lang.msg("shop.edit.saved"))
         }, 8, 0)
@@ -121,6 +127,7 @@ class ShopEditMenu(
         fun applyEdits(
             shop: Shop, sellItemB64: String, sellAmount: Int, costAmount: Int,
             hopperIn: Boolean, hopperOut: Boolean, frozen: Boolean,
+            searchEnabled: Boolean,
         ): Shop = shop.copy(
             sellItem = sellItemB64,
             sellAmount = sellAmount.coerceAtLeast(1),
@@ -128,6 +135,7 @@ class ShopEditMenu(
             hopperAllowIn = hopperIn,
             hopperAllowOut = hopperOut,
             frozen = frozen,
+            searchEnabled = searchEnabled,
         )
     }
 }
