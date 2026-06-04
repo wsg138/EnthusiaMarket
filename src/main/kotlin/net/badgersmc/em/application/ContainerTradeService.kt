@@ -238,15 +238,23 @@ open class ContainerTradeService(
         }
     }
 
+    @Suppress("TooGenericExceptionCaught")
     fun executeTrade(shop: Shop, playerUuid: UUID): ContainerTradeResult {
-        val validated = validateTrade(shop, playerUuid)
-        if (validated is ContainerTradeResult.Failure) return validated
-        val ok = validated as BarterTradeContext
+        val ok = when (val validated = validateTrade(shop, playerUuid)) {
+            is TradeValidation.Invalid -> return validated.failure
+            is TradeValidation.Valid -> validated.ctx
+        }
 
         // Execute: take payment from buyer.
         if (ok.player.inventory.removeItem(ok.costStack.clone()).isNotEmpty())
             return ContainerTradeResult.Failure("Not enough payment items")
-        vaultService.deposit(ok.ownerUuid, ok.costBase.clone().apply { amount = 1 }, shop.costAmount)
+        try {
+            vaultService.deposit(ok.ownerUuid, ok.costBase.clone().apply { amount = 1 }, shop.costAmount)
+        } catch (e: Exception) {
+            // Deposit failed before any stock moved — refund the payment we just took.
+            ok.player.inventory.addItem(ok.costStack)
+            return ContainerTradeResult.CompensationFailed(error = "Vault deposit failed", compensation = "Payment refunded")
+        }
 
         // Give stock to buyer.
         ok.inv.removeItem(ok.sellStack.clone())
@@ -267,22 +275,28 @@ open class ContainerTradeService(
         val costBase: ItemStack, val costStack: ItemStack, val inv: org.bukkit.inventory.Inventory,
     )
 
-    @Suppress("ThrowsCount")
-    private fun validateTrade(shop: Shop, playerUuid: UUID): Any {
-        if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
-        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
-        val stall = stallRepository.findById(StallId(shop.stallId))
-            ?: return ContainerTradeResult.Failure("Stall not found")
-        val ownerUuid = resolveOwnerUuid(stall) ?: return ContainerTradeResult.Failure("Invalid owner")
-        val player = getPlayer(playerUuid) ?: return ContainerTradeResult.Failure("Player not online")
-        val sellStack = buildSellStack(shop) ?: return ContainerTradeResult.Failure("Invalid item")
-        val costBase = deserializeStack(shop.costItem) ?: return ContainerTradeResult.Failure("Invalid cost item")
+    private sealed interface TradeValidation {
+        data class Valid(val ctx: BarterTradeContext) : TradeValidation
+        data class Invalid(val failure: ContainerTradeResult.Failure) : TradeValidation
+    }
+
+    private fun invalid(reason: String) = TradeValidation.Invalid(ContainerTradeResult.Failure(reason))
+
+    @Suppress("ReturnCount")
+    private fun validateTrade(shop: Shop, playerUuid: UUID): TradeValidation {
+        if (shop.frozen) return invalid("This shop is frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return invalid("Invalid trade amounts")
+        val stall = stallRepository.findById(StallId(shop.stallId)) ?: return invalid("Stall not found")
+        val ownerUuid = resolveOwnerUuid(stall) ?: return invalid("Invalid owner")
+        val player = getPlayer(playerUuid) ?: return invalid("Player not online")
+        val sellStack = buildSellStack(shop) ?: return invalid("Invalid item")
+        val costBase = deserializeStack(shop.costItem) ?: return invalid("Invalid cost item")
         val costStack = costBase.clone().apply { amount = shop.costAmount }
         if (!player.inventory.containsAtLeast(costStack, shop.costAmount))
-            return ContainerTradeResult.Failure("You don't have the items to pay")
-        val container = getContainer(shop) ?: return ContainerTradeResult.Failure("Container missing")
+            return invalid("You don't have the items to pay")
+        val container = getContainer(shop) ?: return invalid("Container missing")
         val inv = container.inventory
-        if (!inv.containsAtLeast(sellStack, shop.sellAmount)) return ContainerTradeResult.Failure("Out of stock")
-        return BarterTradeContext(ownerUuid, player, sellStack, costBase, costStack, inv)
+        if (!inv.containsAtLeast(sellStack, shop.sellAmount)) return invalid("Out of stock")
+        return TradeValidation.Valid(BarterTradeContext(ownerUuid, player, sellStack, costBase, costStack, inv))
     }
 }

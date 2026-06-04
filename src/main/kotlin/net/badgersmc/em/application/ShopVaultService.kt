@@ -19,7 +19,12 @@ class ShopVaultService(private val vault: ShopVaultRepository) {
     fun withdraw(owner: UUID, item: ItemStack, amount: Int): Int = vault.withdraw(owner, key(item), amount)
 
     fun contents(owner: UUID): List<Pair<ItemStack, Int>> =
-        vault.findByOwner(owner).map { ItemStack.deserializeBytes(Base64.getDecoder().decode(it.itemBytes)) to it.amount }
+        vault.findByOwner(owner).mapNotNull { row ->
+            // Skip rows that can't be decoded (corrupt bytes / direct DB edits) rather than
+            // failing the whole /shopvault GUI open.
+            runCatching { ItemStack.deserializeBytes(Base64.getDecoder().decode(row.itemBytes)) }
+                .getOrNull()?.let { it to row.amount }
+        }
 
     private fun key(item: ItemStack): String {
         val one = item.clone().apply { amount = 1 }
