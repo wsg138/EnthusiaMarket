@@ -13,6 +13,8 @@ interface ShopRepository {
     fun setGuildOwnership(id: Long, guildId: UUID, creatorId: UUID): Shop?
     fun removeGuildOwnership(id: Long): Shop?
     fun all(): List<Shop>
+    fun countAll(): Int
+    fun countByOwner(owner: UUID): Int
     fun delete(id: Long)
     fun deleteByContainer(world: String, x: Int, y: Int, z: Int)
 }

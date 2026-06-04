@@ -194,6 +194,18 @@ shop:
       header: "<gold>Shops selling <white><query></white> (page <page>/<pages>)"
       line: "<gray>- <white><world> <x>,<y>,<z> <dark_gray>| <green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
     no_permission: "<red>You don't have permission for that."
+  notify:
+    sold: "<green>Sale: <white><qty>x <item></white> for <gold><price></gold> <gray>to</gray> <yellow><buyer>"
+    away_summary: "<gold>While you were away, your shops made <white><count></white> sale(s). <gray>Use /shop history."
+  info:
+    line1: "<gold>━━ Shop <gray>(<dir>) ━━"
+    line2: "<gray>Item: <white><qty>x <item>"
+    line3: "<gray>Price: <gold><price>"
+    line4: "<gray>Owner: <yellow><owner></yellow>  <dark_gray>|  <gray>Stock: <aqua><stock>"
+  history:
+    header: "<gold>Your shop sales <gray>(page <page>)"
+    line: "<gray>- <white><when></white> <dark_gray>| <green><qty>x <item></green> <dark_gray>| <gold><price></gold> <dark_gray>| <yellow><buyer>"
+    empty: "<gray>No recorded sales yet."
   admin:
     no_target: "<red>You're not looking at a shop sign or container."
     info:

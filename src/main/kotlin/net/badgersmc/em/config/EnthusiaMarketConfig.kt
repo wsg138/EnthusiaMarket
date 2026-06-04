@@ -149,6 +149,10 @@ class EnthusiaMarketConfig {
         var taxDestination: String = "system"
         @Comment("Whether newly-created shops are searchable by default (/shop search).")
         var searchDefault: Boolean = true
+        @Comment("Notify shop owners when someone trades at their shop (live if online, summarised on next join).")
+        var notifyEnabled: Boolean = true
+        @Comment("Days of shop transaction history to keep; 0 disables pruning.")
+        var historyRetentionDays: Int = 30
     }
 
     class LumaGuilds {

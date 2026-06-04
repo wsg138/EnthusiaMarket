@@ -8,6 +8,7 @@ import net.badgersmc.em.application.ShopSearchService
 import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.application.LookAtShopResolver
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.ShopTransactionRepository
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
 import net.badgersmc.nexus.i18n.LangService
@@ -26,6 +27,7 @@ class ShopCommands(
     private val shopRepository: ShopRepository,
     private val breakDelete: BreakDeleteMode,
     private val search: ShopSearchService,
+    private val transactions: ShopTransactionRepository,
     private val lookAt: LookAtShopResolver,
     private val adminBreak: AdminBreakMode,
     private val signRenderer: ShopSignRenderer,
@@ -167,6 +169,29 @@ class ShopCommands(
         net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
     }
 
+    @Subcommand("history")
+    @Permission("enthusiamarket.shop.use")
+    fun history(
+        @Context sender: CommandSender,
+        @net.badgersmc.nexus.commands.annotations.Arg("page") page: Int = 1,
+    ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val p = page.coerceAtLeast(1)
+        val rows = transactions.findByOwner(player.uniqueId, PAGE_SIZE, (p - 1) * PAGE_SIZE)
+        if (rows.isEmpty()) { player.sendMessage(lang.msg("shop.history.empty")); return }
+        player.sendMessage(lang.msg("shop.history.header", "page" to p))
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
+            .withZone(java.time.ZoneId.systemDefault())
+        for (t in rows) {
+            val buyer = org.bukkit.Bukkit.getOfflinePlayer(t.buyer).name ?: "Unknown"
+            player.sendMessage(lang.msg(
+                "shop.history.line",
+                "when" to fmt.format(java.time.Instant.ofEpochMilli(t.createdAt)),
+                "qty" to t.quantity, "item" to t.item, "price" to t.totalPrice, "buyer" to buyer,
+            ))
+        }
+    }
+
     private fun lookAtShop(player: Player): net.badgersmc.em.domain.shop.Shop? {
         val b = player.getTargetBlockExact(6) ?: return null
         return lookAt.resolve(b.world.name, b.x, b.y, b.z)
@@ -245,5 +270,9 @@ class ShopCommands(
         }
         adminBreak.enable(player.uniqueId, durationMs)
         player.sendMessage(lang.msg("shop.admin.breakothers.enabled", "minutes" to (durationMs / 60_000)))
+    }
+
+    companion object {
+        private const val PAGE_SIZE = 10
     }
 }
