@@ -285,6 +285,12 @@ gui:
       title: "<dark_red>Delete shops"
       icon: "<white><world> <x>,<y>,<z> <gray>(click to arm)"
       icon_armed: "<red>Click again to DELETE <white><world> <x>,<y>,<z>"
+  vault:
+    title: "<dark_gray>Your barter vault"
+    amount_lore: "<gray>Stored: <aqua><amount>"
+    withdrew: "<green>Withdrew <white><amount>x <item></white>."
+    full: "<yellow>Inventory full — <white><left></white> left in the vault."
+    empty: "<gray>Your barter vault is empty."
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"
