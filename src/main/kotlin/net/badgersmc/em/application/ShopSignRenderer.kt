@@ -13,8 +13,8 @@ import net.kyori.adventure.text.format.NamedTextColor
 @Service
 class ShopSignRenderer {
 
-    /** [SELL]/[BUY] header · `Nx material` · price · [Shop]. */
-    fun lines(direction: SignDirection, sellMaterialName: String, sellAmount: Int, price: Long): List<Component> {
+    /** [SELL]/[BUY]/[TRADE] header · `Nx material` · cost display · [Shop]. */
+    fun lines(direction: SignDirection, sellMaterialName: String, sellAmount: Int, costDisplay: String): List<Component> {
         val headerColor = when (direction) {
             SignDirection.BUY -> NamedTextColor.GOLD
             SignDirection.TRADE -> NamedTextColor.LIGHT_PURPLE
@@ -23,7 +23,7 @@ class ShopSignRenderer {
         return listOf(
             Component.text("[${direction.name}]", headerColor),
             Component.text("${sellAmount}x $sellMaterialName", NamedTextColor.WHITE),
-            Component.text("$price", NamedTextColor.GOLD),
+            Component.text(costDisplay, NamedTextColor.GOLD),
             Component.text("[Shop]", NamedTextColor.GOLD),
         )
     }

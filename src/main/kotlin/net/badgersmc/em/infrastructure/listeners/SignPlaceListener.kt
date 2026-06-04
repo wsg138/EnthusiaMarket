@@ -65,6 +65,7 @@ open class SignPlaceListener(
         val direction = when (firstLine) {
             "[BUY]", "BUY" -> SignDirection.BUY
             "[SELL]", "SELL" -> SignDirection.SELL
+            "[TRADE]", "TRADE" -> SignDirection.TRADE
             else -> return
         }
 
@@ -96,6 +97,14 @@ open class SignPlaceListener(
             event.isCancelled = true
             return
         }
+
+        // Guild-owned stalls cannot host [TRADE] shops.
+        if (direction == SignDirection.TRADE && stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.GUILD) {
+            player.sendMessage(lang.msg("shop.create.no_guild_trade"))
+            event.isCancelled = true
+            return
+        }
+
         if (!canManageStall(stall, player)) {
             player.sendMessage(lang.msg("shop.create.no_authority"))
             event.isCancelled = true
@@ -114,20 +123,48 @@ open class SignPlaceListener(
             return
         }
 
-        // Parse amount + price.
+        // Parse amount + price/cost depending on direction.
         val amount = plain.serialize(lines.getOrElse(1) { net.kyori.adventure.text.Component.empty() })
             .trim().toIntOrNull()
-        val price = plain.serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
-            .trim().toLongOrNull()
-        if (amount == null || amount <= 0 || price == null || price <= 0) {
+        if (amount == null || amount <= 0) {
             player.sendMessage(lang.msg("shop.create.invalid_input"))
             event.isCancelled = true
             return
         }
-        if (price > Int.MAX_VALUE.toLong()) {
-            player.sendMessage(lang.msg("shop.create.invalid_input"))
-            event.isCancelled = true
-            return
+
+        var costItemB64 = ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1))
+        var costAmount = 0
+        var costDisplay = ""
+
+        if (direction == SignDirection.TRADE) {
+            // Line 3: "N material"
+            val costParts = plain.serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
+                .trim().split(" ")
+            val costQty = costParts.getOrNull(0)?.toIntOrNull()
+            val costMat = costParts.getOrNull(1)?.let { Material.matchMaterial(it) }
+            if (costQty == null || costQty <= 0 || costMat == null) {
+                player.sendMessage(lang.msg("shop.create.invalid_trade_cost"))
+                event.isCancelled = true
+                return
+            }
+            costItemB64 = ItemStackSerializer.serialize(ItemStack(costMat, 1))
+            costAmount = costQty
+            costDisplay = "${costQty}x ${costMat.name.lowercase()}"
+        } else {
+            val price = plain.serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
+                .trim().toLongOrNull()
+            if (price == null || price <= 0) {
+                player.sendMessage(lang.msg("shop.create.invalid_input"))
+                event.isCancelled = true
+                return
+            }
+            if (price > Int.MAX_VALUE.toLong()) {
+                player.sendMessage(lang.msg("shop.create.invalid_input"))
+                event.isCancelled = true
+                return
+            }
+            costAmount = price.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            costDisplay = "$price"
         }
 
         // Held item = the traded item. Player needs to be holding it.
@@ -153,11 +190,8 @@ open class SignPlaceListener(
             containerZ = attached.z,
             sellItem = ItemStackSerializer.serialize(sellStack),
             sellAmount = amount,
-            // costItem is a UI hint for the GUI's "you pay" slot. Real
-            // money flow runs through EconomyProvider; park an emerald
-            // icon here for display purposes.
-            costItem = ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1)),
-            costAmount = price.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+            costItem = costItemB64,
+            costAmount = costAmount,
             creatorId = player.uniqueId,
             direction = direction,
             searchEnabled = config.shop.searchDefault,
@@ -165,7 +199,7 @@ open class SignPlaceListener(
         shopRepository.upsert(shop)
 
         // Auto-format the four lines.
-        val rendered = signRenderer.lines(direction, held.type.name.lowercase(), amount, price)
+        val rendered = signRenderer.lines(direction, held.type.name.lowercase(), amount, costDisplay)
         rendered.forEachIndexed { i, c -> event.line(i, c) }
 
         player.sendMessage(lang.msg("shop.create.success"))

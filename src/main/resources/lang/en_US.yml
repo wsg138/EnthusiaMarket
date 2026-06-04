@@ -161,6 +161,8 @@ shop:
     no_permission: "<red>You do not have permission to create shops (enthusiamarket.shop.create)"
     needs_wallsign: "<red>Shop signs must be wall-mounted on the side of a container"
     no_held_item: "<red>Hold the item you want to trade in your main hand before placing the sign"
+    no_guild_trade: "<red>Guild-owned stalls can't host [TRADE] shops."
+    invalid_trade_cost: "<red>Line 3 must be '<amount> <item>', e.g. '16 diamond'."
   edit:
     not_owner: "<red>You don't own this shop"
     frozen: "<red>Shop frozen"
