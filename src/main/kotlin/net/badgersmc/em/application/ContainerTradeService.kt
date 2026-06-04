@@ -96,7 +96,7 @@ open class ContainerTradeService(
             return ContainerTradeResult.CompensationFailed(error = "Player deposit failed", compensation = "Full rollback")
         }
 
-        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost)
+        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction)
         return ContainerTradeResult.Success("Sold ${shop.sellAmount}x for $cost")
     }
 
@@ -152,7 +152,7 @@ open class ContainerTradeService(
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
 
-        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost)
+        fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction)
         return ContainerTradeResult.Success("Bought ${shop.sellAmount}x for $cost")
     }
 
@@ -194,11 +194,15 @@ open class ContainerTradeService(
         if (guildId != null) guildProvider?.bankDeposit(guildId.toString(), cost) else economy.deposit(ownerUuid, cost)
     }
 
-    private fun fireTransactionEvent(player: Player, ownerUuid: UUID, item: ItemStack, quantity: Int, cost: Long) {
+    private fun fireTransactionEvent(
+        player: Player, ownerUuid: UUID, item: ItemStack, quantity: Int, cost: Long,
+        shopId: Long, direction: net.badgersmc.em.domain.shop.SignDirection,
+    ) {
         Bukkit.getPluginManager().callEvent(
             net.badgersmc.em.events.PostShopTransactionEvent(
                 buyer = player, landlordId = ownerUuid,
-                item = item, quantity = quantity, pricePaid = cost.toDouble()
+                item = item, quantity = quantity, pricePaid = cost.toDouble(),
+                shopId = shopId, direction = direction,
             )
         )
     }

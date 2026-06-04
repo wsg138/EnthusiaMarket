@@ -1,5 +1,6 @@
 package net.badgersmc.em.events
 
+import net.badgersmc.em.domain.shop.SignDirection
 import org.bukkit.entity.Player
 import org.bukkit.event.Event
 import org.bukkit.event.HandlerList
@@ -16,7 +17,9 @@ class PostShopTransactionEvent(
     val landlordId: UUID,
     val item: ItemStack,
     val quantity: Int,
-    val pricePaid: Double
+    val pricePaid: Double,
+    val shopId: Long = 0,
+    val direction: SignDirection = SignDirection.SELL,
 ) : Event() {
     override fun getHandlers(): HandlerList = handlerList
 
