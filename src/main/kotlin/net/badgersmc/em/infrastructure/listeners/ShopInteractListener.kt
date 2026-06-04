@@ -1,8 +1,10 @@
 package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.application.ContainerTradeService
+import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.interaction.ShopInfoCard
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.MenuFactory
 import net.badgersmc.em.interaction.gui.PurchaseMenu
@@ -54,6 +56,16 @@ open class ShopInteractListener(
 
         val player = event.player
 
+        // Shift-right-click → info card (ItemShops parity SP6)
+        if (player.isSneaking) {
+            val owner = org.bukkit.Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
+            val item = net.badgersmc.em.application.ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
+            ShopInfoCard.lines(
+                lang, shop.direction.name, item, shop.sellAmount, shop.costAmount.toLong(), owner, stockOf(shop),
+            ).forEach { player.sendMessage(it) }
+            return
+        }
+
         // Platform routing: Bedrock gets Cumulus form, Java gets IFramework
         if (menuFactory.shouldUseBedrockMenus(player)) {
             openBedrockPurchaseForm(player, shop)
@@ -79,5 +91,14 @@ open class ShopInteractListener(
             onSell = { tradeService.executeSell(shop, uuid) },
             logger, lang,
         ).open(player)
+    }
+
+    private fun stockOf(shop: Shop): Int {
+        val world = Bukkit.getWorld(shop.containerWorld) ?: return 0
+        val state = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state
+        val inv = (state as? org.bukkit.block.Container)?.inventory ?: return 0
+        val sellStack = net.badgersmc.em.application.ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
+        val total = inv.contents.filterNotNull().filter { it.isSimilar(sellStack) }.sumOf { it.amount }
+        return total / shop.sellAmount.coerceAtLeast(1)
     }
 }
