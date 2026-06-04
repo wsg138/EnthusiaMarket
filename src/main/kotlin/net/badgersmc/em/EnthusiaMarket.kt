@@ -158,38 +158,49 @@ open class EnthusiaMarket : JavaPlugin() {
      * manager and Brigadier hides the commands from non-ops. Idempotent — skips
      * nodes already present so it never clobbers an externally-managed perm.
      */
-    @Suppress("TooGenericExceptionCaught")
     private fun registerDeclaredPermissions() {
+        val perms = loadDeclaredPermissions() ?: return
         val pm = Bukkit.getPluginManager()
+        val registered = perms.getKeys(false).count { registerPermissionNode(pm, perms, it) }
+        logger.info("Registered $registered EnthusiaMarket permissions")
+    }
+
+    /**
+     * Parse the bundled `paper-plugin.yml` `permissions:` section. The path separator
+     * is set to `/` so dotted node names (e.g. `enthusiamarket.shop.use`) aren't split
+     * by `getString("$node/default")` — splitting on `.` reads a missing path and
+     * silently defaults every perm to OP. Null on any IO/parse failure.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun loadDeclaredPermissions(): org.bukkit.configuration.ConfigurationSection? {
         val stream = this::class.java.classLoader.getResourceAsStream("paper-plugin.yml") ?: run {
             logger.warning("paper-plugin.yml not found on classpath; skipping permission registration")
-            return
+            return null
         }
-        var registered = 0
-        try {
-            // Permission node names contain dots (e.g. enthusiamarket.shop.use), so we
-            // switch the config path separator off '.' — otherwise getString("$node.default")
-            // would split the node name itself, read a missing path, and silently default
-            // every perm to OP.
+        return try {
             val yaml = org.bukkit.configuration.file.YamlConfiguration()
             yaml.options().pathSeparator('/')
             yaml.load(java.io.InputStreamReader(stream, Charsets.UTF_8))
-            val perms = yaml.getConfigurationSection("permissions") ?: return
-            for (node in perms.getKeys(false)) {
-                if (pm.getPermission(node) != null) continue
-                try {
-                    pm.addPermission(
-                        org.bukkit.permissions.Permission(node, permissionDefault(perms.getString("$node/default")))
-                    )
-                    registered++
-                } catch (e: IllegalArgumentException) {
-                    // Concurrent/duplicate registration — already present, ignore.
-                }
-            }
+            yaml.getConfigurationSection("permissions")
         } catch (e: Exception) {
-            logger.warning("Failed to register declared permissions: ${e.message}")
+            logger.warning("Failed to read declared permissions: ${e.message}")
+            null
         }
-        logger.info("Registered $registered EnthusiaMarket permissions")
+    }
+
+    /** Register [node] with its declared default if Bukkit doesn't already have it. Returns true when added. */
+    private fun registerPermissionNode(
+        pm: org.bukkit.plugin.PluginManager,
+        perms: org.bukkit.configuration.ConfigurationSection,
+        node: String,
+    ): Boolean {
+        if (pm.getPermission(node) != null) return false
+        return try {
+            pm.addPermission(org.bukkit.permissions.Permission(node, permissionDefault(perms.getString("$node/default"))))
+            true
+        } catch (e: IllegalArgumentException) {
+            false // registered concurrently between the check and the add
+        }
     }
 
     private fun permissionDefault(token: String?): org.bukkit.permissions.PermissionDefault =
