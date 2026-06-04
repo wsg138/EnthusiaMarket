@@ -136,6 +136,14 @@ open class EnthusiaMarket : JavaPlugin() {
             nexus = ctx,
         )
 
+        // Prune old shop transaction history per config (0 = keep everything).
+        if (cfg.shop.historyRetentionDays > 0) {
+            val txRepo = ctx.getBean<net.badgersmc.em.domain.shop.ShopTransactionRepository>()
+            val cutoff = System.currentTimeMillis() - cfg.shop.historyRetentionDays.toLong() * 86_400_000L
+            val pruned = txRepo.prune(cutoff)
+            if (pruned > 0) logger.info("Pruned $pruned old shop transaction(s)")
+        }
+
         // Particle outline render loop (REQ-240/241): every 4 ticks, plan
         // points within the global budget and spawn END_ROD per requesting
         // player. Purges expired outlines first.
