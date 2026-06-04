@@ -167,19 +167,20 @@ open class EnthusiaMarket : JavaPlugin() {
         }
         var registered = 0
         try {
-            val yaml = org.bukkit.configuration.file.YamlConfiguration
-                .loadConfiguration(java.io.InputStreamReader(stream, Charsets.UTF_8))
+            // Permission node names contain dots (e.g. enthusiamarket.shop.use), so we
+            // switch the config path separator off '.' — otherwise getString("$node.default")
+            // would split the node name itself, read a missing path, and silently default
+            // every perm to OP.
+            val yaml = org.bukkit.configuration.file.YamlConfiguration()
+            yaml.options().pathSeparator('/')
+            yaml.load(java.io.InputStreamReader(stream, Charsets.UTF_8))
             val perms = yaml.getConfigurationSection("permissions") ?: return
             for (node in perms.getKeys(false)) {
                 if (pm.getPermission(node) != null) continue
-                val default = when (perms.getString("$node.default")?.lowercase()) {
-                    "true" -> org.bukkit.permissions.PermissionDefault.TRUE
-                    "false" -> org.bukkit.permissions.PermissionDefault.FALSE
-                    "not op", "notop", "!op" -> org.bukkit.permissions.PermissionDefault.NOT_OP
-                    else -> org.bukkit.permissions.PermissionDefault.OP
-                }
                 try {
-                    pm.addPermission(org.bukkit.permissions.Permission(node, default))
+                    pm.addPermission(
+                        org.bukkit.permissions.Permission(node, permissionDefault(perms.getString("$node/default")))
+                    )
                     registered++
                 } catch (e: IllegalArgumentException) {
                     // Concurrent/duplicate registration — already present, ignore.
@@ -190,6 +191,14 @@ open class EnthusiaMarket : JavaPlugin() {
         }
         logger.info("Registered $registered EnthusiaMarket permissions")
     }
+
+    private fun permissionDefault(token: String?): org.bukkit.permissions.PermissionDefault =
+        when (token?.lowercase()) {
+            "true" -> org.bukkit.permissions.PermissionDefault.TRUE
+            "false" -> org.bukkit.permissions.PermissionDefault.FALSE
+            "not op", "notop", "!op" -> org.bukkit.permissions.PermissionDefault.NOT_OP
+            else -> org.bukkit.permissions.PermissionDefault.OP
+        }
 
     override fun onDisable() {
         scheduler?.cancelAll()
