@@ -8,6 +8,7 @@ import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import net.kyori.adventure.text.Component
@@ -30,6 +31,7 @@ class ShopEditMenu(
 
     private var sellItemB64: String = shop.sellItem
     private var sellAmount: Int = shop.sellAmount
+    private var costItemB64: String = shop.costItem
     private var costAmount: Int = shop.costAmount
     private var hopperIn: Boolean = shop.hopperAllowIn
     private var hopperOut: Boolean = shop.hopperAllowOut
@@ -73,14 +75,33 @@ class ShopEditMenu(
             it.isCancelled = true; sellAmount = (sellAmount - 1).coerceAtLeast(1); render(player)
         }, 2, 2)
 
-        // Cost (money) controls.
-        pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.edit.cost_up", "cost" to costAmount))) {
-            it.isCancelled = true; costAmount += 10; render(player)
-        }, 4, 0)
-        pane.addItem(GuiItem(decorated(Material.EMERALD, lang.msg("gui.shop.edit.cost", "cost" to costAmount))), 4, 1)
-        pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.edit.cost_down", "cost" to costAmount))) {
-            it.isCancelled = true; costAmount = (costAmount - 10).coerceAtLeast(1); render(player)
-        }, 4, 2)
+        // Cost column: money controls for SELL/BUY, item-from-hand for TRADE.
+        if (shop.direction == SignDirection.TRADE) {
+            val costPreview = ItemStackSerializer.deserialize(costItemB64) ?: ItemStack(Material.BARRIER)
+            pane.addItem(GuiItem(costPreview) { event ->
+                event.isCancelled = true
+                val hand = player.inventory.itemInMainHand
+                if (hand.type != Material.AIR && hand.amount > 0) {
+                    costItemB64 = ItemStackSerializer.serialize(hand.clone().apply { amount = 1 })
+                    render(player)
+                }
+            }, 4, 0)
+            pane.addItem(GuiItem(decorated(Material.PAPER, lang.msg("gui.shop.edit.cost_item"))), 4, 1)
+            pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.edit.cost_amount_up", "amount" to costAmount))) {
+                it.isCancelled = true; costAmount += 1; render(player)
+            }, 4, 2)
+            pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.edit.cost_amount_down", "amount" to costAmount))) {
+                it.isCancelled = true; costAmount = (costAmount - 1).coerceAtLeast(1); render(player)
+            }, 5, 2)
+        } else {
+            pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.edit.cost_up", "cost" to costAmount))) {
+                it.isCancelled = true; costAmount += 10; render(player)
+            }, 4, 0)
+            pane.addItem(GuiItem(decorated(Material.EMERALD, lang.msg("gui.shop.edit.cost", "cost" to costAmount))), 4, 1)
+            pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.edit.cost_down", "cost" to costAmount))) {
+                it.isCancelled = true; costAmount = (costAmount - 10).coerceAtLeast(1); render(player)
+            }, 4, 2)
+        }
 
         // Hopper toggles + freeze.
         pane.addItem(GuiItem(decorated(if (hopperIn) Material.HOPPER else Material.GRAY_DYE, lang.msg("gui.shop.edit.hopper_in", "state" to hopperIn))) {
@@ -101,7 +122,7 @@ class ShopEditMenu(
         // Save + delete.
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.edit.save"))) {
             it.isCancelled = true
-            shopRepository.upsert(applyEdits(shop, sellItemB64, sellAmount, costAmount, hopperIn, hopperOut, frozen, searchEnabled))
+            shopRepository.upsert(applyEdits(shop, sellItemB64, sellAmount, costAmount, hopperIn, hopperOut, frozen, searchEnabled, costItemB64))
             player.closeInventory()
             player.sendMessage(lang.msg("shop.edit.saved"))
         }, 8, 0)
@@ -131,10 +152,11 @@ class ShopEditMenu(
         fun applyEdits(
             shop: Shop, sellItemB64: String, sellAmount: Int, costAmount: Int,
             hopperIn: Boolean, hopperOut: Boolean, frozen: Boolean,
-            searchEnabled: Boolean,
+            searchEnabled: Boolean, costItemB64: String = shop.costItem,
         ): Shop = shop.copy(
             sellItem = sellItemB64,
             sellAmount = sellAmount.coerceAtLeast(1),
+            costItem = costItemB64,
             costAmount = costAmount.coerceAtLeast(1),
             hopperAllowIn = hopperIn,
             hopperAllowOut = hopperOut,

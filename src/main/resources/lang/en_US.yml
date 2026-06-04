@@ -275,6 +275,9 @@ gui:
       hopper_out: "<gray>Hopper out: <state>"
       freeze: "<gray>Freeze: <state>"
       search: "<green>Searchable: <gold><state>"
+      cost_item: "<gray>Cost item (click: set from hand)"
+      cost_amount_up: "<green>+1 cost (<amount>)"
+      cost_amount_down: "<red>-1 cost (<amount>)"
       save: "<green>Save"
       delete: "<red>Delete"
     trust:

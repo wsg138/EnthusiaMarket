@@ -22,10 +22,11 @@ class ShopEditMenuApplyTest {
         val updated = ShopEditMenu.applyEdits(
             shop(), sellItemB64 = "new", sellAmount = 5, costAmount = 99,
             hopperIn = false, hopperOut = false, frozen = true,
-            searchEnabled = true,
+            searchEnabled = true, costItemB64 = "barterItem",
         )
         assertEquals("new", updated.sellItem)
         assertEquals(5, updated.sellAmount)
+        assertEquals("barterItem", updated.costItem)
         assertEquals(99, updated.costAmount)
         assertEquals(false, updated.hopperAllowIn)
         assertEquals(false, updated.hopperAllowOut)
@@ -37,10 +38,11 @@ class ShopEditMenuApplyTest {
         val updated = ShopEditMenu.applyEdits(
             shop(), sellItemB64 = "x", sellAmount = 0, costAmount = -5,
             hopperIn = true, hopperOut = true, frozen = false,
-            searchEnabled = false,
+            searchEnabled = false, costItemB64 = "keep",
         )
         assertEquals(1, updated.sellAmount)
         assertEquals(1, updated.costAmount)
+        assertEquals("keep", updated.costItem)
         assertEquals(false, updated.searchEnabled)
     }
 }
