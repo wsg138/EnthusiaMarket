@@ -59,21 +59,21 @@ class PurchaseMenu(
         // Direction-aware action button. SELL sign → player buys
         // from owner. BUY sign → player sells to owner. The lang key
         // picks the verb that matches the player's perspective.
-        val buttonKey = if (shop.direction == SignDirection.SELL) {
-            "gui.shop.buy_name"
-        } else {
-            "gui.shop.sell_action_name"
+        val buttonKey = when (shop.direction) {
+            SignDirection.SELL -> "gui.shop.buy_name"
+            SignDirection.TRADE -> "gui.shop.trade_name"
+            else -> "gui.shop.sell_action_name"
         }
-        val buttonLoreKey = if (shop.direction == SignDirection.SELL) {
-            "gui.shop.buy_lore_click"
-        } else {
-            "gui.shop.sell_action_lore_click"
+        val buttonLoreKey = when (shop.direction) {
+            SignDirection.SELL -> "gui.shop.buy_lore_click"
+            SignDirection.TRADE -> "gui.shop.trade_lore_click"
+            else -> "gui.shop.sell_action_lore_click"
         }
 
         pane.addItem(GuiItem(decorated(
             Material.LIME_STAINED_GLASS_PANE,
             lang.msg(buttonKey),
-            listOf(lang.msg(buttonLoreKey))
+            listOf(lang.msg(buttonLoreKey, "cost" to shop.costAmount))
         )) { event ->
             event.isCancelled = true
             val result = when (shop.direction) {

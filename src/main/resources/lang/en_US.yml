@@ -240,6 +240,8 @@ gui:
     buy_lore_click: "<gray>Click to purchase"
     sell_action_name: "<yellow><bold>SELL</bold>"
     sell_action_lore_click: "<gray>Click to sell to this shop"
+    trade_name: "<light_purple><bold>TRADE</bold>"
+    trade_lore_click: "<gray>Click to pay <gold><cost></gold>× and receive the item"
     search:
       title: "<dark_gray>Shops selling <query>"
       result: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
