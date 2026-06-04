@@ -53,10 +53,27 @@ class SearchResultsMenu(
             pane.addItem(GuiItem(icon) {
                 it.isCancelled = true
                 player.closeInventory()
-                player.sendMessage(lang.msg(
-                    "gui.shop.search.clicked",
-                    "world" to shop.signWorld, "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ,
-                ))
+                // Admins teleport to the shop; everyone else (and admins whose target
+                // world isn't loaded) gets the coords pasted to chat so the click is
+                // never a silent no-op.
+                val world = if (player.hasPermission("enthusiamarket.admin.shop")) {
+                    Bukkit.getWorld(shop.signWorld)
+                } else {
+                    null
+                }
+                if (world != null) {
+                    player.teleport(org.bukkit.Location(
+                        world, shop.signX + 0.5, shop.signY.toDouble(), shop.signZ + 0.5,
+                        player.location.yaw, player.location.pitch,
+                    ))
+                    player.sendMessage(lang.msg("gui.shop.search.teleported",
+                        "world" to shop.signWorld, "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
+                } else {
+                    player.sendMessage(lang.msg(
+                        "gui.shop.search.clicked",
+                        "world" to shop.signWorld, "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ,
+                    ))
+                }
             }, idx % 9, idx / 9)
         }
 

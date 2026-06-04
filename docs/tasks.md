@@ -560,4 +560,5 @@ References: REQ-024 through REQ-027
 
 - [x] ItemShops parity SP1 — /shop management commands (list/edit/trust/untrust/delete/breakdelete)
 - [x] ItemShops parity SP2 — /shop search (searchEnabled opt-in, results GUI with live stock)
+- [x] ItemShops parity SP5 — admin tooling (/shop admin view/info/remove/fix/breakothers + search teleport)
 - [x] ItemShops parity SP6 — misc/integration (transaction log + /shop history, owner notifications, PAPI placeholders, sign-click info card)

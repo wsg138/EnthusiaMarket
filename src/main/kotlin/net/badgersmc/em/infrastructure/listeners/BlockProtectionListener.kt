@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.application.BreakDeleteMode
+import net.badgersmc.em.application.AdminBreakMode
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -28,6 +29,7 @@ import java.util.logging.Logger
 class BlockProtectionListener(
     private val shopRepository: ShopRepository,
     private val breakDelete: BreakDeleteMode,
+    private val adminBreak: AdminBreakMode,
     private val management: ShopManagementService,
     private val logger: Logger,
     private val lang: LangService
@@ -50,6 +52,11 @@ class BlockProtectionListener(
                 if (shop.owner == player.uniqueId && breakDelete.isActive(player.uniqueId)) {
                     management.delete(player.uniqueId, shop.id)
                     player.sendMessage(lang.msg("shop.delete.done"))
+                    return // allow break; shop already deleted
+                }
+                if (player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId)) {
+                    management.adminDelete(shop.id)
+                    player.sendMessage(lang.msg("shop.admin.breakothers.deleted"))
                     return // allow break; shop already deleted
                 }
                 cancelSignBreak(event, shop, event.player)

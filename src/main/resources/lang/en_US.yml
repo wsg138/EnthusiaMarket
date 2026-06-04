@@ -206,6 +206,24 @@ shop:
     header: "<gold>Your shop sales <gray>(page <page>)"
     line: "<gray>- <white><when></white> <dark_gray>| <green><qty>x <item></green> <dark_gray>| <gold><price></gold> <dark_gray>| <yellow><buyer>"
     empty: "<gray>No recorded sales yet."
+  admin:
+    no_target: "<red>You're not looking at a shop sign or container."
+    info:
+      header: "<gold>━━ Shop owned by <yellow><owner></yellow> ━━"
+      where: "<gray>Sign <white><world> <x>,<y>,<z></white>  <dark_gray>|  <gray>Chest <white><cworld> <cx>,<cy>,<cz>"
+      trade: "<gray>Mode <white><dir></white>  <dark_gray>|  <green><sell_amt>x <sell></green>  <dark_gray>|  <gold><cost>"
+      flags: "<gray>Trusted <white><trusted></white>  <dark_gray>|  <gray>Frozen <white><frozen></white>  <dark_gray>|  <gray>Searchable <white><searchable>"
+    remove:
+      done: "<green>Shop removed."
+      not_found: "<red>That shop no longer exists."
+    fix:
+      done: "<green>Sign re-rendered; container OK."
+      container_missing: "<yellow>Sign re-rendered, but the linked container is gone — use /shop admin remove."
+      not_a_sign: "<red>The stored sign block isn't a sign anymore — use /shop admin remove."
+    breakothers:
+      enabled: "<green>Break-others mode ON for <gold><minutes></gold> minute(s). Break any shop sign to delete it."
+      disabled: "<gray>Break-others mode disabled."
+      deleted: "<green>Admin-broke and deleted that shop."
   edit:
     saved: "<green>Shop updated."
   delete:
@@ -226,6 +244,7 @@ gui:
       title: "<dark_gray>Shops selling <query>"
       result: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
       clicked: "<gray>Shop at <white><world> <x> <y> <z> <gray>— pasted to chat."
+      teleported: "<green>Teleported to shop at <white><world> <x> <y> <z></white>."
       prev: "<yellow><- Previous page"
       next: "<yellow>Next page ->"
     create:

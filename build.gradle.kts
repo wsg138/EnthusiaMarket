@@ -204,6 +204,7 @@ configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
         node("enthusiamarket.stall.setkind", default = Default.OP, description = "Set a stall's region kind")
         node("enthusiamarket.stall.entitylimit", default = Default.OP, description = "Set per-stall entity-limit override")
         node("enthusiamarket.stall.recount", default = Default.OP, description = "Force entity-count rescan for a stall")
+        node("enthusiamarket.admin.shop", default = Default.OP, description = "Admin shop tooling (/shop admin view/info/remove/fix/breakothers + search teleport)")
     }
 }
 
