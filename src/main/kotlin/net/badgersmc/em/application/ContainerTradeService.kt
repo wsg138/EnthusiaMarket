@@ -236,4 +236,8 @@ open class ContainerTradeService(
             null
         }
     }
+
+    fun executeTrade(shop: Shop, playerUuid: UUID): ContainerTradeResult {
+        return ContainerTradeResult.Failure("barter not wired yet")
+    }
 }

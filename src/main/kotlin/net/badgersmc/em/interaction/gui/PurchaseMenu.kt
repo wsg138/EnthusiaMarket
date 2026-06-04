@@ -79,6 +79,7 @@ class PurchaseMenu(
             val result = when (shop.direction) {
                 SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
                 SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
+                SignDirection.TRADE -> tradeService.executeTrade(shop, player.uniqueId)
             }
             when (result) {
                 is ContainerTradeResult.Success -> player.sendMessage(

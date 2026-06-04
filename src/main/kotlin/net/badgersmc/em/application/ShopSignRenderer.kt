@@ -15,7 +15,11 @@ class ShopSignRenderer {
 
     /** [SELL]/[BUY] header · `Nx material` · price · [Shop]. */
     fun lines(direction: SignDirection, sellMaterialName: String, sellAmount: Int, price: Long): List<Component> {
-        val headerColor = if (direction == SignDirection.BUY) NamedTextColor.GOLD else NamedTextColor.AQUA
+        val headerColor = when (direction) {
+            SignDirection.BUY -> NamedTextColor.GOLD
+            SignDirection.TRADE -> NamedTextColor.LIGHT_PURPLE
+            else -> NamedTextColor.AQUA
+        }
         return listOf(
             Component.text("[${direction.name}]", headerColor),
             Component.text("${sellAmount}x $sellMaterialName", NamedTextColor.WHITE),
