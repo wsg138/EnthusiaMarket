@@ -27,7 +27,9 @@ class AdminBreakMode {
     fun isActive(player: UUID, nowMs: Long = System.currentTimeMillis()): Boolean {
         val until = expiry[player] ?: return false
         if (nowMs > until) {
-            expiry.remove(player)
+            // Remove only if still the same expiry we read, so a concurrent enable()
+            // that refreshed the window isn't clobbered by this lazy cleanup.
+            expiry.remove(player, until)
             return false
         }
         return true

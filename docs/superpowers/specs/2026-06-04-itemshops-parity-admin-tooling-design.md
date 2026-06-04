@@ -60,10 +60,10 @@ Hexagonal/SPEAR. Pure, unit-testable units; Bukkit-touching glue kept thin.
   per-UUID timed toggle (`enable`/`disable`/`isActive`, `parseDurationMs` reused from
   `BreakDeleteMode.parseDurationMs`). Not persisted; clears on restart. `@Component`.
 - **`LookAtShopResolver`** (`application/`) — resolves the shop an actor is looking at. Pure core
-  takes the target `Block?` and returns a `Shop?` via the injected `ShopRepository`
-  (`findBySign` first, then `findByContainer().firstOrNull()`); the Bukkit raycast
-  (`getTargetBlockExact`) is done by the caller and passed in, so the resolution logic is testable
-  without a live world. `@Service`.
+  takes the target block's `resolve(world: String?, x, y, z)` and returns a `Shop?` via the injected
+  `ShopRepository` (`findBySign` first, then `findByContainer().firstOrNull()`); the Bukkit raycast
+  (`getTargetBlockExact`) and coord extraction are done by the caller, so the resolution logic is
+  testable without a live world. `@Service`.
 - **`ShopSignRenderer`** (`application/`) — pure: `lines(shop: Shop): List<Component>` produces the
   four formatted sign lines (`[SELL]`/`[BUY]`, `Nx item`, `price`, `[Shop]`). Extracted from the
   inline block in `SignPlaceListener` so **both** shop creation and `fix` render identically. No
@@ -92,10 +92,11 @@ Hexagonal/SPEAR. Pure, unit-testable units; Bukkit-touching glue kept thin.
 
 ### Data flow — `/shop admin info`
 
-```
+```text
 player runs /shop admin info
   → ShopCommands.adminInfo  (perm: enthusiamarket.admin.shop, player-only)
-  → LookAtShopResolver.resolve(player.getTargetBlockExact(6))
+  → val b = player.getTargetBlockExact(6)
+  → LookAtShopResolver.resolve(b?.world?.name, b.x, b.y, b.z)
       → ShopRepository.findBySign(...) ?: findByContainer(...).firstOrNull()
   → null → "shop.admin.no_target"
   → else → send chat info card (owner via Bukkit.getOfflinePlayer(owner).name, coords, direction,
@@ -104,7 +105,7 @@ player runs /shop admin info
 
 ### Data flow — `breakothers` delete
 
-```
+```text
 admin runs /shop admin breakothers 10m → AdminBreakMode.enable(uuid, 10*60_000)
 admin breaks any shop sign
   → BlockProtectionListener.onBlockBreak

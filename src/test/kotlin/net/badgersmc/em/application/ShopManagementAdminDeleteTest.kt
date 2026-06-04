@@ -31,9 +31,10 @@ class ShopManagementAdminDeleteTest {
         verify { repo.delete(42) }
     }
 
-    @Test fun `returns false for a missing shop`() {
+    @Test fun `returns false for a missing shop and never deletes`() {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.findById(99) } returns null
         assertFalse(ShopManagementService(repo).adminDelete(99))
+        verify(exactly = 0) { repo.delete(99) }
     }
 }

@@ -214,15 +214,20 @@ class ShopCommands(
         val signState = org.bukkit.Bukkit.getWorld(shop.signWorld)
             ?.getBlockAt(shop.signX, shop.signY, shop.signZ)?.state
         if (signState !is org.bukkit.block.Sign) { player.sendMessage(lang.msg("shop.admin.fix.not_a_sign")); return }
-        val sell = ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
-        val lines = signRenderer.lines(shop.direction, sell, shop.sellAmount, shop.costAmount.toLong())
-        val side = signState.getSide(org.bukkit.block.sign.Side.FRONT)
-        lines.forEachIndexed { i, c -> side.line(i, c) }
-        signState.update()
+        reRenderShopSign(shop, signState)
         val containerState = org.bukkit.Bukkit.getWorld(shop.containerWorld)
             ?.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)?.state
         if (containerState !is org.bukkit.block.Container) player.sendMessage(lang.msg("shop.admin.fix.container_missing"))
         else player.sendMessage(lang.msg("shop.admin.fix.done"))
+    }
+
+    /** Re-apply the four sign lines from stored shop data onto the live sign block. */
+    private fun reRenderShopSign(shop: net.badgersmc.em.domain.shop.Shop, sign: org.bukkit.block.Sign) {
+        val sell = ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
+        val side = sign.getSide(org.bukkit.block.sign.Side.FRONT)
+        signRenderer.lines(shop.direction, sell, shop.sellAmount, shop.costAmount.toLong())
+            .forEachIndexed { i, c -> side.line(i, c) }
+        sign.update()
     }
 
     @Subcommand("admin breakothers")

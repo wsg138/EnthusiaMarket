@@ -625,11 +625,11 @@ Inside `ShopCommands`, add:
         val durationMs = BreakDeleteMode.parseDurationMs(mode)
         if (durationMs == null) {
             adminBreak.disable(player.uniqueId)
-            player.sendMessage(lang.msg("shop.admin.breakothers.off"))
+            player.sendMessage(lang.msg("shop.admin.breakothers.disabled"))
             return
         }
         adminBreak.enable(player.uniqueId, durationMs)
-        player.sendMessage(lang.msg("shop.admin.breakothers.on", "minutes" to (durationMs / 60_000)))
+        player.sendMessage(lang.msg("shop.admin.breakothers.enabled", "minutes" to (durationMs / 60_000)))
     }
 ```
 
@@ -655,10 +655,12 @@ In `en_US.yml`, extend the `shop.admin` block started in Task 5 so the full bloc
       container_missing: "<yellow>Sign re-rendered, but the linked container is gone — use /shop admin remove."
       not_a_sign: "<red>The stored sign block isn't a sign anymore — use /shop admin remove."
     breakothers:
-      on: "<green>Break-others mode ON for <gold><minutes></gold> minute(s). Break any shop sign to delete it."
-      off: "<gray>Break-others mode disabled."
+      enabled: "<green>Break-others mode ON for <gold><minutes></gold> minute(s). Break any shop sign to delete it."
+      disabled: "<gray>Break-others mode disabled."
       deleted: "<green>Admin-broke and deleted that shop."
 ```
+
+> Note: `enabled`/`disabled` (not `on`/`off`) — SnakeYAML parses unquoted `on:`/`off:` keys as booleans, which would break the lookup.
 
 (Replace the partial block from Task 5 with this complete one. Keep two-space indentation under `shop:`.)
 
