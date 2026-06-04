@@ -51,6 +51,7 @@ open class SignPlaceListener(
     private val shopRepository: ShopRepository,
     private val guildProvider: GuildProvider,
     private val lang: LangService,
+    private val config: net.badgersmc.em.config.EnthusiaMarketConfig,
 ) : Listener {
 
     @EventHandler
@@ -159,7 +160,7 @@ open class SignPlaceListener(
             costAmount = price.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
             creatorId = player.uniqueId,
             direction = direction,
-            searchEnabled = true,
+            searchEnabled = config.shop.searchDefault,
         )
         shopRepository.upsert(shop)
 

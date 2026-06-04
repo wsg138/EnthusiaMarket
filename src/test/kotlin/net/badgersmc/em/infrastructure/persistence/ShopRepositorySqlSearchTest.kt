@@ -48,4 +48,12 @@ class ShopRepositorySqlSearchTest {
         val created = repo.upsert(shop(searchEnabled = true))
         assertEquals(true, repo.findById(created.id)!!.searchEnabled)
     }
+
+    @Test fun `toggling search_enabled on an existing row persists via UPDATE`() {
+        val repo = ShopRepositorySql(ds)
+        val created = repo.upsert(shop(searchEnabled = true))
+        // Second upsert on the SAME id exercises the UPDATE ... search_enabled = ? WHERE id = ? path.
+        repo.upsert(created.copy(searchEnabled = false))
+        assertEquals(false, repo.findById(created.id)!!.searchEnabled)
+    }
 }

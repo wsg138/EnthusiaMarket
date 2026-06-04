@@ -184,7 +184,7 @@ shop:
     trusted_all: "<green>Trusted <white><name> <green>on all your shops (<count>)."
     untrusted_all: "<yellow>Untrusted <white><name> <yellow>on all your shops (<count>)."
     deleted_all: "<yellow>Deleted <count> shop(s)."
-    breakdelete_on: "<green>Break-delete mode enabled for <minutes> minute(s)>."
+    breakdelete_on: "<green>Break-delete mode enabled for <minutes> minute(s)."
     breakdelete_off: "<yellow>Break-delete mode disabled."
     search:
       usage: "<gray>Usage: /shop search <item> [sell|buy|any] [page]"
@@ -210,6 +210,12 @@ gui:
     buy_lore_click: "<gray>Click to purchase"
     sell_action_name: "<yellow><bold>SELL</bold>"
     sell_action_lore_click: "<gray>Click to sell to this shop"
+    search:
+      title: "<dark_gray>Shops selling <query>"
+      result: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
+      clicked: "<gray>Shop at <white><world> <x> <y> <z> <gray>— pasted to chat."
+      prev: "<yellow><- Previous page"
+      next: "<yellow>Next page ->"
     create:
       title: "<dark_gray>Create Shop"
       price: "<green>Price: <gold><price>"

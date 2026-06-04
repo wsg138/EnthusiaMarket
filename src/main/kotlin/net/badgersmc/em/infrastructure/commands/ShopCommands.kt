@@ -140,6 +140,7 @@ class ShopCommands(
         @Context sender: CommandSender,
         @net.badgersmc.nexus.commands.annotations.Arg("query") query: String? = null,
         @net.badgersmc.nexus.commands.annotations.Arg("mode") modeArg: String = "any",
+        @net.badgersmc.nexus.commands.annotations.Arg("page") pageArg: Int = 1,
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
         if (query == null) { player.sendMessage(lang.msg("shop.cmd.search.usage")); return }
@@ -157,6 +158,6 @@ class ShopCommands(
             ItemStackSerializer.deserialize(shop.sellItem)?.type
         }
         if (results.isEmpty()) { player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query)); return }
-        net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, lang).open(player)
+        net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
     }
 }
