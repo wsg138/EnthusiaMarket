@@ -559,3 +559,4 @@ References: REQ-024 through REQ-027
 6. Mark state as work proceeds: `[~]` when entering `spec`; `[x]` only when `/spear:refine` has cleared state to `idle`.
 
 - [x] ItemShops parity SP1 — /shop management commands (list/edit/trust/untrust/delete/breakdelete)
+- [x] ItemShops parity SP2 — /shop search (searchEnabled opt-in, results GUI with live stock)

@@ -26,6 +26,7 @@ object ShopFactory {
         sellAmount: Int,
         price: Long,
         direction: SignDirection,
+        searchEnabled: Boolean = true,
     ): Shop = Shop(
         stallId = stallId,
         owner = owner,
@@ -37,5 +38,6 @@ object ShopFactory {
         costAmount = price.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(),
         creatorId = creator,
         direction = direction,
+        searchEnabled = searchEnabled,
     )
 }

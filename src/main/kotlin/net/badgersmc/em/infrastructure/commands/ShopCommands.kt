@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.commands
 import net.badgersmc.em.application.BreakDeleteMode
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopManagementService
+import net.badgersmc.em.application.ShopSearchService
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
@@ -21,6 +22,7 @@ class ShopCommands(
     private val management: ShopManagementService,
     private val shopRepository: ShopRepository,
     private val breakDelete: BreakDeleteMode,
+    private val search: ShopSearchService,
     private val lang: LangService,
 ) {
     @Subcommand("list")
@@ -130,5 +132,32 @@ class ShopCommands(
         }
         breakDelete.enable(player.uniqueId, durationMs)
         player.sendMessage(lang.msg("shop.cmd.breakdelete_on", "minutes" to (durationMs / 60_000)))
+    }
+
+    @Subcommand("search")
+    @Permission("enthusiamarket.shop.use")
+    fun search(
+        @Context sender: CommandSender,
+        @net.badgersmc.nexus.commands.annotations.Arg("query") query: String? = null,
+        @net.badgersmc.nexus.commands.annotations.Arg("mode") modeArg: String = "any",
+        @net.badgersmc.nexus.commands.annotations.Arg("page") pageArg: Int = 1,
+    ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        if (query == null) { player.sendMessage(lang.msg("shop.cmd.search.usage")); return }
+        val material = org.bukkit.Material.matchMaterial(query)
+        if (material == null) { player.sendMessage(lang.msg("shop.cmd.search.unknown_item", "query" to query)); return }
+        val mode = when (modeArg.lowercase()) {
+            "sell" -> ShopSearchService.SearchMode.SELL
+            "buy" -> ShopSearchService.SearchMode.BUY
+            else -> ShopSearchService.SearchMode.ANY
+        }
+        if (mode == ShopSearchService.SearchMode.BUY) {
+            player.sendMessage(lang.msg("shop.cmd.search.buy_unavailable")); return
+        }
+        val results = search.search(material, mode, shopRepository.all()) { shop ->
+            ItemStackSerializer.deserialize(shop.sellItem)?.type
+        }
+        if (results.isEmpty()) { player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query)); return }
+        net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
     }
 }

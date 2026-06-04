@@ -66,6 +66,8 @@ data class Shop(
      * normal "owner sells items" shop on upgrade.
      */
     val direction: SignDirection = SignDirection.SELL,
+    /** Whether this shop appears in /shop search results (REQ — ItemShops parity SP2). */
+    val searchEnabled: Boolean = true,
 ) {
     init {
         require(sellAmount > 0) { "sellAmount must be positive, was $sellAmount" }
