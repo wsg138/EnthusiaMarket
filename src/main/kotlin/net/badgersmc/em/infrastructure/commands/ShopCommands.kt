@@ -1,9 +1,12 @@
 package net.badgersmc.em.infrastructure.commands
 
 import net.badgersmc.em.application.BreakDeleteMode
+import net.badgersmc.em.application.AdminBreakMode
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.application.ShopSearchService
+import net.badgersmc.em.application.ShopSignRenderer
+import net.badgersmc.em.application.LookAtShopResolver
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
@@ -23,6 +26,9 @@ class ShopCommands(
     private val shopRepository: ShopRepository,
     private val breakDelete: BreakDeleteMode,
     private val search: ShopSearchService,
+    private val lookAt: LookAtShopResolver,
+    private val adminBreak: AdminBreakMode,
+    private val signRenderer: ShopSignRenderer,
     private val lang: LangService,
 ) {
     @Subcommand("list")
@@ -159,5 +165,85 @@ class ShopCommands(
         }
         if (results.isEmpty()) { player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query)); return }
         net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
+    }
+
+    private fun lookAtShop(player: Player): net.badgersmc.em.domain.shop.Shop? {
+        val b = player.getTargetBlockExact(6) ?: return null
+        return lookAt.resolve(b.world.name, b.x, b.y, b.z)
+    }
+
+    @Subcommand("admin view")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminView(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shop = lookAtShop(player) ?: run { player.sendMessage(lang.msg("shop.admin.no_target")); return }
+        net.badgersmc.em.interaction.gui.ShopEditMenu(shop, shopRepository, management, lang).open(player)
+    }
+
+    @Subcommand("admin info")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminInfo(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shop = lookAtShop(player) ?: run { player.sendMessage(lang.msg("shop.admin.no_target")); return }
+        val owner = org.bukkit.Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
+        val sell = ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
+        player.sendMessage(lang.msg("shop.admin.info.header", "owner" to owner))
+        player.sendMessage(lang.msg("shop.admin.info.where",
+            "world" to shop.signWorld, "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ,
+            "cworld" to shop.containerWorld, "cx" to shop.containerX, "cy" to shop.containerY, "cz" to shop.containerZ))
+        player.sendMessage(lang.msg("shop.admin.info.trade",
+            "dir" to shop.direction.name, "sell_amt" to shop.sellAmount, "sell" to sell, "cost" to shop.costAmount))
+        player.sendMessage(lang.msg("shop.admin.info.flags",
+            "trusted" to shop.trusted.size, "frozen" to shop.frozen, "searchable" to shop.searchEnabled))
+    }
+
+    @Subcommand("admin remove")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminRemove(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shop = lookAtShop(player) ?: run { player.sendMessage(lang.msg("shop.admin.no_target")); return }
+        if (management.adminDelete(shop.id)) player.sendMessage(lang.msg("shop.admin.remove.done"))
+        else player.sendMessage(lang.msg("shop.admin.remove.not_found"))
+    }
+
+    @Subcommand("admin fix")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminFix(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shop = lookAtShop(player) ?: run { player.sendMessage(lang.msg("shop.admin.no_target")); return }
+        val signState = org.bukkit.Bukkit.getWorld(shop.signWorld)
+            ?.getBlockAt(shop.signX, shop.signY, shop.signZ)?.state
+        if (signState !is org.bukkit.block.Sign) { player.sendMessage(lang.msg("shop.admin.fix.not_a_sign")); return }
+        reRenderShopSign(shop, signState)
+        val containerState = org.bukkit.Bukkit.getWorld(shop.containerWorld)
+            ?.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)?.state
+        if (containerState !is org.bukkit.block.Container) player.sendMessage(lang.msg("shop.admin.fix.container_missing"))
+        else player.sendMessage(lang.msg("shop.admin.fix.done"))
+    }
+
+    /** Re-apply the four sign lines from stored shop data onto the live sign block. */
+    private fun reRenderShopSign(shop: net.badgersmc.em.domain.shop.Shop, sign: org.bukkit.block.Sign) {
+        val sell = ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
+        val side = sign.getSide(org.bukkit.block.sign.Side.FRONT)
+        signRenderer.lines(shop.direction, sell, shop.sellAmount, shop.costAmount.toLong())
+            .forEachIndexed { i, c -> side.line(i, c) }
+        sign.update()
+    }
+
+    @Subcommand("admin breakothers")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminBreakOthers(
+        @Context sender: CommandSender,
+        @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "on",
+    ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val durationMs = BreakDeleteMode.parseDurationMs(mode)
+        if (durationMs == null) {
+            adminBreak.disable(player.uniqueId)
+            player.sendMessage(lang.msg("shop.admin.breakothers.disabled"))
+            return
+        }
+        adminBreak.enable(player.uniqueId, durationMs)
+        player.sendMessage(lang.msg("shop.admin.breakothers.enabled", "minutes" to (durationMs / 60_000)))
     }
 }

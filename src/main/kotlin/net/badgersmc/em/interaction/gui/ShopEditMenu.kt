@@ -37,7 +37,10 @@ class ShopEditMenu(
     private var searchEnabled: Boolean = shop.searchEnabled
 
     override fun open(player: Player) {
-        if (player.uniqueId != shop.owner && !player.hasPermission("enthusiamarket.admin")) {
+        if (player.uniqueId != shop.owner &&
+            !player.hasPermission("enthusiamarket.admin") &&
+            !player.hasPermission("enthusiamarket.admin.shop")
+        ) {
             player.sendMessage(lang.msg("shop.edit.not_owner"))
             return
         }

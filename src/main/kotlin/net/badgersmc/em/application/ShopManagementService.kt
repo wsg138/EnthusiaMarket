@@ -51,6 +51,14 @@ class ShopManagementService(
         return owned.size
     }
 
+    /** Delete a shop regardless of owner (admin tooling, SP5). Returns true when deleted. */
+    fun adminDelete(shopId: Long): Boolean {
+        val shop = shopRepository.findById(shopId) ?: return false
+        shopRepository.delete(shopId)
+        fireShopDeleted(shop.owner)
+        return true
+    }
+
     /**
      * Fire [ShopDeletedEvent] so listeners (analytics, advancement hooks, sign
      * cleanup) react to command/menu/breakdelete deletes the same way they do to

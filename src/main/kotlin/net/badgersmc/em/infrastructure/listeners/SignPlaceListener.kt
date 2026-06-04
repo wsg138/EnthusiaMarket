@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.listeners
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldguard.WorldGuard
 import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -12,9 +13,7 @@ import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.i18n.LangService
-import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
-import net.kyori.adventure.text.Component as AdventureComponent
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
@@ -52,6 +51,7 @@ open class SignPlaceListener(
     private val guildProvider: GuildProvider,
     private val lang: LangService,
     private val config: net.badgersmc.em.config.EnthusiaMarketConfig,
+    private val signRenderer: ShopSignRenderer,
 ) : Listener {
 
     @EventHandler
@@ -115,9 +115,9 @@ open class SignPlaceListener(
         }
 
         // Parse amount + price.
-        val amount = plain.serialize(lines.getOrElse(1) { AdventureComponent.empty() })
+        val amount = plain.serialize(lines.getOrElse(1) { net.kyori.adventure.text.Component.empty() })
             .trim().toIntOrNull()
-        val price = plain.serialize(lines.getOrElse(2) { AdventureComponent.empty() })
+        val price = plain.serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
             .trim().toLongOrNull()
         if (amount == null || amount <= 0 || price == null || price <= 0) {
             player.sendMessage(lang.msg("shop.create.invalid_input"))
@@ -165,11 +165,8 @@ open class SignPlaceListener(
         shopRepository.upsert(shop)
 
         // Auto-format the four lines.
-        val headerColor = if (direction == SignDirection.BUY) NamedTextColor.GOLD else NamedTextColor.AQUA
-        event.line(0, AdventureComponent.text("[${direction.name}]", headerColor))
-        event.line(1, AdventureComponent.text("${amount}x ${held.type.name.lowercase()}", NamedTextColor.WHITE))
-        event.line(2, AdventureComponent.text("$price", NamedTextColor.GOLD))
-        event.line(3, AdventureComponent.text("[Shop]", NamedTextColor.GOLD))
+        val rendered = signRenderer.lines(direction, held.type.name.lowercase(), amount, price)
+        rendered.forEachIndexed { i, c -> event.line(i, c) }
 
         player.sendMessage(lang.msg("shop.create.success"))
         try {
