@@ -38,6 +38,7 @@ open class ContainerTradeService(
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider?,
+    private val vaultService: ShopVaultService,
 ) {
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
@@ -238,6 +239,37 @@ open class ContainerTradeService(
     }
 
     fun executeTrade(shop: Shop, playerUuid: UUID): ContainerTradeResult {
-        return ContainerTradeResult.Failure("barter not wired yet")
+        if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
+        val stall = stallRepository.findById(StallId(shop.stallId))
+            ?: return ContainerTradeResult.Failure("Stall not found")
+        val ownerUuid = resolveOwnerUuid(stall) ?: return ContainerTradeResult.Failure("Invalid owner")
+        val player = getPlayer(playerUuid) ?: return ContainerTradeResult.Failure("Player not online")
+        val sellStack = buildSellStack(shop) ?: return ContainerTradeResult.Failure("Invalid item")
+        val costBase = deserializeStack(shop.costItem) ?: return ContainerTradeResult.Failure("Invalid cost item")
+        val costStack = costBase.clone().apply { amount = shop.costAmount }
+        if (!player.inventory.containsAtLeast(costStack, shop.costAmount))
+            return ContainerTradeResult.Failure("You don't have the items to pay")
+        val container = getContainer(shop) ?: return ContainerTradeResult.Failure("Container missing")
+        val inv = container.inventory
+        if (!inv.containsAtLeast(sellStack, shop.sellAmount)) return ContainerTradeResult.Failure("Out of stock")
+
+        // Execute: take payment from buyer.
+        if (player.inventory.removeItem(costStack.clone()).isNotEmpty())
+            return ContainerTradeResult.Failure("Not enough payment items")
+        vaultService.deposit(ownerUuid, costBase.clone().apply { amount = 1 }, shop.costAmount)
+
+        // Give stock to buyer.
+        inv.removeItem(sellStack.clone())
+        if (player.inventory.addItem(sellStack.clone()).isNotEmpty()) {
+            // Rollback: stock back to chest, payment back to buyer, undo the vault deposit.
+            inv.addItem(sellStack)
+            vaultService.withdraw(ownerUuid, costBase.clone().apply { amount = 1 }, shop.costAmount)
+            player.inventory.addItem(costStack)
+            return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
+        }
+
+        fireTransactionEvent(player, ownerUuid, sellStack, shop.sellAmount, 0L, shop.id, shop.direction)
+        return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
     }
 }
