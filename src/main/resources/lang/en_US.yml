@@ -209,8 +209,8 @@ shop:
       container_missing: "<yellow>Sign re-rendered, but the linked container is gone — use /shop admin remove."
       not_a_sign: "<red>The stored sign block isn't a sign anymore — use /shop admin remove."
     breakothers:
-      on: "<green>Break-others mode ON for <gold><minutes></gold> minute(s). Break any shop sign to delete it."
-      off: "<gray>Break-others mode disabled."
+      enabled: "<green>Break-others mode ON for <gold><minutes></gold> minute(s). Break any shop sign to delete it."
+      disabled: "<gray>Break-others mode disabled."
       deleted: "<green>Admin-broke and deleted that shop."
   edit:
     saved: "<green>Shop updated."

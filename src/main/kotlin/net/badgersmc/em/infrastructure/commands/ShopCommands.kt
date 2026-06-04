@@ -235,10 +235,10 @@ class ShopCommands(
         val durationMs = BreakDeleteMode.parseDurationMs(mode)
         if (durationMs == null) {
             adminBreak.disable(player.uniqueId)
-            player.sendMessage(lang.msg("shop.admin.breakothers.off"))
+            player.sendMessage(lang.msg("shop.admin.breakothers.disabled"))
             return
         }
         adminBreak.enable(player.uniqueId, durationMs)
-        player.sendMessage(lang.msg("shop.admin.breakothers.on", "minutes" to (durationMs / 60_000)))
+        player.sendMessage(lang.msg("shop.admin.breakothers.enabled", "minutes" to (durationMs / 60_000)))
     }
 }
