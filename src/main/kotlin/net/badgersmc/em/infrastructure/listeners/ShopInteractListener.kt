@@ -59,7 +59,7 @@ open class ShopInteractListener(
         // Shift-right-click → info card (ItemShops parity SP6)
         if (player.isSneaking) {
             val owner = org.bukkit.Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
-            val item = net.badgersmc.em.application.ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
+            val item = ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
             ShopInfoCard.lines(
                 lang, shop.direction.name, item, shop.sellAmount, shop.costAmount.toLong(), owner, stockOf(shop),
             ).forEach { player.sendMessage(it) }
@@ -97,7 +97,7 @@ open class ShopInteractListener(
         val world = Bukkit.getWorld(shop.containerWorld) ?: return 0
         val state = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state
         val inv = (state as? org.bukkit.block.Container)?.inventory ?: return 0
-        val sellStack = net.badgersmc.em.application.ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
+        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
         val total = inv.contents.filterNotNull().filter { it.isSimilar(sellStack) }.sumOf { it.amount }
         return total / shop.sellAmount.coerceAtLeast(1)
     }
