@@ -129,6 +129,13 @@ open class EnthusiaMarket : JavaPlugin() {
             throw RuntimeException("Failed to register listeners — disabling plugin. ${e.message}", e)
         }
 
+        // PlaceholderAPI expansions (no-ops if PAPI absent).
+        net.badgersmc.nexus.papi.registerNexusExpansions(
+            basePackage = "net.badgersmc.em",
+            classLoader = this::class.java.classLoader,
+            nexus = ctx,
+        )
+
         // Particle outline render loop (REQ-240/241): every 4 ticks, plan
         // points within the global budget and spawn END_ROD per requesting
         // player. Purges expired outlines first.

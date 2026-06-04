@@ -38,6 +38,8 @@ repositories {
     maven("https://repo.fastasyncworldedit.com/releases") // FastAsyncWorldEdit
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
 
+    maven("https://repo.extendedclip.com/content/repositories/placeholderapi/") // PlaceholderAPI
+
     // Nexus releases — served via JitPack (https://jitpack.io). No token
     // required; the repo at https://github.com/BadgersMC/Nexus is public.
     // jitpack.io is already declared above.
@@ -89,6 +91,10 @@ dependencies {
     // capture/restore (REQ-270..272). WE/FAWE themselves stay compileOnly
     // below; this module only adds the thin Kotlin facade over them.
     implementation("com.github.BadgersMC.Nexus:nexus-worldedit:v2.2.1")
+
+    // PlaceholderAPI expansion — provide-side only; registerNexusExpansions no-ops without PAPI.
+    compileOnly("me.clip:placeholderapi:2.11.6")
+    implementation("com.github.BadgersMC.Nexus:nexus-papi:v2.2.1")
 
     // Runtime-downloaded by Paper via plugin.yml `libraries:` — kept on compile +
     // test classpath but excluded from the shaded jar to shrink it from ~27 MB
