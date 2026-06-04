@@ -28,6 +28,15 @@ open class EnthusiaMarket : JavaPlugin() {
     override fun onEnable() {
         dataFolder.mkdirs()
 
+        // Register our permissions in code. Paper/Leaf does not reliably register
+        // the `permissions:` block from paper-plugin.yml for this plugin (custom
+        // loader + Paper plugin format), so on a server with no permission manager
+        // (vanilla SuperPerms) every default-true node silently resolves to op-only
+        // — which makes Brigadier hide every /em and /shop subcommand from non-ops
+        // ("Unknown command"). Reading the same generated descriptor keeps the
+        // nexus-permissions DSL the single source of truth (no drift). Idempotent.
+        registerDeclaredPermissions()
+
         // Phase 1: Detect Vault availability before Nexus DI context is created,
         // so that schedulers/listeners see the correct VaultHealth value (REQ-041).
         val vaultHealth = VaultHealth()
@@ -139,6 +148,47 @@ open class EnthusiaMarket : JavaPlugin() {
         }, 0L, 4L)
 
         logger.info("EnthusiaMarket enabled (v${description.version})")
+    }
+
+    /**
+     * Register every permission declared in the bundled `paper-plugin.yml`
+     * `permissions:` block with Bukkit, with its declared default. This is the
+     * runtime registration Paper/Leaf isn't performing for us; without it,
+     * default-true player nodes resolve to op-only on a server with no permission
+     * manager and Brigadier hides the commands from non-ops. Idempotent — skips
+     * nodes already present so it never clobbers an externally-managed perm.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    private fun registerDeclaredPermissions() {
+        val pm = Bukkit.getPluginManager()
+        val stream = this::class.java.classLoader.getResourceAsStream("paper-plugin.yml") ?: run {
+            logger.warning("paper-plugin.yml not found on classpath; skipping permission registration")
+            return
+        }
+        var registered = 0
+        try {
+            val yaml = org.bukkit.configuration.file.YamlConfiguration
+                .loadConfiguration(java.io.InputStreamReader(stream, Charsets.UTF_8))
+            val perms = yaml.getConfigurationSection("permissions") ?: return
+            for (node in perms.getKeys(false)) {
+                if (pm.getPermission(node) != null) continue
+                val default = when (perms.getString("$node.default")?.lowercase()) {
+                    "true" -> org.bukkit.permissions.PermissionDefault.TRUE
+                    "false" -> org.bukkit.permissions.PermissionDefault.FALSE
+                    "not op", "notop", "!op" -> org.bukkit.permissions.PermissionDefault.NOT_OP
+                    else -> org.bukkit.permissions.PermissionDefault.OP
+                }
+                try {
+                    pm.addPermission(org.bukkit.permissions.Permission(node, default))
+                    registered++
+                } catch (e: IllegalArgumentException) {
+                    // Concurrent/duplicate registration — already present, ignore.
+                }
+            }
+        } catch (e: Exception) {
+            logger.warning("Failed to register declared permissions: ${e.message}")
+        }
+        logger.info("Registered $registered EnthusiaMarket permissions")
     }
 
     override fun onDisable() {
