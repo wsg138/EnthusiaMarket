@@ -239,6 +239,36 @@ open class ContainerTradeService(
     }
 
     fun executeTrade(shop: Shop, playerUuid: UUID): ContainerTradeResult {
+        val validated = validateTrade(shop, playerUuid)
+        if (validated is ContainerTradeResult.Failure) return validated
+        val ok = validated as BarterTradeContext
+
+        // Execute: take payment from buyer.
+        if (ok.player.inventory.removeItem(ok.costStack.clone()).isNotEmpty())
+            return ContainerTradeResult.Failure("Not enough payment items")
+        vaultService.deposit(ok.ownerUuid, ok.costBase.clone().apply { amount = 1 }, shop.costAmount)
+
+        // Give stock to buyer.
+        ok.inv.removeItem(ok.sellStack.clone())
+        if (ok.player.inventory.addItem(ok.sellStack.clone()).isNotEmpty()) {
+            // Rollback: stock back to chest, payment back to buyer, undo the vault deposit.
+            ok.inv.addItem(ok.sellStack)
+            vaultService.withdraw(ok.ownerUuid, ok.costBase.clone().apply { amount = 1 }, shop.costAmount)
+            ok.player.inventory.addItem(ok.costStack)
+            return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
+        }
+
+        fireTransactionEvent(ok.player, ok.ownerUuid, ok.sellStack, shop.sellAmount, 0L, shop.id, shop.direction)
+        return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
+    }
+
+    private data class BarterTradeContext(
+        val ownerUuid: UUID, val player: Player, val sellStack: ItemStack,
+        val costBase: ItemStack, val costStack: ItemStack, val inv: org.bukkit.inventory.Inventory,
+    )
+
+    @Suppress("ThrowsCount")
+    private fun validateTrade(shop: Shop, playerUuid: UUID): Any {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
         if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
         val stall = stallRepository.findById(StallId(shop.stallId))
@@ -253,23 +283,6 @@ open class ContainerTradeService(
         val container = getContainer(shop) ?: return ContainerTradeResult.Failure("Container missing")
         val inv = container.inventory
         if (!inv.containsAtLeast(sellStack, shop.sellAmount)) return ContainerTradeResult.Failure("Out of stock")
-
-        // Execute: take payment from buyer.
-        if (player.inventory.removeItem(costStack.clone()).isNotEmpty())
-            return ContainerTradeResult.Failure("Not enough payment items")
-        vaultService.deposit(ownerUuid, costBase.clone().apply { amount = 1 }, shop.costAmount)
-
-        // Give stock to buyer.
-        inv.removeItem(sellStack.clone())
-        if (player.inventory.addItem(sellStack.clone()).isNotEmpty()) {
-            // Rollback: stock back to chest, payment back to buyer, undo the vault deposit.
-            inv.addItem(sellStack)
-            vaultService.withdraw(ownerUuid, costBase.clone().apply { amount = 1 }, shop.costAmount)
-            player.inventory.addItem(costStack)
-            return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
-        }
-
-        fireTransactionEvent(player, ownerUuid, sellStack, shop.sellAmount, 0L, shop.id, shop.direction)
-        return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
+        return BarterTradeContext(ownerUuid, player, sellStack, costBase, costStack, inv)
     }
 }

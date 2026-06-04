@@ -70,7 +70,6 @@ class ContainerTradeServiceTradeTest {
         economy: EconomyProvider = mockk(relaxed = true),
         guildProvider: GuildProvider? = null,
         vaultService: ShopVaultService = mockk(relaxed = true),
-        mockItemStack: ItemStack = mockk(relaxed = true),
         mockCostStack: ItemStack = mockk(relaxed = true),
         mockContainer: Container = mockk(relaxed = true)
     ): ContainerTradeService {
@@ -107,7 +106,6 @@ class ContainerTradeServiceTradeTest {
         val container = mockk<Container>(relaxed = true)
         every { container.inventory } returns containerInv
 
-        val sellStack = mockk<ItemStack>(relaxed = true)
         val costStack = mockk<ItemStack>(relaxed = true)
 
         val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, vaultService) {
