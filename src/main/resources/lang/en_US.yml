@@ -232,6 +232,7 @@ gui:
       title: "<dark_gray>Shops selling <query>"
       result: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
       clicked: "<gray>Shop at <white><world> <x> <y> <z> <gray>— pasted to chat."
+      teleported: "<green>Teleported to shop at <white><world> <x> <y> <z></white>."
       prev: "<yellow><- Previous page"
       next: "<yellow>Next page ->"
     create:
