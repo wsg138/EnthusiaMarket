@@ -2,7 +2,6 @@ package net.badgersmc.em.infrastructure.papi
 
 import io.mockk.every
 import io.mockk.mockk
-import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
 import org.bukkit.OfflinePlayer
@@ -19,9 +18,15 @@ class ShopPlaceholdersTest {
     private fun shops(repo: ShopRepository, tx: ShopTransactionRepository) = ShopPlaceholders(repo, tx)
 
     @Test fun `shops_owned counts the player's shops`() {
-        val repo = mockk<ShopRepository> { every { findByOwner(uuid) } returns listOf(mockk<Shop>(), mockk<Shop>()) }
+        val repo = mockk<ShopRepository> { every { countByOwner(uuid) } returns 2 }
         val tx = mockk<ShopTransactionRepository>(relaxed = true)
         assertEquals("2", shops(repo, tx).resolve(player, "shops_owned"))
+    }
+
+    @Test fun `shops_total counts all shops`() {
+        val repo = mockk<ShopRepository> { every { countAll() } returns 5 }
+        val tx = mockk<ShopTransactionRepository>(relaxed = true)
+        assertEquals("5", shops(repo, tx).resolve(player, "shops_total"))
     }
 
     @Test fun `sales_unseen reads the tx repo`() {

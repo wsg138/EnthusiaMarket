@@ -16,8 +16,8 @@ class ShopPlaceholders(
 ) : PlaceholderResolver {
 
     override fun resolve(player: OfflinePlayer?, params: String): String? = when (params.lowercase()) {
-        "shops_total" -> shops.all().size.toString()
-        "shops_owned" -> player?.let { shops.findByOwner(it.uniqueId).size.toString() }
+        "shops_total" -> shops.countAll().toString()
+        "shops_owned" -> player?.let { shops.countByOwner(it.uniqueId).toString() }
         "sales_unseen" -> player?.let { transactions.countUnnotified(it.uniqueId).toString() }
         else -> null
     }

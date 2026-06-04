@@ -12,5 +12,10 @@ CREATE TABLE IF NOT EXISTS shop_transactions (
     created_at   INTEGER NOT NULL,
     notified     INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX IF NOT EXISTS idx_shop_tx_owner ON shop_transactions(owner);
+-- Composite indexes matched to the actual query shapes:
+--   findByOwner: WHERE owner = ? ORDER BY created_at DESC
+--   countUnnotified / markNotified: WHERE owner = ? AND notified = 0
+--   prune: WHERE created_at < ?
+CREATE INDEX IF NOT EXISTS idx_shop_tx_owner_created ON shop_transactions(owner, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_shop_tx_owner_notified ON shop_transactions(owner, notified);
 CREATE INDEX IF NOT EXISTS idx_shop_tx_created ON shop_transactions(created_at);

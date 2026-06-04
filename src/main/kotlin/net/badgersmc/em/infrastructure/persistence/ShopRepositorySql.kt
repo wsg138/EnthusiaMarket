@@ -75,6 +75,20 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 
     override fun all(): List<Shop> = queryMany("SELECT * FROM shop_items") {}
 
+    override fun countAll(): Int = count("SELECT COUNT(*) FROM shop_items") {}
+
+    override fun countByOwner(owner: UUID): Int =
+        count("SELECT COUNT(*) FROM shop_items WHERE owner = ?") { it.setString(1, owner.toString()) }
+
+    private inline fun count(sql: String, bind: (java.sql.PreparedStatement) -> Unit): Int {
+        ds.connection.use { conn ->
+            conn.prepareStatement(sql).use { ps ->
+                bind(ps)
+                ps.executeQuery().use { rs -> return if (rs.next()) rs.getInt(1) else 0 }
+            }
+        }
+    }
+
     override fun delete(id: Long) {
         ds.connection.use { conn ->
             conn.prepareStatement("DELETE FROM shop_items WHERE id = ?").use { ps ->

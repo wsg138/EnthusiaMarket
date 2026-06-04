@@ -29,7 +29,10 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
                 ps.setLong(8, tx.createdAt)
                 ps.setBoolean(9, tx.notified)
                 ps.executeUpdate()
-                val id = ps.generatedKeys.use { if (it.next()) it.getLong(1) else 0L }
+                val id = ps.generatedKeys.use {
+                    if (it.next()) it.getLong(1)
+                    else error("ShopTransactionRepositorySql.record: no generated key returned")
+                }
                 return tx.copy(id = id)
             }
         }
