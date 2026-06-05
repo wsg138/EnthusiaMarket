@@ -161,10 +161,13 @@ class StallBuyoutService(
             }
             awarded
         } catch (e: Exception) {
+            // Refund the buyer before re-throwing so a persistence failure
+            // doesn't leave them charged for a stall they never got.
+            economy.deposit(payer, price)
             log.severe(
                 "StallBuyoutService: ownership transfer failed for stall " +
                     "${stallId.value} after charging payer $payer price=$price " +
-                    "(owner=$owner). Manual refund required. cause=${e.message}"
+                    "(owner=$owner). Payer has been refunded. cause=${e.message}"
             )
             throw e
         }
