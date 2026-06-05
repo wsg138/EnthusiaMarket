@@ -41,6 +41,8 @@ class StallBuyoutService(
     private val config: EnthusiaMarketConfig,
     private val guildProvider: GuildProvider,
     private val regionMembers: RegionMemberSync,
+    private val limits: LimitResolutionService,
+    private val ownership: StallOwnershipCounter,
 ) {
 
     private val log = Logger.getLogger(StallBuyoutService::class.java.name)
@@ -116,6 +118,19 @@ class StallBuyoutService(
 
         if (stall.state != StallState.UNOWNED) {
             return Result.AlreadyOwned
+        }
+
+        // Personal-ownership limit gate. Guild buys route here with owner.type == GUILD and skip it
+        // (a guild claim is not a personal claim). Counts SOLO-owned stalls only.
+        if (owner.type == OwnerType.SOLO) {
+            val counts = ownership.counts(payer)
+            when (val decision = limits.canClaim(payer, stall.kind, counts.total, counts.byKind[stall.kind] ?: 0)) {
+                is LimitResolutionService.ClaimDecision.Rejected.TotalCapReached ->
+                    return Result.Rejected("Stall limit reached (${decision.cap})")
+                is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
+                    return Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
+                LimitResolutionService.ClaimDecision.Allowed -> Unit
+            }
         }
 
         if (!economy.withdraw(payer, price)) {
