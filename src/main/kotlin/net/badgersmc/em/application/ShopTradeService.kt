@@ -57,10 +57,22 @@ class ShopTradeService(
         val stall = stallRepository.findById(sign.stallId)
             ?: return TradeResult.Failure("Stall not found for sign: ${sign.stallId}")
 
-        if (stall.owner.type == OwnerType.SOLO && stall.owner.id == playerUuid.toString()) {
-            return TradeResult.Failure("Cannot trade with your own shop sign (no self-trade)")
+        // Owner resolution + self-trade guard (REQ-006 / C8).
+        // GUILD-owned stalls are rejected in this legacy sign-trade path: it has no
+        // real guild-bank routing (resolveOwnerUuid would return the trader's own UUID,
+        // i.e. the trader pays/receives to themselves — free items for non-members,
+        // tax bleed for members). Guild shops use the container-shop GUI, which routes
+        // through the guild bank. SOLO self-trade is blocked outright.
+        when (stall.owner.type) {
+            OwnerType.GUILD ->
+                return TradeResult.Failure("Guild-owned shops can't be traded at this sign — use the shop menu")
+            OwnerType.NONE ->
+                return TradeResult.Failure("Invalid or unsupported stall owner on ${stall.id.value}")
+            OwnerType.SOLO ->
+                if (stall.owner.id == playerUuid.toString()) {
+                    return TradeResult.Failure("Cannot trade with your own shop sign (no self-trade)")
+                }
         }
-
         val ownerUuid = resolveOwnerUuid(stall, playerUuid)
             ?: return TradeResult.Failure("Invalid or unsupported stall owner on ${stall.id.value}")
 
@@ -71,8 +83,8 @@ class ShopTradeService(
         val sellerProceeds = sign.price - taxAmount
 
         return when (sign.direction) {
-            SignDirection.BUY -> executeBuy(sign, playerUuid, ownerUuid, sign.itemKey, DEFAULT_AMOUNT, sign.price, sellerProceeds)
-            SignDirection.SELL -> executeSell(sign, playerUuid, ownerUuid, sign.itemKey, DEFAULT_AMOUNT, sign.price, sellerProceeds)
+            SignDirection.BUY -> executeBuy(sign, playerUuid, ownerUuid, sign.itemKey, DEFAULT_AMOUNT, sign.price, taxAmount, sellerProceeds)
+            SignDirection.SELL -> executeSell(sign, playerUuid, ownerUuid, sign.itemKey, DEFAULT_AMOUNT, sign.price, taxAmount, sellerProceeds)
             SignDirection.TRADE -> TradeResult.Failure("Barter not supported through sign trades")
         }
     }
@@ -97,11 +109,43 @@ class ShopTradeService(
     }
 
     /**
+     * The tax destination is a UUID string in config; the literal
+     * "system" (or any value that doesn't parse as a UUID) routes the
+     * tax to a no-op sink — same compromise as SellOfferService and
+     * the existing shop trade tax math.
+     */
+    private fun parseTaxDestination(raw: String): UUID? = try {
+        UUID.fromString(raw.trim())
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
+    /**
+     * Route the sign-shop tax to the configured destination after a
+     * successful seller-side deposit. Tax destination "system" (or
+     * any unparseable value) is a no-op sink; a non-zero tax with a
+     * parseable UUID destination is deposited to that account.
+     * Failures are logged but do not roll back the seller deposit —
+     * the trade is already committed from the caller's perspective.
+     */
+    private fun routeTaxToDestination(taxAmount: Long) {
+        if (taxAmount <= 0) return
+        val taxDestination = parseTaxDestination(config.shop.taxDestination) ?: return
+        if (!economy.deposit(taxDestination, taxAmount)) {
+            logger.warning(
+                "ShopTradeService: tax deposit failed for destination $taxDestination " +
+                    "(tax=$taxAmount); seller proceeds already credited."
+            )
+        }
+    }
+
+    /**
      * BUY: player sells item to the stall owner.
      */
+    @Suppress("LongParameterList")
     private fun executeBuy(
         @Suppress("UnusedParameter") sign: ShopSign, playerUuid: UUID, ownerUuid: UUID,
-        itemKey: String, amount: Int, price: Long, sellerProceeds: Long
+        itemKey: String, amount: Int, price: Long, taxAmount: Long, sellerProceeds: Long
     ): TradeResult {
         if (!items.playerHasItem(playerUuid, itemKey, amount)) {
             return TradeResult.Failure("You do not have $amount x $itemKey")
@@ -118,6 +162,10 @@ class ShopTradeService(
         if (!economy.deposit(playerUuid, sellerProceeds)) {
             return rollbackBuyDeposit(playerUuid, ownerUuid, itemKey, amount, price)
         }
+        // C7 — route the sign-shop tax to the configured destination
+        // (system/unparseable values are a no-op sink; failures are
+        // logged but don't roll back the trade).
+        routeTaxToDestination(taxAmount)
         return TradeResult.Success("Sold $amount x $itemKey for $price ($sellerProceeds after tax)")
     }
 
@@ -154,9 +202,10 @@ class ShopTradeService(
     /**
      * SELL: player buys item from the stall owner.
      */
+    @Suppress("LongParameterList")
     private fun executeSell(
         @Suppress("UnusedParameter") sign: ShopSign, playerUuid: UUID, ownerUuid: UUID,
-        itemKey: String, amount: Int, price: Long, sellerProceeds: Long
+        itemKey: String, amount: Int, price: Long, taxAmount: Long, sellerProceeds: Long
     ): TradeResult {
         if (economy.balance(playerUuid) < price) {
             return TradeResult.Failure("You do not have sufficient balance")
@@ -170,6 +219,10 @@ class ShopTradeService(
         if (!items.giveItemToPlayer(playerUuid, itemKey, amount)) {
             return rollbackSellItem(playerUuid, ownerUuid, sellerProceeds, price)
         }
+        // C7 — route the sign-shop tax LAST, after the item is delivered, so a
+        // give-failure rollback never strands already-routed tax (money creation).
+        // system/unparseable destinations are a no-op sink; failures are logged.
+        routeTaxToDestination(taxAmount)
         return TradeResult.Success("Purchased $amount x $itemKey for $price")
     }
 

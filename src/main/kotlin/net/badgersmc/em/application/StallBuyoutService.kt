@@ -82,20 +82,8 @@ class StallBuyoutService(
         ) {
             return Result.NoGuildPermission
         }
-        // WG sync for guilds not yet wired — attempt best-effort,
-        // but don't block the purchase. DB is authoritative; /em rg resync can fix WG.
-        val result = buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
-        if (result is Result.Purchased) {
-            try {
-                regionMembers.setOwner(result.stall.world, result.stall.regionId, java.util.UUID.fromString(result.stall.owner.id))
-            } catch (e: Exception) {
-                log.warning(
-                    "StallBuyoutService: WG owner sync failed for guild stall ${stallId.value}; " +
-                        "DB owner is correct. cause=${e.message}"
-                )
-            }
-        }
-        return result
+        // WG owner sync (including the GUILD skip) is handled inside buyForOwner.
+        return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
     }
 
     /**
@@ -112,6 +100,28 @@ class StallBuyoutService(
             is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
                 Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
             LimitResolutionService.ClaimDecision.Allowed -> null
+        }
+    }
+
+    /**
+     * Refund the buyer after a persistence failure that left them charged for a stall they never
+     * got. Best-effort: if the refund itself throws, log loudly — the caller always rethrows the
+     * ORIGINAL persistence exception (the root cause), never the deposit error.
+     */
+    private fun refundAfterFailedAward(payer: UUID, price: Long, stallId: StallId, owner: OwnerRef, cause: Exception) {
+        try {
+            economy.deposit(payer, price)
+            log.severe(
+                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} after " +
+                    "charging payer $payer price=$price (owner=$owner). Payer has been refunded. " +
+                    "cause=${cause.message}"
+            )
+        } catch (refund: Exception) {
+            log.severe(
+                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} AND the " +
+                    "refund of $price to $payer also failed — manual refund required. " +
+                    "saveCause=${cause.message}, refundCause=${refund.message}"
+            )
         }
     }
 
@@ -161,11 +171,7 @@ class StallBuyoutService(
             }
             awarded
         } catch (e: Exception) {
-            log.severe(
-                "StallBuyoutService: ownership transfer failed for stall " +
-                    "${stallId.value} after charging payer $payer price=$price " +
-                    "(owner=$owner). Manual refund required. cause=${e.message}"
-            )
+            refundAfterFailedAward(payer, price, stallId, owner, e)
             throw e
         }
 
@@ -195,6 +201,11 @@ class StallBuyoutService(
                     "the region is resynced. cause=${e.message}"
             )
         }
+
+        // C6: remove the OUTER guild WG sync that was previously in
+        // buyForGuild — the inner block above correctly handles GUILD
+        // by logging+skipping. The outer call tried UUID.fromString on
+        // the guild id, which never resolves to a real player UUID.
 
         fireStateChanged(stallId.value, previousState, updated.state)
         return Result.Purchased(updated, price, owner)

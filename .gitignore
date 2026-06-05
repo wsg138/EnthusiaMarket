@@ -11,3 +11,4 @@ libs/
 
 # Local Claude / SPEAR state
 .claude/
+.kotlin/

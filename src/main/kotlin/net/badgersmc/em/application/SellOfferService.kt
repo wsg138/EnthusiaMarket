@@ -39,6 +39,8 @@ class SellOfferService(
     private val economy: EconomyProvider,
     private val config: EnthusiaMarketConfig,
     private val guildProvider: GuildProvider,
+    private val limits: LimitResolutionService,
+    private val ownership: StallOwnershipCounter,
 ) {
 
     private val log = Logger.getLogger(SellOfferService::class.java.name)
@@ -84,6 +86,7 @@ class SellOfferService(
         return Result.Cancelled(offer)
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun purchase(stallId: StallId, buyer: UUID): Result {
         val offer = offers.findByStall(stallId) ?: return Result.NotFound
         val stall = stalls.findById(stallId) ?: return Result.NotFound
@@ -98,6 +101,22 @@ class SellOfferService(
         }
         val tax = (offer.price * taxPct).toLong()
         val total = offer.price + tax
+
+        // M1: ownership-cap gate. StallBuyoutService enforces the same
+        // limit on a fresh click-to-buy; sell-offer purchase also flips
+        // the stall's owner to the buyer, so the cap must apply here too.
+        // Run BEFORE the economy withdraw — refusing after charging would
+        // force a refund path. LimitResolutionService.canClaim returns
+        // Allowed for unlimited groups, so the existing tests (no limits
+        // configured) still pass.
+        val counts = ownership.counts(buyer)
+        when (val decision = limits.canClaim(buyer, stall.kind, counts.total, counts.byKind[stall.kind] ?: 0)) {
+            is LimitResolutionService.ClaimDecision.Rejected.TotalCapReached ->
+                return Result.Rejected("Stall limit reached (${decision.cap})")
+            is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
+                return Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
+            LimitResolutionService.ClaimDecision.Allowed -> { /* proceed */ }
+        }
 
         // 0. Withdraw total from buyer. If this fails the buyer wasn't
         // charged — bail without touching ownership or the seller.

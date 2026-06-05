@@ -303,6 +303,7 @@ class AuctionLifecycleService(
      *
      * @return [SettlementReport] with counts of settled and errored auctions
      */
+    @Suppress("NestedBlockDepth")
     fun settleExpired(): SettlementReport {
         val expired = auctionRepository.findExpired()
         var settled = 0
@@ -325,6 +326,21 @@ class AuctionLifecycleService(
                         && stall.state == StallState.AUCTIONING
                     ) {
                         stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                        // M3 — drop any lingering sell offer on the
+                        // now-UNOWNED stall so a follow-up click doesn't
+                        // trip the offer-mutex check (matches
+                        // StallBuyoutService cleanup pattern: best-effort,
+                        // logged, never re-thrown).
+                        if (sellOffers.findByStall(auction.stallId) != null) {
+                            try {
+                                sellOffers.delete(auction.stallId)
+                            } catch (cleanupErr: Exception) {
+                                logger.warning(
+                                    "AuctionLifecycleService: failed to cleanup lingering sell offer for " +
+                                        "${auction.stallId.value}. cause=${cleanupErr.message}"
+                                )
+                            }
+                        }
                         fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
                     }
                     auctionRepository.save(auction.close())
@@ -338,7 +354,7 @@ class AuctionLifecycleService(
         return SettlementReport(settled = settled, errors = errors)
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ThrowsCount")
     private fun settleWithWinner(auction: Auction) {
         val bid = auction.highBid ?: return
         val stall = stallRepository.findById(auction.stallId)
@@ -406,13 +422,55 @@ class AuctionLifecycleService(
             }
         }
 
-        // 1. Persist state changes (stall awarded + auction closed). Persist
-        // FIRST so the DB is authoritative even if WG sync fails. Caller retries
-        // on failure; persisting after payment would risk double-paying.
+        // 1. Persist state changes (stall awarded + auction closed).
+        //
+        // C3 fix — close the auction FIRST, then award the stall, and on a
+        // stall-save failure REFUND the winner and leave the auction CLOSED.
+        // The winner is already charged at step 0, which runs on every settle;
+        // the old ordering (save stall, then close auction) left the auction
+        // OPEN on a close-failure, so the scheduler re-settled and re-charged.
+        // Closing first + refund-on-failure makes settle charge-exactly-once:
+        //   • Success: auction closed, stall awarded — single charge.
+        //   • Stall-save failure: winner refunded, auction stays CLOSED (no
+        //     re-settle → no re-charge), stall best-effort reverted to UNOWNED
+        //     so it can be re-auctioned later. The winner is made whole either
+        //     way; no money is created or destroyed.
         val awardAt = Instant.now()
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
-        stallRepository.save(updatedStall)
         auctionRepository.save(auction.close())
+        try {
+            stallRepository.save(updatedStall)
+        } catch (e: Exception) {
+            // Stall award failed after the auction was closed + the winner charged.
+            // Refund the winner (no double-charge), keep the auction CLOSED so the
+            // scheduler does not re-settle, and best-effort revert the stall so it
+            // returns to the auctionable pool.
+            logger.severe(
+                "settleWithWinner: stall save failed for auction ${auction.id} after close + charge; " +
+                    "refunding winner ${bid.bidder} (${bid.amount}) and leaving the auction closed. " +
+                    "cause=${e.message}"
+            )
+            if (!economy.deposit(bid.bidder, bid.amount)) {
+                logger.severe(
+                    "settleWithWinner: REFUND FAILED for winner ${bid.bidder} (${bid.amount}) on auction " +
+                        "${auction.id} after stall-save failure — winner is charged with no stall and no " +
+                        "refund; manual intervention required."
+                )
+            }
+            try {
+                if (stall.state == StallState.AUCTIONING) {
+                    stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                    fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+                }
+            } catch (revert: Exception) {
+                logger.severe(
+                    "settleWithWinner: failed to revert stall ${stall.id.value} to UNOWNED after refunding " +
+                        "${bid.bidder}; stall may be stuck AUCTIONING but the winner was refunded. " +
+                        "cause=${revert.message}"
+                )
+            }
+            throw e
+        }
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
         // 2. Sync region AFTER persist (best-effort).

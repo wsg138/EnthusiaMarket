@@ -11,6 +11,7 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
+import java.util.logging.Logger
 
 /** Paginated GUI for the owner's barter vault (ItemShops parity SP3). */
 class ShopVaultMenu(
@@ -22,8 +23,10 @@ class ShopVaultMenu(
 
     companion object {
         private const val PAGE_SIZE = 45
+        private val log = Logger.getLogger(ShopVaultMenu::class.java.name)
     }
 
+    @Suppress("CyclomaticComplexMethod")
     override fun open(player: Player) {
         val all = vaultService.contents(owner.uniqueId)
         val pages = if (all.isEmpty()) 1 else (all.size + PAGE_SIZE - 1) / PAGE_SIZE
@@ -55,7 +58,19 @@ class ShopVaultMenu(
                         if (fit > 0) {
                             player.sendMessage(lang.msg("gui.vault.full", "left" to (total - fit)))
                         }
-                        vaultService.deposit(owner.uniqueId, item.clone().apply { amount = 1 }, leftover.values.sumOf { it.amount })
+                        val leftoverAmount = leftover.values.sumOf { it.amount }
+                        try {
+                            vaultService.deposit(owner.uniqueId, item.clone().apply { amount = 1 }, leftoverAmount)
+                        } catch (e: Exception) {
+                            // Re-deposit failed — try to return the items to the player inventory
+                            // so they're not lost. If the inventory is still full, log a warning and
+                            // accept the loss (items are in transient memory at this point).
+                            log.warning("Vault re-deposit failed for ${owner.uniqueId} (amount=$leftoverAmount, type=${item.type}): ${e.message}")
+                            val returnLeftover = player.inventory.addItem(item.clone().apply { amount = leftoverAmount })
+                            if (returnLeftover.isNotEmpty()) {
+                                log.warning("Player inventory full; ${returnLeftover.values.sumOf { it.amount }}x ${item.type} lost for ${owner.uniqueId}")
+                            }
+                        }
                     } else {
                         player.sendMessage(lang.msg("gui.vault.withdrew", "amount" to removed, "item" to item.type.name.lowercase()))
                     }

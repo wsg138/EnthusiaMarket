@@ -73,6 +73,7 @@ purchase_sign:
     invalid_stall: "<prefix><red>Unknown stall:</red> <stall>"
     invalid_price: "<prefix><red>Sign line 3 must be a positive whole number; got:</red> <price>"
     no_permission: "<prefix><red>You don't have permission to create purchase signs"
+    already_exists: "<prefix><red>A purchase sign already exists at this location — break it first to re-link"
     purchased: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for</gray> <gold><price>"
     purchased_guild: "<prefix><green>Purchased</green> <aqua><stall></aqua> <gray>for your guild — you paid</gray> <gold><price>"
     not_in_guild: "<prefix><red>You are not in a guild — cannot buy for guild"

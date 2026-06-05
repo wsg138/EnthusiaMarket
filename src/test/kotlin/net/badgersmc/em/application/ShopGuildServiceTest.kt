@@ -3,6 +3,7 @@ package net.badgersmc.em.application
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import java.util.UUID
@@ -17,6 +18,7 @@ class ShopGuildServiceTest {
     private val guildId = UUID.fromString("11111111-1111-1111-1111-111111111111")
     private val creatorId = UUID.fromString("22222222-2222-2222-2222-222222222222")
     private val playerId = UUID.fromString("33333333-3333-3333-3333-333333333333")
+    private val strangerId = UUID.fromString("44444444-4444-4444-4444-444444444444")
 
     private val baseShop = Shop(
         id = 1L,
@@ -41,14 +43,16 @@ class ShopGuildServiceTest {
     /** Data class holding service and mocks for verification. */
     private data class ServiceWithMocks(
         val service: ShopGuildService,
-        val shopRepo: ShopRepository
+        val shopRepo: ShopRepository,
+        val guildProvider: GuildProvider,
     )
 
     private fun buildService(
         findByIdResult: Shop? = baseShop,
         setGuildOwnershipResult: Shop? = updatedGuildShop,
         removeGuildOwnershipResult: Shop? = updatedPlayerShop,
-        findByGuildIdResult: List<Shop> = emptyList()
+        findByGuildIdResult: List<Shop> = emptyList(),
+        isMemberResult: Boolean = true,
     ): ServiceWithMocks {
         val shopRepo = mockk<ShopRepository>(relaxUnitFun = true)
         every { shopRepo.findById(any()) } returns findByIdResult
@@ -56,9 +60,13 @@ class ShopGuildServiceTest {
         every { shopRepo.removeGuildOwnership(any()) } returns removeGuildOwnershipResult
         every { shopRepo.findByGuildId(any()) } returns findByGuildIdResult
 
+        val guildProvider = mockk<GuildProvider>(relaxUnitFun = true)
+        every { guildProvider.isMember(any(), any()) } returns isMemberResult
+
         return ServiceWithMocks(
-            service = ShopGuildService(shopRepo),
-            shopRepo = shopRepo
+            service = ShopGuildService(shopRepo, guildProvider),
+            shopRepo = shopRepo,
+            guildProvider = guildProvider,
         )
     }
 
@@ -112,16 +120,49 @@ class ShopGuildServiceTest {
         verify(exactly = 0) { svc.shopRepo.setGuildOwnership(any(), any(), any()) }
     }
 
+    @Test
+    fun `registerGuildShop by non-owner returns failure (C5)`() {
+        val svc = buildService(findByIdResult = baseShop) // owned by playerId
+
+        val result = svc.service.registerGuildShop(1L, guildId, strangerId)
+
+        assertTrue(result.isFailure)
+        val exception = result.exceptionOrNull()
+        assertIs<IllegalAccessException>(exception)
+        assertTrue(exception.message?.contains("does not own") == true)
+
+        verify { svc.shopRepo.findById(1L) }
+        verify(exactly = 0) { svc.shopRepo.setGuildOwnership(any(), any(), any()) }
+    }
+
+    @Test
+    fun `registerGuildShop by non-member returns failure (C5)`() {
+        val svc = buildService(
+            findByIdResult = baseShop, // owned by playerId
+            isMemberResult = false,    // but not in the guild
+        )
+
+        val result = svc.service.registerGuildShop(1L, guildId, playerId)
+
+        assertTrue(result.isFailure)
+        val exception = result.exceptionOrNull()
+        assertIs<IllegalStateException>(exception)
+        assertTrue(exception.message?.contains("not a member") == true)
+
+        verify { svc.shopRepo.findById(1L) }
+        verify(exactly = 0) { svc.shopRepo.setGuildOwnership(any(), any(), any()) }
+    }
+
     // --- unregisterGuildShop ---
 
     @Test
-    fun `unregisterGuildShop removes guild ownership on guild-owned shop`() {
+    fun `unregisterGuildShop removes guild ownership when actor owns the shop (C5)`() {
         val svc = buildService(
-            findByIdResult = guildShop,
+            findByIdResult = guildShop.copy(owner = playerId),
             removeGuildOwnershipResult = updatedPlayerShop
         )
 
-        val result = svc.service.unregisterGuildShop(1L)
+        val result = svc.service.unregisterGuildShop(1L, playerId)
 
         assertTrue(result.isSuccess)
         val shop = result.getOrThrow()
@@ -133,10 +174,40 @@ class ShopGuildServiceTest {
     }
 
     @Test
+    fun `unregisterGuildShop removes guild ownership when actor is a guild member (C5)`() {
+        val svc = buildService(
+            findByIdResult = guildShop,
+            removeGuildOwnershipResult = updatedPlayerShop
+        )
+
+        val result = svc.service.unregisterGuildShop(1L, creatorId)
+
+        assertTrue(result.isSuccess)
+
+        verify { svc.shopRepo.findById(1L) }
+        verify { svc.shopRepo.removeGuildOwnership(1L) }
+    }
+
+    @Test
+    fun `unregisterGuildShop by stranger returns failure (C5)`() {
+        val svc = buildService(findByIdResult = guildShop, isMemberResult = false)
+
+        val result = svc.service.unregisterGuildShop(1L, strangerId)
+
+        assertTrue(result.isFailure)
+        val exception = result.exceptionOrNull()
+        assertIs<IllegalAccessException>(exception)
+        assertTrue(exception.message?.contains("not the shop owner nor a member") == true)
+
+        verify { svc.shopRepo.findById(1L) }
+        verify(exactly = 0) { svc.shopRepo.removeGuildOwnership(any()) }
+    }
+
+    @Test
     fun `unregisterGuildShop on player-owned shop returns failure`() {
         val svc = buildService(findByIdResult = baseShop)
 
-        val result = svc.service.unregisterGuildShop(1L)
+        val result = svc.service.unregisterGuildShop(1L, playerId)
 
         assertTrue(result.isFailure)
         val exception = result.exceptionOrNull()
@@ -151,7 +222,7 @@ class ShopGuildServiceTest {
     fun `unregisterGuildShop on non-existent shop returns failure`() {
         val svc = buildService(findByIdResult = null)
 
-        val result = svc.service.unregisterGuildShop(999L)
+        val result = svc.service.unregisterGuildShop(999L, playerId)
 
         assertTrue(result.isFailure)
         val exception = result.exceptionOrNull()
