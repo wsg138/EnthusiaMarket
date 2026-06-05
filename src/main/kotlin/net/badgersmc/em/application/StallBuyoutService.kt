@@ -82,20 +82,8 @@ class StallBuyoutService(
         ) {
             return Result.NoGuildPermission
         }
-        // WG sync for guilds not yet wired — attempt best-effort,
-        // but don't block the purchase. DB is authoritative; /em rg resync can fix WG.
-        val result = buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
-        if (result is Result.Purchased) {
-            try {
-                regionMembers.setOwner(result.stall.world, result.stall.regionId, java.util.UUID.fromString(result.stall.owner.id))
-            } catch (e: Exception) {
-                log.warning(
-                    "StallBuyoutService: WG owner sync failed for guild stall ${stallId.value}; " +
-                        "DB owner is correct. cause=${e.message}"
-                )
-            }
-        }
-        return result
+        // WG owner sync (including the GUILD skip) is handled inside buyForOwner.
+        return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
     }
 
     /**
