@@ -71,6 +71,7 @@ class AuctionLifecycleService(
     private val limits: LimitResolutionService,
     private val sellOffers: SellOfferRepository,
     private val regionMembers: net.badgersmc.em.domain.ports.RegionMemberSync,
+    private val ownership: StallOwnershipCounter,
     private val schematics: net.badgersmc.em.domain.ports.SchematicService =
         net.badgersmc.em.domain.ports.SchematicService.Disabled,
 ) {
@@ -344,19 +345,14 @@ class AuctionLifecycleService(
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
         // REQ-212 — limit gate. Runs BEFORE economy.withdraw so a winner
-        // at their cap is never charged. Region kind is currently a
-        // placeholder: Stall doesn't carry a kind field yet (lands with
-        // TDD-220), and the per-kind cap collapses to a no-op until then
-        // — the total cap still applies and is the typical ARM use case.
-        val winnerOwnedCount = stallRepository.all().count {
-            it.owner.type == net.badgersmc.em.domain.stall.OwnerType.SOLO &&
-                it.owner.id == bid.bidder.toString()
-        }
+        // at their cap is never charged. Uses the stall's real kind and
+        // StallOwnershipCounter for SOLO-only counts.
+        val counts = ownership.counts(bid.bidder)
         val decision = limits.canClaim(
             player = bid.bidder,
-            kind = DEFAULT_KIND,
-            currentTotal = winnerOwnedCount,
-            currentForKind = winnerOwnedCount,
+            kind = stall.kind,
+            currentTotal = counts.total,
+            currentForKind = counts.byKind[stall.kind] ?: 0,
         )
         if (decision is LimitResolutionService.ClaimDecision.Rejected) {
             // Treat as no-bid: revert system-mass-auctioned stall to
@@ -463,10 +459,7 @@ class AuctionLifecycleService(
     }
 
     private companion object {
-        // Placeholder region kind for limit checks until Stall gains
-        // an explicit kind field (TDD-220). Per-kind caps under this
-        // name resolve via config.limits.<group>.regionkinds.default.
-        const val DEFAULT_KIND = "default"
+        // Placeholder removed: stall.kind is now the real field (SP4).
     }
 
     /**

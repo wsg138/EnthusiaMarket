@@ -89,7 +89,7 @@ class AuctionLifecycleSchematicTest {
 
         val service = AuctionLifecycleService(
             auctionRepo, stallRepo, economy, cfg, limits, sellOffers,
-            mockk(relaxed = true), schematics,
+            mockk(relaxed = true), mockk(relaxed = true), schematics,
         )
         return Triple(service, stallRepo, economy)
     }
