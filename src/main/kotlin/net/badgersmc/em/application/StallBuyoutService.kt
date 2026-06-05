@@ -187,6 +187,11 @@ class StallBuyoutService(
             )
         }
 
+        // C6: remove the OUTER guild WG sync that was previously in
+        // buyForGuild — the inner block above correctly handles GUILD
+        // by logging+skipping. The outer call tried UUID.fromString on
+        // the guild id, which never resolves to a real player UUID.
+
         fireStateChanged(stallId.value, previousState, updated.state)
         return Result.Purchased(updated, price, owner)
     }
