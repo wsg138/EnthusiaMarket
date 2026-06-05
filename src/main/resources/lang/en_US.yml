@@ -40,6 +40,11 @@ admin:
     success: "<prefix><green>Evicted</green> <aqua><stall></aqua> <green>— reset to unowned and WG cleared."
     not_found: "<prefix><red>Stall not found:</red> <stall>"
     not_owned: "<prefix><yellow>Stall</yellow> <aqua><stall></aqua> <yellow>is not currently owned."
+  limit:
+    header: "<gold>Your stall limits"
+    total: "<gray>Total: <white><used></white> / <yellow><cap>"
+    kind: "<gray>  <white><kind></white>: <white><used></white> / <yellow><cap>"
+    unlimited: "<green>∞"
 
 # REQ-250..253 — physical purchase signs. Four lines max per Bukkit sign.
 # Render templates are state-driven by PurchaseSignRenderer.

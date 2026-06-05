@@ -41,6 +41,8 @@ class StallBuyoutService(
     private val config: EnthusiaMarketConfig,
     private val guildProvider: GuildProvider,
     private val regionMembers: RegionMemberSync,
+    private val limits: LimitResolutionService,
+    private val ownership: StallOwnershipCounter,
 ) {
 
     private val log = Logger.getLogger(StallBuyoutService::class.java.name)
@@ -96,6 +98,28 @@ class StallBuyoutService(
         return result
     }
 
+    /**
+     * Personal-ownership limit gate. Guild buys route here with `owner.type == GUILD` and skip it
+     * (a guild claim is not a personal claim). Counts SOLO-owned stalls only. Returns a rejecting
+     * [Result] when the player is at a cap, or null when the claim is allowed.
+     */
+    private fun enforceLimit(owner: OwnerRef, payer: UUID, stall: net.badgersmc.em.domain.stall.Stall): Result? {
+        if (owner.type != OwnerType.SOLO) return null
+        val counts = ownership.counts(payer)
+        return when (val decision = limits.canClaim(payer, stall.kind, counts.total, counts.byKind[stall.kind] ?: 0)) {
+            is LimitResolutionService.ClaimDecision.Rejected.TotalCapReached ->
+                Result.Rejected("Stall limit reached (${decision.cap})")
+            is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
+                Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
+            LimitResolutionService.ClaimDecision.Allowed -> null
+        }
+    }
+
+    /** The stall is mid-auction (initial one-shot or re-auction), so click-to-buy must defer. */
+    private fun isAuctionLive(stall: net.badgersmc.em.domain.stall.Stall, stallId: StallId): Boolean =
+        stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) ||
+            auctions.findOpenByStall(stallId) != null
+
     @Suppress("LongMethod")
     private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Result {
         if (price <= 0) return Result.Rejected("Sign price is invalid")
@@ -104,19 +128,13 @@ class StallBuyoutService(
 
         // Reject on AUCTIONING — the one-shot initial auction is using the
         // stall right now; click-to-buy is for the post-auction lifecycle.
-        if (stall.state in setOf(
-                StallState.AUCTIONING,
-                StallState.RE_AUCTIONING,
-                StallState.EMERGENCY_AUCTIONING,
-            ) ||
-            auctions.findOpenByStall(stallId) != null
-        ) {
-            return Result.AuctionLive
-        }
+        if (isAuctionLive(stall, stallId)) return Result.AuctionLive
 
         if (stall.state != StallState.UNOWNED) {
             return Result.AlreadyOwned
         }
+
+        enforceLimit(owner, payer, stall)?.let { return it }
 
         if (!economy.withdraw(payer, price)) {
             return Result.Rejected("Insufficient funds: $price required")

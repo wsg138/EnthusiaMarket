@@ -7,6 +7,7 @@ import net.badgersmc.em.domain.ports.PermissionChecker
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * Red tests for TDD-210 — LimitResolutionService merges the limit
@@ -46,7 +47,7 @@ class LimitResolutionServiceTest {
         assertEquals(2, effective.regionkinds["farm"])
     }
 
-    @Test fun `player with no granted groups falls back to zero limits`() {
+    @Test fun `player with no granted group is unlimited (no-group fix)`() {
         val config = configWithGroups("vip" to group(total = 5))
         val perms = mockk<PermissionChecker>()
         every { perms.has(any(), any()) } returns false
@@ -54,8 +55,31 @@ class LimitResolutionServiceTest {
         val service = LimitResolutionService(config, perms)
         val effective = service.effectiveLimits(player)
 
-        assertEquals(0, effective.total)
+        assertTrue(effective.isUnlimited)
+        assertEquals(-1, effective.total)
         assertEquals(emptyMap(), effective.regionkinds)
+    }
+
+    @Test fun `player in no granted group is unlimited`() {
+        val cfg = EnthusiaMarketConfig().apply {
+            limits["vip"] = EnthusiaMarketConfig.LimitGroup().apply { total = 3 }
+        }
+        val perms = mockk<PermissionChecker> {
+            every { has(any(), any()) } returns false
+        }
+        val svc = LimitResolutionService(cfg, perms)
+        val p = UUID.randomUUID()
+        assertTrue(svc.effectiveLimits(p).isUnlimited)
+        assertEquals(
+            LimitResolutionService.ClaimDecision.Allowed,
+            svc.canClaim(p, "default", currentTotal = 99, currentForKind = 99),
+        )
+    }
+
+    @Test fun `empty config leaves everyone unlimited`() {
+        val perms = mockk<PermissionChecker> { every { has(any(), any()) } returns false }
+        val svc = LimitResolutionService(EnthusiaMarketConfig(), perms)
+        assertTrue(svc.effectiveLimits(UUID.randomUUID()).isUnlimited)
     }
 
     @Test fun `multiple groups merge by taking the highest value per dimension`() {

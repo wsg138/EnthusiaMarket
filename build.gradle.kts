@@ -206,6 +206,7 @@ configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
         node("enthusiamarket.stall.entitylimit", default = Default.OP, description = "Set per-stall entity-limit override")
         node("enthusiamarket.stall.recount", default = Default.OP, description = "Force entity-count rescan for a stall")
         node("enthusiamarket.admin.shop", default = Default.OP, description = "Admin shop tooling (/shop admin view/info/remove/fix/breakothers + search teleport)")
+        node("enthusiamarket.admin.bypasslimit", default = Default.OP, description = "Bypass all stall-ownership limits")
     }
 }
 
