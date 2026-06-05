@@ -3,10 +3,12 @@ package net.badgersmc.em.infrastructure.commands
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.application.ImportStallsService
+import net.badgersmc.em.application.LimitResolutionService
 import net.badgersmc.em.application.MassAuctionResult
 import net.badgersmc.em.application.SellOfferService
 import net.badgersmc.em.application.StallEvictionService
 import net.badgersmc.em.application.StallMemberService
+import net.badgersmc.em.application.StallOwnershipCounter
 import net.badgersmc.em.application.StallSellbackService
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.stall.OwnerType
@@ -51,11 +53,33 @@ class AdminCommands(
     private val stallInfo: net.badgersmc.em.application.StallInfoService,
     private val particleBorders: net.badgersmc.em.application.ParticleBorderService,
     private val stallEviction: StallEvictionService,
+    private val limits: LimitResolutionService,
+    private val ownership: StallOwnershipCounter,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
         java.util.concurrent.ConcurrentHashMap<Pair<UUID, String>, java.time.Instant>()
     private val sellbackConfirmWindow: java.time.Duration = java.time.Duration.ofSeconds(30)
+
+    @Subcommand("limit")
+    @Permission("enthusiamarket.stall.info")
+    fun limitInfo(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val eff = limits.effectiveLimits(player.uniqueId)
+        val counts = ownership.counts(player.uniqueId)
+        player.sendMessage(lang.msg("admin.limit.header"))
+        val totalCap = capLabel(eff.total)
+        player.sendMessage(lang.msg("admin.limit.total", "used" to counts.total, "cap" to totalCap))
+        for ((kind, cap) in eff.regionkinds) {
+            player.sendMessage(lang.msg("admin.limit.kind", "kind" to kind, "used" to (counts.byKind[kind] ?: 0), "cap" to capLabel(cap)))
+        }
+    }
+
+    private fun capLabel(cap: Int): String =
+        if (cap < 0) net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+            .serialize(lang.msg("admin.limit.unlimited"))
+        else cap.toString()
+
     @Subcommand("import")
     @Permission("enthusiamarket.admin.import")
     fun import(@Context sender: CommandSender) {
