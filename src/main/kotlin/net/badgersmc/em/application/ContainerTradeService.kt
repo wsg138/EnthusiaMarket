@@ -34,6 +34,7 @@ private data class TradeContext(
  * with economy integration for both personal and guild shops.
  */
 @Service
+@Suppress("TooManyFunctions")
 open class ContainerTradeService(
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,
@@ -256,7 +257,11 @@ open class ContainerTradeService(
             return ContainerTradeResult.CompensationFailed(error = "Vault deposit failed", compensation = "Payment refunded")
         }
 
-        // Give stock to buyer.
+        return deliverStock(ok, shop)
+    }
+
+    /** Move stock from the chest to the buyer; reverse payment + vault deposit if the buyer is full. */
+    private fun deliverStock(ok: BarterTradeContext, shop: Shop): ContainerTradeResult {
         ok.inv.removeItem(ok.sellStack.clone())
         if (ok.player.inventory.addItem(ok.sellStack.clone()).isNotEmpty()) {
             // Rollback: stock back to chest, payment back to buyer, undo the vault deposit.
@@ -265,7 +270,6 @@ open class ContainerTradeService(
             ok.player.inventory.addItem(ok.costStack)
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
-
         fireTransactionEvent(ok.player, ok.ownerUuid, ok.sellStack, shop.sellAmount, 0L, shop.id, shop.direction)
         return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
     }
@@ -282,16 +286,23 @@ open class ContainerTradeService(
 
     private fun invalid(reason: String) = TradeValidation.Invalid(ContainerTradeResult.Failure(reason))
 
+    // sellAmount/costAmount are guaranteed > 0 by Shop.init, so no amount guard is needed here.
     @Suppress("ReturnCount")
     private fun validateTrade(shop: Shop, playerUuid: UUID): TradeValidation {
         if (shop.frozen) return invalid("This shop is frozen")
-        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return invalid("Invalid trade amounts")
         val stall = stallRepository.findById(StallId(shop.stallId)) ?: return invalid("Stall not found")
         val ownerUuid = resolveOwnerUuid(stall) ?: return invalid("Invalid owner")
         val player = getPlayer(playerUuid) ?: return invalid("Player not online")
         val sellStack = buildSellStack(shop) ?: return invalid("Invalid item")
         val costBase = deserializeStack(shop.costItem) ?: return invalid("Invalid cost item")
         val costStack = costBase.clone().apply { amount = shop.costAmount }
+        return checkAvailability(shop, ownerUuid, player, sellStack, costBase, costStack)
+    }
+
+    private fun checkAvailability(
+        shop: Shop, ownerUuid: UUID, player: Player,
+        sellStack: ItemStack, costBase: ItemStack, costStack: ItemStack,
+    ): TradeValidation {
         if (!player.inventory.containsAtLeast(costStack, shop.costAmount))
             return invalid("You don't have the items to pay")
         val container = getContainer(shop) ?: return invalid("Container missing")
