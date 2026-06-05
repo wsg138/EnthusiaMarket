@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
@@ -93,7 +94,7 @@ class RentCollectionServiceTest {
         val cfg = config(gracePeriod = gracePeriod)
 
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, economy, cfg, mockk(relaxed = true)),
+            service = RentCollectionService(stallRepo, mockk(relaxed = true), economy, cfg, mockk(relaxed = true)),
             stallRepo = stallRepo,
             economy = economy,
             config = cfg

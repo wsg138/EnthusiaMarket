@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.RegionMemberSync
@@ -63,7 +64,7 @@ class SchematicRestoreTest {
         val schematics = mockk<SchematicService>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, economy, config(), mockk(relaxed = true), schematics,
+            stallRepo, mockk<SellOfferRepository>(relaxed = true), economy, config(), mockk(relaxed = true), schematics,
         )
 
         val report = service.tick(now)
@@ -82,7 +83,7 @@ class SchematicRestoreTest {
         val schematics = mockk<SchematicService>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, economy, config(enabled = false), mockk(relaxed = true), schematics,
+            stallRepo, mockk<SellOfferRepository>(relaxed = true), economy, config(enabled = false), mockk(relaxed = true), schematics,
         )
 
         service.tick(now)
@@ -116,7 +117,7 @@ class SchematicRestoreTest {
         val guilds = mockk<GuildProvider>(relaxed = true)
         val regionMembers = mockk<RegionMemberSync>(relaxed = true)
         return StallSellbackService(
-            stalls, shops, economy, guilds, config(enabled = enabled), regionMembers, schematics,
+            stalls, shops, mockk<SellOfferRepository>(relaxed = true), economy, guilds, config(enabled = enabled), regionMembers, schematics,
         )
     }
 

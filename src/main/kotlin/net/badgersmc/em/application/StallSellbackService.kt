@@ -1,6 +1,7 @@
 package net.badgersmc.em.application
 
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.RegionMemberSync
@@ -42,6 +43,7 @@ import kotlin.math.ceil
 class StallSellbackService(
     private val stalls: StallRepository,
     private val shops: ShopRepository,
+    private val offers: SellOfferRepository,
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
@@ -109,6 +111,20 @@ class StallSellbackService(
                 nextRentAt = null,
             )
             stalls.save(cleared)
+            // M3 — drop any lingering sell offer on the now-UNOWNED
+            // stall so a follow-up click doesn't trip the
+            // offer-mutex check (matches StallBuyoutService cleanup
+            // pattern: best-effort, logged, never re-thrown).
+            if (offers.findByStall(stallId) != null) {
+                try {
+                    offers.delete(stallId)
+                } catch (cleanupErr: Exception) {
+                    log.warning(
+                        "StallSellbackService.execute: failed to cleanup lingering sell offer for " +
+                            "${stallId.value}. cause=${cleanupErr.message}"
+                    )
+                }
+            }
         } catch (e: Exception) {
             return ExecuteResult.Rejected("Stall reset failed; contact an admin")
         }

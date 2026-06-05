@@ -1,6 +1,7 @@
 package net.badgersmc.em.application
 
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.ports.SchematicService
@@ -13,6 +14,7 @@ import net.badgersmc.nexus.annotations.Service
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.logging.Logger
 
 /**
  * Report from a single rent collection tick.
@@ -31,6 +33,7 @@ data class RentReport(
 @Service
 class RentCollectionService(
     private val stallRepository: StallRepository,
+    private val offers: SellOfferRepository,
     private val economy: EconomyProvider,
     private val config: EnthusiaMarketConfig,
     private val regionMembers: RegionMemberSync,
@@ -97,7 +100,15 @@ class RentCollectionService(
         } catch (_: IllegalArgumentException) {
             return ProcessResult.Skipped
         }
-        val rentDue = stall.rentTerms.dailyRent(stall.winningBid)
+        // M4: floor to at least 1 unit whenever the stall had a real buy
+        // price. Default rent.formulaPct (0.01) on a 1000-coin stall
+        // computes to 0.0001 → toLong() = 0, which previously let
+        // players ride the formula rent-free forever. The floor closes
+        // that hole, matching StallRentExtensionService and
+        // StallSellbackService. True rent-free stalls (winningBid <= 0)
+        // keep the no-charge path so admin-gifted regions don't surprise-bill.
+        val computed = stall.rentTerms.dailyRent(stall.winningBid)
+        val rentDue = if (stall.winningBid > 0L) maxOf(computed, 1L) else computed
 
         val withdrawSuccess = economy.withdraw(ownerUuid, rentDue)
 
@@ -144,6 +155,21 @@ class RentCollectionService(
                             nextRentAt = null,
                         )
                         )
+                    // M3 — drop any lingering sell offer on the
+                    // now-UNOWNED stall so a follow-up click doesn't
+                    // trip the offer-mutex check (matches
+                    // StallBuyoutService cleanup pattern: best-effort,
+                    // logged, never re-thrown).
+                    if (offers.findByStall(stall.id) != null) {
+                        try {
+                            offers.delete(stall.id)
+                        } catch (cleanupErr: Exception) {
+                            log.warning(
+                                "RentCollectionService: failed to cleanup lingering sell offer for " +
+                                    "${stall.id.value}. cause=${cleanupErr.message}"
+                            )
+                        }
+                    }
                     try {
                         regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
                     } catch (_: Exception) {
