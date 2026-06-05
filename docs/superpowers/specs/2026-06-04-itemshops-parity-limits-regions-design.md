@@ -85,8 +85,9 @@ command. `LimitResolutionService` stays Bukkit-free (it already takes counts as 
 
 - **`StallBuyoutService.buyForOwner`** — inject `LimitResolutionService` + `StallOwnershipCounter`.
   Before the economy charge: `val c = counter.counts(payer); canClaim(payer, stall.kind, c.total,
-  c.byKind[stall.kind] ?: 0)`. On `Rejected` → return a `Result` failure carrying the reason (no
-  charge, no ownership change). `buyForGuild` is untouched.
+  c.byKind[stall.kind] ?: 0)`. On `Rejected` → return `Result.Rejected(reason)` with a plain-English
+  reason string (no charge, no ownership change), matching the existing `StallBuyoutService`/
+  `SellOfferService` convention (rendered via `purchase_sign.msg.rejected`). `buyForGuild` is untouched.
 - **`AuctionLifecycleService`** (settle path) — replace the inline `stallRepository.all().count{…}`
   + `DEFAULT_KIND` placeholder with `counter.counts(bid.bidder)` and the stall's real `kind`, so the
   per-kind cap applies on auction wins too.
@@ -94,7 +95,8 @@ command. `LimitResolutionService` stays Bukkit-free (it already takes counts as 
   (reuse `enthusiamarket.stall.info` or add `enthusiamarket.limit.view` default true): render
   `effectiveLimits(player)` (total + per-kind, `∞` for `-1`/unlimited) against `counter.counts(player)`.
 - **`build.gradle.kts`** — `node("enthusiamarket.admin.bypasslimit", default = Default.OP, …)`.
-- **`en_US.yml`** — `limit.reject.{total,kind}` + `limit.info.*`.
+- **`en_US.yml`** — `limit.info.*` (for `/em limit`). Buyout rejections use plain-string
+  `Result.Rejected` reasons, not lang keys.
 
 ### Data flow — a personal buyout
 
@@ -102,15 +104,15 @@ command. `LimitResolutionService` stays Bukkit-free (it already takes counts as 
 player buys a stall (sign / /em stall buy) → StallBuyoutService.buyForOwner(stallId, payer, price)
   → counter.counts(payer)  →  (total, byKind)   [SOLO-owned only]
   → limits.canClaim(payer, stall.kind, total, byKind[stall.kind] ?: 0)
-      → Rejected.TotalCapReached(cap) → Result.failure(limit.reject.total)  [no charge]
-      → Rejected.KindCapReached(kind, cap) → Result.failure(limit.reject.kind)  [no charge]
+      → Rejected.TotalCapReached(cap) → Result.Rejected("Stall limit reached (cap)")  [no charge]
+      → Rejected.KindCapReached(kind, cap) → Result.Rejected("Limit reached for <kind> stalls (cap)")  [no charge]
       → Allowed → proceed: economy.withdraw → set owner SOLO → persist
 ```
 
 ## 3. Error handling
 
-- **Total cap reached** → `limit.reject.total` (cap shown). **Kind cap reached** → `limit.reject.kind`
-  (kind + cap). Both **before** any economy charge or ownership write.
+- **Total / kind cap reached** → `Result.Rejected(reason)` (plain string, cap shown), rendered via
+  `purchase_sign.msg.rejected`. Both **before** any economy charge or ownership write.
 - **Admin bypass** (`enthusiamarket.admin.bypasslimit`) → `canClaim` short-circuits to `Allowed`.
 - **`/em limit` from console** → players-only (existing key).
 - **Player in no limit group** → unlimited (per the critical fix in §1). `/em limit` renders `∞`;
@@ -136,6 +138,6 @@ player buys a stall (sign / /em stall buy) → StallBuyoutService.buyForOwner(st
    path's inline count to use it.
 3. Gate `StallBuyoutService.buyForOwner` with `canClaim` + reject results (+ test).
 4. Wire the real `stall.kind` + kind-restricted count into the auction settle gate (+ test).
-5. `/em limit` command + `limit.info.*`/`limit.reject.*` lang + `enthusiamarket.admin.bypasslimit` node
+5. `/em limit` command + `limit.info.*` lang + `enthusiamarket.admin.bypasslimit` node
    (+ formatter test).
 6. Final gate (`clean detekt test shadowJar`) + mark `docs/tasks.md`.

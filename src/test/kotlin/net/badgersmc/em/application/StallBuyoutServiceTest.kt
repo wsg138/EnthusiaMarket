@@ -138,10 +138,9 @@ class StallBuyoutServiceTest {
             limits = limits, ownership = ownership,
         )
 
-        // Even though claimDecision is TotalCapReached(0), guild buy should skip the SOLO gate
+        // claimDecision is TotalCapReached(0), but the guild buy (owner.type == GUILD) skips the
+        // SOLO-only limit gate entirely — with the happy-path mocks it proceeds to Purchased.
         val result = svc.buyForGuild(stallId, player, 100L)
-        // Should proceed past the limit gate (not Rejected), but may fail at WG sync or succeed
-        // The key assertion: it must NOT be Result.Rejected with "limit reached"
-        assertTrue(result !is StallBuyoutService.Result.Rejected || !result.reason.contains("limit"))
+        assertIs<StallBuyoutService.Result.Purchased>(result)
     }
 }
