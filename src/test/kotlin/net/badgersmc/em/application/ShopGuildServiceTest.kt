@@ -190,7 +190,7 @@ class ShopGuildServiceTest {
 
     @Test
     fun `unregisterGuildShop by stranger returns failure (C5)`() {
-        val svc = buildService(findByIdResult = guildShop)
+        val svc = buildService(findByIdResult = guildShop, isMemberResult = false)
 
         val result = svc.service.unregisterGuildShop(1L, strangerId)
 

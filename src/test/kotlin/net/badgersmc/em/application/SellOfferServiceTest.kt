@@ -195,6 +195,10 @@ class SellOfferServiceTest {
         val offers = mockk<SellOfferRepository>(relaxed = true)
         val stalls = mockk<StallRepository>(relaxed = true)
         val economy = mockk<EconomyProvider>()
+        val limits = mockk<LimitResolutionService>(relaxed = true)
+        val ownership = mockk<StallOwnershipCounter>(relaxed = true)
+        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
         every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
         every { stalls.findById(stallId) } returns ownedStall()
         every { economy.withdraw(buyer, 1100L) } returns true
@@ -204,8 +208,8 @@ class SellOfferServiceTest {
             offers, stalls, mockk(relaxed = true), economy,
             config(taxPct = 0.10, taxDestination = "system"),
             mockk(relaxed = true),
-                    mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
-                )
+            limits, ownership,
+        )
         val r = svc.purchase(stallId, buyer)
 
         val ok = assertIs<Result.Purchased>(r)
@@ -227,6 +231,10 @@ class SellOfferServiceTest {
         val offers = mockk<SellOfferRepository>(relaxed = true)
         val stalls = mockk<StallRepository>(relaxed = true)
         val economy = mockk<EconomyProvider>()
+        val limits = mockk<LimitResolutionService>(relaxed = true)
+        val ownership = mockk<StallOwnershipCounter>(relaxed = true)
+        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
         every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
         every { stalls.findById(stallId) } returns ownedStall()
         every { economy.withdraw(buyer, 1100L) } returns true
@@ -236,8 +244,8 @@ class SellOfferServiceTest {
             offers, stalls, mockk(relaxed = true), economy,
             config(taxPct = 0.10, taxDestination = taxAccount.toString()),
             mockk(relaxed = true),
-                    mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
-                )
+            limits, ownership,
+        )
         svc.purchase(stallId, buyer)
 
         // Tax routed to the configured account.
@@ -246,17 +254,22 @@ class SellOfferServiceTest {
     }
 
     @Test fun `purchase with insufficient buyer balance Rejected, nothing moves`() {
-        val offers = mockk<SellOfferRepository>(relaxed = true)
-        val stalls = mockk<StallRepository>(relaxed = true)
-        val economy = mockk<EconomyProvider>()
-        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
-        every { stalls.findById(stallId) } returns ownedStall()
-        every { economy.withdraw(buyer, 1100L) } returns false
+            val offers = mockk<SellOfferRepository>(relaxed = true)
+            val stalls = mockk<StallRepository>(relaxed = true)
+            val economy = mockk<EconomyProvider>()
+            val limits = mockk<LimitResolutionService>(relaxed = true)
+            val ownership = mockk<StallOwnershipCounter>(relaxed = true)
+            every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+            every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
+            every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+            every { stalls.findById(stallId) } returns ownedStall()
+            every { economy.withdraw(buyer, 1100L) } returns false
 
-        val svc = SellOfferService(
-            offers, stalls, mockk(relaxed = true), economy,
-            config(taxPct = 0.10), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
- )
+            val svc = SellOfferService(
+                offers, stalls, mockk(relaxed = true), economy,
+                config(taxPct = 0.10), mockk(relaxed = true),
+                limits, ownership,
+            )
         val r = svc.purchase(stallId, buyer)
 
         assertIs<Result.Rejected>(r)
