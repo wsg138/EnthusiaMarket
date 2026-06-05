@@ -74,7 +74,7 @@ class SellOfferServiceTest {
         every { auctions.findOpenByStall(stallId) } returns null
         every { offers.findByStall(any()) } returns null
 
-        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true))
         val r = svc.create(stallId, seller, price = 500L)
 
         val ok = assertIs<Result.Created>(r)
@@ -88,7 +88,7 @@ class SellOfferServiceTest {
         val auctions = mockk<AuctionRepository>()
         every { stalls.findById(stallId) } returns ownedStall(owner = UUID.randomUUID())
 
-        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true))
         val r = svc.create(stallId, seller, price = 500L)
 
         assertEquals(Result.NotAuthorised, r)
@@ -103,7 +103,7 @@ class SellOfferServiceTest {
         every { auctions.findOpenByStall(stallId) } returns mockk(relaxed = true)
         every { offers.findByStall(any()) } returns null
 
-        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true))
         val r = svc.create(stallId, seller, price = 500L)
 
         assertEquals(Result.AuctionOpen, r)
@@ -117,7 +117,7 @@ class SellOfferServiceTest {
         every { stalls.findById(stallId) } returns ownedStall()
         every { offers.findByStall(stallId) } returns mockk(relaxed = true)
 
-        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true))
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true))
         val r = svc.create(stallId, seller, price = 500L)
 
         assertEquals(Result.OfferOpen, r)
@@ -130,16 +130,16 @@ class SellOfferServiceTest {
 
         val svc = SellOfferService(
             mockk(relaxed = true), stalls, mockk(relaxed = true),
-            mockk(relaxed = true), config(), mockk(relaxed = true),
-        )
+            mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+ )
         assertEquals(Result.NotFound, svc.create(stallId, seller, 500L))
     }
 
     @Test fun `create with non-positive price is Rejected`() {
         val svc = SellOfferService(
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
-            mockk(relaxed = true), config(), mockk(relaxed = true),
-        )
+            mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+ )
         assertIs<Result.Rejected>(svc.create(stallId, seller, 0L))
         assertIs<Result.Rejected>(svc.create(stallId, seller, -5L))
     }
@@ -153,8 +153,8 @@ class SellOfferServiceTest {
 
         val svc = SellOfferService(
             offers, mockk(relaxed = true), mockk(relaxed = true),
-            mockk(relaxed = true), config(), mockk(relaxed = true),
-        )
+            mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+ )
         val r = svc.cancel(stallId, seller)
 
         assertIs<Result.Cancelled>(r)
@@ -171,8 +171,8 @@ class SellOfferServiceTest {
         val intruder = UUID.randomUUID()
         val svc = SellOfferService(
             offers, stalls, mockk(relaxed = true),
-            mockk(relaxed = true), config(), mockk(relaxed = true),
-        )
+            mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+ )
         val r = svc.cancel(stallId, intruder)
 
         assertEquals(Result.NotAuthorised, r)
@@ -184,8 +184,8 @@ class SellOfferServiceTest {
         every { offers.findByStall(stallId) } returns null
         val svc = SellOfferService(
             offers, mockk(relaxed = true), mockk(relaxed = true),
-            mockk(relaxed = true), config(), mockk(relaxed = true),
-        )
+            mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+ )
         assertEquals(Result.NotFound, svc.cancel(stallId, seller))
     }
 
@@ -204,7 +204,8 @@ class SellOfferServiceTest {
             offers, stalls, mockk(relaxed = true), economy,
             config(taxPct = 0.10, taxDestination = "system"),
             mockk(relaxed = true),
-        )
+                    mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+                )
         val r = svc.purchase(stallId, buyer)
 
         val ok = assertIs<Result.Purchased>(r)
@@ -235,7 +236,8 @@ class SellOfferServiceTest {
             offers, stalls, mockk(relaxed = true), economy,
             config(taxPct = 0.10, taxDestination = taxAccount.toString()),
             mockk(relaxed = true),
-        )
+                    mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+                )
         svc.purchase(stallId, buyer)
 
         // Tax routed to the configured account.
@@ -253,8 +255,8 @@ class SellOfferServiceTest {
 
         val svc = SellOfferService(
             offers, stalls, mockk(relaxed = true), economy,
-            config(taxPct = 0.10), mockk(relaxed = true),
-        )
+            config(taxPct = 0.10), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+ )
         val r = svc.purchase(stallId, buyer)
 
         assertIs<Result.Rejected>(r)
@@ -272,8 +274,8 @@ class SellOfferServiceTest {
 
         val svc = SellOfferService(
             offers, stalls, mockk(relaxed = true), economy,
-            config(), mockk(relaxed = true),
-        )
+            config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+ )
         val r = svc.purchase(stallId, seller)
 
         assertIs<Result.Rejected>(r)
@@ -286,8 +288,8 @@ class SellOfferServiceTest {
 
         val svc = SellOfferService(
             offers, mockk(relaxed = true), mockk(relaxed = true),
-            mockk(relaxed = true), config(), mockk(relaxed = true),
-        )
+            mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
+ )
         assertEquals(Result.NotFound, svc.purchase(stallId, buyer))
     }
 }
