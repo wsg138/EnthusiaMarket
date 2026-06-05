@@ -77,10 +77,22 @@ class StallRentExtensionService(
             stalls.save(updated)
             fireStateChanged(stallId.value, stall.state, updated.state)
         } catch (e: Exception) {
-            log.severe(
-                "StallRentExtensionService.extend: persist failed for ${stallId.value} " +
-                    "after charging $actor amount=$amount. Manual refund required. cause=${e.message}"
-            )
+            // Refund the actor before re-throwing so a persistence failure doesn't leave them
+            // charged for an extension that never applied. Best-effort: a refund failure is
+            // logged but the ORIGINAL persistence exception (root cause) is always rethrown.
+            try {
+                economy.deposit(actor, amount)
+                log.severe(
+                    "StallRentExtensionService.extend: persist failed for ${stallId.value} after charging " +
+                        "$actor amount=$amount. Actor has been refunded. cause=${e.message}"
+                )
+            } catch (refund: Exception) {
+                log.severe(
+                    "StallRentExtensionService.extend: persist failed for ${stallId.value} AND the refund of " +
+                        "$amount to $actor also failed — manual refund required. " +
+                        "persistCause=${e.message}, refundCause=${refund.message}"
+                )
+            }
             throw e
         }
         return Result.Extended(pushed, amount)
