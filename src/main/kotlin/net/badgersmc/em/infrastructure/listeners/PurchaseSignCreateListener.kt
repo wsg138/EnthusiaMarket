@@ -78,9 +78,25 @@ open class PurchaseSignCreateListener(
         }
 
         val block = event.block
+        val worldName = block.world.name
+
+        // SignChangeEvent fires on both placement AND re-edit. If a
+        // PurchaseSign already exists at this block, the player is
+        // re-editing an existing sign. Non-admins must destroy the
+        // existing sign first (the existing delete flow handles
+        // un-registering). Admins (enthusiamarket.sign.admin) can
+        // overwrite freely for repair / migration scenarios.
+        if (signs.findAt(worldName, block.x, block.y, block.z) != null &&
+            !player.hasPermission("enthusiamarket.sign.admin")
+        ) {
+            player.sendMessage(lang.msg("purchase_sign.msg.already_exists"))
+            event.isCancelled = true
+            return
+        }
+
         val sign = PurchaseSign(
             stallId = stall.id,
-            world = block.world.name,
+            world = worldName,
             x = block.x, y = block.y, z = block.z,
             price = price,
         )
