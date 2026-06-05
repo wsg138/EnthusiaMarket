@@ -325,6 +325,21 @@ class AuctionLifecycleService(
                         && stall.state == StallState.AUCTIONING
                     ) {
                         stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                        // M3 — drop any lingering sell offer on the
+                        // now-UNOWNED stall so a follow-up click doesn't
+                        // trip the offer-mutex check (matches
+                        // StallBuyoutService cleanup pattern: best-effort,
+                        // logged, never re-thrown).
+                        if (sellOffers.findByStall(auction.stallId) != null) {
+                            try {
+                                sellOffers.delete(auction.stallId)
+                            } catch (cleanupErr: Exception) {
+                                logger.warning(
+                                    "AuctionLifecycleService: failed to cleanup lingering sell offer for " +
+                                        "${auction.stallId.value}. cause=${cleanupErr.message}"
+                                )
+                            }
+                        }
                         fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
                     }
                     auctionRepository.save(auction.close())
@@ -406,13 +421,62 @@ class AuctionLifecycleService(
             }
         }
 
-        // 1. Persist state changes (stall awarded + auction closed). Persist
-        // FIRST so the DB is authoritative even if WG sync fails. Caller retries
-        // on failure; persisting after payment would risk double-paying.
+        // 1. Persist state changes (stall awarded + auction closed).
+        //
+        // C3 fix — close the auction FIRST. The previous ordering saved the
+        // stall with the new owner, then saved the auction as CLOSED. If the
+        // second write failed the auction stayed OPEN; the scheduler would
+        // re-fetch it on the next tick, call settleWithWinner again, and
+        // re-charge the winner (economy.withdraw at step 0 above runs
+        // unconditionally on every settle). Re-ordering to close-then-save
+        // makes the failure mode recoverable: if the stall save throws, we
+        // re-open the auction so the scheduler retries. Net effect:
+        //   • On success: auction closed, stall awarded — single charge.
+        //   • On stall-save failure: auction re-opened to its prior endAt,
+        //     stall untouched on disk — scheduler retries the whole settle.
+        // We deliberately leave the winner's withdraw at step 0 untouched
+        // (it is the source of the double-charge risk we are fixing only on
+        // the stall-save-then-close path, which is the only ordering that
+        // could leave an OPEN auction behind after a partial write).
         val awardAt = Instant.now()
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
-        stallRepository.save(updatedStall)
-        auctionRepository.save(auction.close())
+        val closedAuction = auction.close()
+        auctionRepository.save(closedAuction)
+        try {
+            stallRepository.save(updatedStall)
+        } catch (e: Exception) {
+            // Stall save failed AFTER the auction was already persisted as
+            // CLOSED. Re-open the auction so the scheduler's next tick
+            // re-runs settleWithWinner for the same bid. The stall is still
+            // in its pre-award state (uncommitted) so retry will re-charge
+            // the winner once and re-attempt the stall save. We log loud
+            // because the stall-save-failure path is rare and indicates DB
+            // trouble worth investigating.
+            logger.warning(
+                "settleWithWinner: stall save failed for auction ${auction.id} " +
+                    "after auction was already closed; re-opening for retry. " +
+                    "cause=${e.message}"
+            )
+            try {
+                auctionRepository.save(closedAuction.copy(state = AuctionState.OPEN))
+            } catch (reopen: Exception) {
+                // Stuck state: auction is CLOSED on disk but the stall was
+                // never awarded. The winner's funds are already in escrow
+                // (no seller payout happens), so a manual re-run of
+                // settleWithWinner after fixing the underlying DB issue
+                // will close the loop correctly. Log severely so an
+                // operator notices — do NOT swallow, the scheduler needs
+                // to know this tick errored.
+                logger.severe(
+                    "settleWithWinner: failed to re-open auction ${auction.id} " +
+                        "after stall save failure; auction is CLOSED on disk " +
+                        "but stall is not awarded. Winner ${bid.bidder} is " +
+                        "charged ${bid.amount}; manual intervention required. " +
+                        "stallSave=${e.message}, reopen=${reopen.message}"
+                )
+            }
+            throw e
+        }
         fireStateChanged(stall.id.value, stall.state, updatedStall.state)
 
         // 2. Sync region AFTER persist (best-effort).
