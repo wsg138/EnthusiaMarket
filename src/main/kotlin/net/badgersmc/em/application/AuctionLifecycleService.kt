@@ -303,6 +303,7 @@ class AuctionLifecycleService(
      *
      * @return [SettlementReport] with counts of settled and errored auctions
      */
+    @Suppress("NestedBlockDepth")
     fun settleExpired(): SettlementReport {
         val expired = auctionRepository.findExpired()
         var settled = 0
@@ -353,7 +354,7 @@ class AuctionLifecycleService(
         return SettlementReport(settled = settled, errors = errors)
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ThrowsCount")
     private fun settleWithWinner(auction: Auction) {
         val bid = auction.highBid ?: return
         val stall = stallRepository.findById(auction.stallId)

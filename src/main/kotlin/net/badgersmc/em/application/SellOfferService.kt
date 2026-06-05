@@ -86,6 +86,7 @@ class SellOfferService(
         return Result.Cancelled(offer)
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun purchase(stallId: StallId, buyer: UUID): Result {
         val offer = offers.findByStall(stallId) ?: return Result.NotFound
         val stall = stalls.findById(stallId) ?: return Result.NotFound

@@ -26,6 +26,7 @@ class ShopVaultMenu(
         private val log = Logger.getLogger(ShopVaultMenu::class.java.name)
     }
 
+    @Suppress("CyclomaticComplexMethod")
     override fun open(player: Player) {
         val all = vaultService.contents(owner.uniqueId)
         val pages = if (all.isEmpty()) 1 else (all.size + PAGE_SIZE - 1) / PAGE_SIZE

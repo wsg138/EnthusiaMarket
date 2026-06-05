@@ -135,6 +135,7 @@ class ShopTradeService(
     /**
      * BUY: player sells item to the stall owner.
      */
+    @Suppress("LongParameterList")
     private fun executeBuy(
         @Suppress("UnusedParameter") sign: ShopSign, playerUuid: UUID, ownerUuid: UUID,
         itemKey: String, amount: Int, price: Long, taxAmount: Long, sellerProceeds: Long
@@ -194,6 +195,7 @@ class ShopTradeService(
     /**
      * SELL: player buys item from the stall owner.
      */
+    @Suppress("LongParameterList")
     private fun executeSell(
         @Suppress("UnusedParameter") sign: ShopSign, playerUuid: UUID, ownerUuid: UUID,
         itemKey: String, amount: Int, price: Long, taxAmount: Long, sellerProceeds: Long

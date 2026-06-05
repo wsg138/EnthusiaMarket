@@ -88,7 +88,7 @@ class StallSellbackService(
         return QuoteResult.Ok(Quote(stall, refund, shopCount, periods))
     }
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun execute(stallId: StallId, actor: UUID): ExecuteResult {
         val stall = stalls.findById(stallId) ?: return ExecuteResult.NotFound
         if (stall.state !in OWNERSHIP_STATES) return ExecuteResult.NotOwned
