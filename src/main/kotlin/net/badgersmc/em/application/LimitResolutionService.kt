@@ -51,18 +51,19 @@ class LimitResolutionService(
         if (perms.has(player, bypassNode)) {
             return EffectiveLimits(total = UNLIMITED, regionkinds = emptyMap())
         }
-
+        var matched = false
         var total = 0
         val regionkinds = mutableMapOf<String, Int>()
-
         for ((name, group) in config.limits) {
             if (!perms.has(player, "$LIMIT_PREFIX$name")) continue
+            matched = true
             total = mergeBest(total, group.total)
             for ((kind, cap) in group.regionkinds) {
                 regionkinds.merge(kind, cap, ::mergeBest)
             }
         }
-
+        // No configured group applies to this player → no cap (limits only bind explicitly-grouped players).
+        if (!matched) return EffectiveLimits(total = UNLIMITED, regionkinds = emptyMap())
         return EffectiveLimits(total, regionkinds.toMap())
     }
 
