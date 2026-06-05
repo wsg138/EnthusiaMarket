@@ -161,6 +161,8 @@ shop:
     no_permission: "<red>You do not have permission to create shops (enthusiamarket.shop.create)"
     needs_wallsign: "<red>Shop signs must be wall-mounted on the side of a container"
     no_held_item: "<red>Hold the item you want to trade in your main hand before placing the sign"
+    no_guild_trade: "<red>Guild-owned stalls can't host [TRADE] shops."
+    invalid_trade_cost: "<red>Line 3 must be '<amount> <item>', e.g. '16 diamond'."
   edit:
     not_owner: "<red>You don't own this shop"
     frozen: "<red>Shop frozen"
@@ -240,6 +242,8 @@ gui:
     buy_lore_click: "<gray>Click to purchase"
     sell_action_name: "<yellow><bold>SELL</bold>"
     sell_action_lore_click: "<gray>Click to sell to this shop"
+    trade_name: "<light_purple><bold>TRADE</bold>"
+    trade_lore_click: "<gray>Click to pay <gold><cost></gold>× and receive the item"
     search:
       title: "<dark_gray>Shops selling <query>"
       result: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
@@ -271,6 +275,9 @@ gui:
       hopper_out: "<gray>Hopper out: <state>"
       freeze: "<gray>Freeze: <state>"
       search: "<green>Searchable: <gold><state>"
+      cost_item: "<gray>Cost item (click: set from hand)"
+      cost_amount_up: "<green>+1 cost (<amount>)"
+      cost_amount_down: "<red>-1 cost (<amount>)"
       save: "<green>Save"
       delete: "<red>Delete"
     trust:
@@ -281,6 +288,12 @@ gui:
       title: "<dark_red>Delete shops"
       icon: "<white><world> <x>,<y>,<z> <gray>(click to arm)"
       icon_armed: "<red>Click again to DELETE <white><world> <x>,<y>,<z>"
+  vault:
+    title: "<dark_gray>Your barter vault"
+    amount_lore: "<gray>Stored: <aqua><amount>"
+    withdrew: "<green>Withdrew <white><amount>x <item></white>."
+    full: "<yellow>Inventory full — <white><left></white> left in the vault."
+    empty: "<gray>Your barter vault is empty."
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"

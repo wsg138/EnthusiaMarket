@@ -34,10 +34,12 @@ private data class TradeContext(
  * with economy integration for both personal and guild shops.
  */
 @Service
+@Suppress("TooManyFunctions")
 open class ContainerTradeService(
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider?,
+    private val vaultService: ShopVaultService,
 ) {
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
@@ -235,5 +237,77 @@ open class ContainerTradeService(
         } catch (_: Exception) {
             null
         }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    fun executeTrade(shop: Shop, playerUuid: UUID): ContainerTradeResult {
+        val ok = when (val validated = validateTrade(shop, playerUuid)) {
+            is TradeValidation.Invalid -> return validated.failure
+            is TradeValidation.Valid -> validated.ctx
+        }
+
+        // Execute: take payment from buyer.
+        if (ok.player.inventory.removeItem(ok.costStack.clone()).isNotEmpty())
+            return ContainerTradeResult.Failure("Not enough payment items")
+        try {
+            vaultService.deposit(ok.ownerUuid, ok.costBase.clone().apply { amount = 1 }, shop.costAmount)
+        } catch (e: Exception) {
+            // Deposit failed before any stock moved — refund the payment we just took.
+            ok.player.inventory.addItem(ok.costStack)
+            return ContainerTradeResult.CompensationFailed(error = "Vault deposit failed", compensation = "Payment refunded")
+        }
+
+        return deliverStock(ok, shop)
+    }
+
+    /** Move stock from the chest to the buyer; reverse payment + vault deposit if the buyer is full. */
+    private fun deliverStock(ok: BarterTradeContext, shop: Shop): ContainerTradeResult {
+        ok.inv.removeItem(ok.sellStack.clone())
+        if (ok.player.inventory.addItem(ok.sellStack.clone()).isNotEmpty()) {
+            // Rollback: stock back to chest, payment back to buyer, undo the vault deposit.
+            ok.inv.addItem(ok.sellStack)
+            vaultService.withdraw(ok.ownerUuid, ok.costBase.clone().apply { amount = 1 }, shop.costAmount)
+            ok.player.inventory.addItem(ok.costStack)
+            return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
+        }
+        fireTransactionEvent(ok.player, ok.ownerUuid, ok.sellStack, shop.sellAmount, 0L, shop.id, shop.direction)
+        return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
+    }
+
+    private data class BarterTradeContext(
+        val ownerUuid: UUID, val player: Player, val sellStack: ItemStack,
+        val costBase: ItemStack, val costStack: ItemStack, val inv: org.bukkit.inventory.Inventory,
+    )
+
+    private sealed interface TradeValidation {
+        data class Valid(val ctx: BarterTradeContext) : TradeValidation
+        data class Invalid(val failure: ContainerTradeResult.Failure) : TradeValidation
+    }
+
+    private fun invalid(reason: String) = TradeValidation.Invalid(ContainerTradeResult.Failure(reason))
+
+    // sellAmount/costAmount are guaranteed > 0 by Shop.init, so no amount guard is needed here.
+    @Suppress("ReturnCount")
+    private fun validateTrade(shop: Shop, playerUuid: UUID): TradeValidation {
+        if (shop.frozen) return invalid("This shop is frozen")
+        val stall = stallRepository.findById(StallId(shop.stallId)) ?: return invalid("Stall not found")
+        val ownerUuid = resolveOwnerUuid(stall) ?: return invalid("Invalid owner")
+        val player = getPlayer(playerUuid) ?: return invalid("Player not online")
+        val sellStack = buildSellStack(shop) ?: return invalid("Invalid item")
+        val costBase = deserializeStack(shop.costItem) ?: return invalid("Invalid cost item")
+        val costStack = costBase.clone().apply { amount = shop.costAmount }
+        return checkAvailability(shop, ownerUuid, player, sellStack, costBase, costStack)
+    }
+
+    private fun checkAvailability(
+        shop: Shop, ownerUuid: UUID, player: Player,
+        sellStack: ItemStack, costBase: ItemStack, costStack: ItemStack,
+    ): TradeValidation {
+        if (!player.inventory.containsAtLeast(costStack, shop.costAmount))
+            return invalid("You don't have the items to pay")
+        val container = getContainer(shop) ?: return invalid("Container missing")
+        val inv = container.inventory
+        if (!inv.containsAtLeast(sellStack, shop.sellAmount)) return invalid("Out of stock")
+        return TradeValidation.Valid(BarterTradeContext(ownerUuid, player, sellStack, costBase, costStack, inv))
     }
 }

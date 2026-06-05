@@ -3,12 +3,13 @@ package net.badgersmc.em.infrastructure.commands
 import net.badgersmc.em.application.BreakDeleteMode
 import net.badgersmc.em.application.AdminBreakMode
 import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.application.LookAtShopResolver
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.application.ShopSearchService
 import net.badgersmc.em.application.ShopSignRenderer
-import net.badgersmc.em.application.LookAtShopResolver
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
 import net.badgersmc.nexus.i18n.LangService
@@ -249,8 +250,14 @@ class ShopCommands(
     /** Re-apply the four sign lines from stored shop data onto the live sign block. */
     private fun reRenderShopSign(shop: net.badgersmc.em.domain.shop.Shop, sign: org.bukkit.block.Sign) {
         val sell = ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
+        val costDisplay = if (shop.direction == SignDirection.TRADE) {
+            val costMat = ItemStackSerializer.deserialize(shop.costItem)?.type?.name?.lowercase() ?: "?"
+            "${shop.costAmount}x $costMat"
+        } else {
+            "${shop.costAmount}"
+        }
         val side = sign.getSide(org.bukkit.block.sign.Side.FRONT)
-        signRenderer.lines(shop.direction, sell, shop.sellAmount, shop.costAmount.toLong())
+        signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay)
             .forEachIndexed { i, c -> side.line(i, c) }
         sign.update()
     }

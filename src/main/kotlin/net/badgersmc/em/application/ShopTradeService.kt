@@ -73,6 +73,7 @@ class ShopTradeService(
         return when (sign.direction) {
             SignDirection.BUY -> executeBuy(sign, playerUuid, ownerUuid, sign.itemKey, DEFAULT_AMOUNT, sign.price, sellerProceeds)
             SignDirection.SELL -> executeSell(sign, playerUuid, ownerUuid, sign.itemKey, DEFAULT_AMOUNT, sign.price, sellerProceeds)
+            SignDirection.TRADE -> TradeResult.Failure("Barter not supported through sign trades")
         }
     }
 
