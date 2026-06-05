@@ -458,10 +458,6 @@ class AuctionLifecycleService(
         }
     }
 
-    private companion object {
-        // Placeholder removed: stall.kind is now the real field (SP4).
-    }
-
     /**
      * Fire-and-forget StallStateChangedEvent. Bukkit may be unavailable
      * in unit-test contexts; the null check on `getServer()` keeps the
