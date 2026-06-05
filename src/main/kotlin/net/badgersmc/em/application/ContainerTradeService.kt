@@ -262,7 +262,16 @@ open class ContainerTradeService(
 
     /** Move stock from the chest to the buyer; reverse payment + vault deposit if the buyer is full. */
     private fun deliverStock(ok: BarterTradeContext, shop: Shop): ContainerTradeResult {
-        ok.inv.removeItem(ok.sellStack.clone())
+        val leftover = ok.inv.removeItem(ok.sellStack.clone())
+        if (leftover.isNotEmpty()) {
+            // Chest was short (e.g. a hopper drained some between validation and delivery).
+            // Roll back the partial removal, undo the vault deposit, and refund the buyer's payment
+            // so we don't duplicate the stock the buyer just paid for.
+            ok.inv.addItem(ok.sellStack.clone().apply { amount = ok.sellStack.amount - leftover.values.sumOf { it.amount } })
+            vaultService.withdraw(ok.ownerUuid, ok.costBase.clone().apply { amount = 1 }, shop.costAmount)
+            ok.player.inventory.addItem(ok.costStack)
+            return ContainerTradeResult.Failure("Out of stock")
+        }
         if (ok.player.inventory.addItem(ok.sellStack.clone()).isNotEmpty()) {
             // Rollback: stock back to chest, payment back to buyer, undo the vault deposit.
             ok.inv.addItem(ok.sellStack)
