@@ -103,6 +103,28 @@ class StallBuyoutService(
         }
     }
 
+    /**
+     * Refund the buyer after a persistence failure that left them charged for a stall they never
+     * got. Best-effort: if the refund itself throws, log loudly — the caller always rethrows the
+     * ORIGINAL persistence exception (the root cause), never the deposit error.
+     */
+    private fun refundAfterFailedAward(payer: UUID, price: Long, stallId: StallId, owner: OwnerRef, cause: Exception) {
+        try {
+            economy.deposit(payer, price)
+            log.severe(
+                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} after " +
+                    "charging payer $payer price=$price (owner=$owner). Payer has been refunded. " +
+                    "cause=${cause.message}"
+            )
+        } catch (refund: Exception) {
+            log.severe(
+                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} AND the " +
+                    "refund of $price to $payer also failed — manual refund required. " +
+                    "saveCause=${cause.message}, refundCause=${refund.message}"
+            )
+        }
+    }
+
     /** The stall is mid-auction (initial one-shot or re-auction), so click-to-buy must defer. */
     private fun isAuctionLive(stall: net.badgersmc.em.domain.stall.Stall, stallId: StallId): Boolean =
         stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) ||
@@ -149,14 +171,7 @@ class StallBuyoutService(
             }
             awarded
         } catch (e: Exception) {
-            // Refund the buyer before re-throwing so a persistence failure
-            // doesn't leave them charged for a stall they never got.
-            economy.deposit(payer, price)
-            log.severe(
-                "StallBuyoutService: ownership transfer failed for stall " +
-                    "${stallId.value} after charging payer $payer price=$price " +
-                    "(owner=$owner). Payer has been refunded. cause=${e.message}"
-            )
+            refundAfterFailedAward(payer, price, stallId, owner, e)
             throw e
         }
 

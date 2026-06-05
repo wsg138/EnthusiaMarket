@@ -57,17 +57,24 @@ class ShopTradeService(
         val stall = stallRepository.findById(sign.stallId)
             ?: return TradeResult.Failure("Stall not found for sign: ${sign.stallId}")
 
-        // Self-trade guard (REQ-006 / C8): block both SOLO owners trading
-        // at their own shop and guild members trading at a shop owned by
-        // their own guild. resolveOwnerUuid returns playerUuid for
-        // OwnerType.GUILD (treating the actor as the effective owner for
-        // economy transfer), so ownerUuid == playerUuid catches both cases.
+        // Owner resolution + self-trade guard (REQ-006 / C8).
+        // GUILD-owned stalls are rejected in this legacy sign-trade path: it has no
+        // real guild-bank routing (resolveOwnerUuid would return the trader's own UUID,
+        // i.e. the trader pays/receives to themselves — free items for non-members,
+        // tax bleed for members). Guild shops use the container-shop GUI, which routes
+        // through the guild bank. SOLO self-trade is blocked outright.
+        when (stall.owner.type) {
+            OwnerType.GUILD ->
+                return TradeResult.Failure("Guild-owned shops can't be traded at this sign — use the shop menu")
+            OwnerType.NONE ->
+                return TradeResult.Failure("Invalid or unsupported stall owner on ${stall.id.value}")
+            OwnerType.SOLO ->
+                if (stall.owner.id == playerUuid.toString()) {
+                    return TradeResult.Failure("Cannot trade with your own shop sign (no self-trade)")
+                }
+        }
         val ownerUuid = resolveOwnerUuid(stall, playerUuid)
             ?: return TradeResult.Failure("Invalid or unsupported stall owner on ${stall.id.value}")
-
-        if (ownerUuid == playerUuid) {
-            return TradeResult.Failure("Cannot trade with your own shop sign (no self-trade)")
-        }
 
         val validation = validateTradeParams(sign)
         if (validation != null) return validation
@@ -209,13 +216,13 @@ class ShopTradeService(
         if (!economy.deposit(ownerUuid, sellerProceeds)) {
             return rollbackSellDeposit(playerUuid, price)
         }
-        // C7 — route the sign-shop tax to the configured destination
-        // (system/unparseable values are a no-op sink; failures are
-        // logged but don't roll back the trade).
-        routeTaxToDestination(taxAmount)
         if (!items.giveItemToPlayer(playerUuid, itemKey, amount)) {
             return rollbackSellItem(playerUuid, ownerUuid, sellerProceeds, price)
         }
+        // C7 — route the sign-shop tax LAST, after the item is delivered, so a
+        // give-failure rollback never strands already-routed tax (money creation).
+        // system/unparseable destinations are a no-op sink; failures are logged.
+        routeTaxToDestination(taxAmount)
         return TradeResult.Success("Purchased $amount x $itemKey for $price")
     }
 

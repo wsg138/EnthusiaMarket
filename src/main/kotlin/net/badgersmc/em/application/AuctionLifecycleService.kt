@@ -450,7 +450,13 @@ class AuctionLifecycleService(
                     "refunding winner ${bid.bidder} (${bid.amount}) and leaving the auction closed. " +
                     "cause=${e.message}"
             )
-            economy.deposit(bid.bidder, bid.amount)
+            if (!economy.deposit(bid.bidder, bid.amount)) {
+                logger.severe(
+                    "settleWithWinner: REFUND FAILED for winner ${bid.bidder} (${bid.amount}) on auction " +
+                        "${auction.id} after stall-save failure — winner is charged with no stall and no " +
+                        "refund; manual intervention required."
+                )
+            }
             try {
                 if (stall.state == StallState.AUCTIONING) {
                     stallRepository.save(stall.copy(state = StallState.UNOWNED))
