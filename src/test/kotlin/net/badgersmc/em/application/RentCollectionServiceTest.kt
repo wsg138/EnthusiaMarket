@@ -6,6 +6,7 @@ import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -57,6 +58,19 @@ class RentCollectionServiceTest {
         rentTerms = RentTerms.flat(0L)
     )
 
+    private val guildId = "guild-1111-2222-3333"
+    private val guildStall = Stall(
+        id = StallId("stall_g1"), regionId = "stall_g1", world = "world",
+        state = StallState.OWNED, owner = OwnerRef.guild(guildId),
+        ownerSince = now.minus(Duration.ofDays(5)), winningBid = 1000L,
+        rentTerms = RentTerms.flat(50L)
+    )
+    private val guildGraceStall = guildStall.copy(
+        id = StallId("stall_g2"), regionId = "stall_g2",
+        state = StallState.GRACE,
+        ownerSince = now.minus(Duration.ofDays(5))
+    )
+
     private fun config(
         mode: String = "flat",
         formulaPct: Double = 0.01,
@@ -77,7 +91,8 @@ class RentCollectionServiceTest {
         val service: RentCollectionService,
         val stallRepo: StallRepository,
         val economy: EconomyProvider,
-        val config: EnthusiaMarketConfig
+        val config: EnthusiaMarketConfig,
+        val guildProvider: GuildProvider
     )
 
     private fun buildService(
@@ -91,13 +106,16 @@ class RentCollectionServiceTest {
         val economy = mockk<EconomyProvider>()
         every { economy.withdraw(any(), any()) } returns economyWithdrawOk
 
+        val guildProvider = mockk<GuildProvider>(relaxed = true)
+
         val cfg = config(gracePeriod = gracePeriod)
 
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, mockk(relaxed = true), economy, cfg, mockk(relaxed = true)),
+            service = RentCollectionService(stallRepo, mockk(relaxed = true), economy, guildProvider, cfg, mockk(relaxed = true)),
             stallRepo = stallRepo,
             economy = economy,
-            config = cfg
+            config = cfg,
+            guildProvider = guildProvider
         )
     }
 
@@ -225,27 +243,6 @@ class RentCollectionServiceTest {
         verify(exactly = 0) { svc.stallRepo.save(any()) }
     }
 
-    // --- tick: GUILD owner is skipped ---
-
-    @Test
-    fun `tick GUILD owner stall is skipped`() {
-        val guildStall = ownedStall.copy(
-            owner = OwnerRef.guild("my-guild"),
-            id = StallId("stall_guild")
-        )
-        val svc = buildService(stalls = listOf(guildStall))
-
-        val report = svc.service.tick()
-
-        assertEquals(0, report.collected)
-        assertEquals(0, report.defaults)
-        assertEquals(0, report.evictions)
-        assertEquals(0, report.errors)
-
-        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
-        verify(exactly = 0) { svc.stallRepo.save(any()) }
-    }
-
     // --- tick: economy failure on GRACE stall past grace -> evicts ---
 
     @Test
@@ -285,5 +282,65 @@ class RentCollectionServiceTest {
 
         verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
         verify(exactly = 0) { svc.stallRepo.save(any()) }
+    }
+
+    // --- tick: GUILD stall collects rent via guild bank ---
+
+    @Test
+    fun `tick collects rent from GUILD stall via guild bank`() {
+        // build fresh service with bank withdraw stubbed to true
+        val svc = buildService(stalls = listOf(guildStall))
+        every { svc.guildProvider.bankWithdraw(guildId, 50L) } returns true
+
+        val report = svc.service.tick()
+
+        assertEquals(1, report.collected)
+        assertEquals(0, report.defaults)
+        assertEquals(0, report.evictions)
+        assertEquals(0, report.errors)
+
+        verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
+        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
+        verify { svc.stallRepo.save(match { it.state == StallState.OWNED }) }
+    }
+
+    // --- tick: GUILD stall with insufficient bank balance marks GRACE ---
+
+    @Test
+    fun `tick guild stall with insufficient bank balance marks GRACE`() {
+        val svc = buildService(stalls = listOf(guildStall))
+        every { svc.guildProvider.bankWithdraw(guildId, 50L) } returns false
+
+        val report = svc.service.tick()
+
+        assertEquals(0, report.collected)
+        assertEquals(1, report.defaults)
+        assertEquals(0, report.evictions)
+        assertEquals(0, report.errors)
+
+        verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
+        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
+        verify { svc.stallRepo.save(match { it.state == StallState.GRACE }) }
+    }
+
+    // --- tick: GUILD stall past grace with insufficient bank is evicted ---
+
+    @Test
+    fun `tick guild stall past grace with insufficient bank is evicted`() {
+        val svc = buildService(stalls = listOf(guildGraceStall), gracePeriod = "P3D")
+        every { svc.guildProvider.bankWithdraw(guildId, 50L) } returns false
+
+        val report = svc.service.tick()
+
+        assertEquals(0, report.collected)
+        assertEquals(0, report.defaults)
+        assertEquals(1, report.evictions)
+        assertEquals(0, report.errors)
+
+        verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
+        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
+        verify { svc.stallRepo.save(match {
+            it.state == StallState.UNOWNED && it.owner == OwnerRef.unowned()
+        }) }
     }
 }
