@@ -78,19 +78,24 @@ class StallRentExtensionService(
             fireStateChanged(stallId.value, stall.state, updated.state)
         } catch (e: Exception) {
             // Refund the actor before re-throwing so a persistence failure doesn't leave them
-            // charged for an extension that never applied. Best-effort: a refund failure is
-            // logged but the ORIGINAL persistence exception (root cause) is always rethrown.
-            try {
+            // charged for an extension that never applied. economy.deposit returns false on
+            // failure (and may also throw), so check both; either way the ORIGINAL persistence
+            // exception (root cause) is rethrown.
+            val refunded = try {
                 economy.deposit(actor, amount)
+            } catch (refund: Exception) {
+                log.severe("StallRentExtensionService.extend: refund of $amount to $actor threw: ${refund.message}")
+                false
+            }
+            if (refunded) {
                 log.severe(
                     "StallRentExtensionService.extend: persist failed for ${stallId.value} after charging " +
                         "$actor amount=$amount. Actor has been refunded. cause=${e.message}"
                 )
-            } catch (refund: Exception) {
+            } else {
                 log.severe(
                     "StallRentExtensionService.extend: persist failed for ${stallId.value} AND the refund of " +
-                        "$amount to $actor also failed — manual refund required. " +
-                        "persistCause=${e.message}, refundCause=${refund.message}"
+                        "$amount to $actor failed — manual refund required. cause=${e.message}"
                 )
             }
             throw e

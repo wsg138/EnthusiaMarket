@@ -109,18 +109,22 @@ class StallBuyoutService(
      * ORIGINAL persistence exception (the root cause), never the deposit error.
      */
     private fun refundAfterFailedAward(payer: UUID, price: Long, stallId: StallId, owner: OwnerRef, cause: Exception) {
-        try {
+        // economy.deposit returns false on failure (and may also throw), so check both.
+        val refunded = try {
             economy.deposit(payer, price)
-            log.severe(
-                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} after " +
-                    "charging payer $payer price=$price (owner=$owner). Payer has been refunded. " +
-                    "cause=${cause.message}"
-            )
         } catch (refund: Exception) {
+            log.severe("StallBuyoutService: refund of $price to $payer threw: ${refund.message}")
+            false
+        }
+        if (refunded) {
             log.severe(
-                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} AND the " +
-                    "refund of $price to $payer also failed — manual refund required. " +
-                    "saveCause=${cause.message}, refundCause=${refund.message}"
+                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} after charging " +
+                    "payer $payer price=$price (owner=$owner). Payer has been refunded. cause=${cause.message}"
+            )
+        } else {
+            log.severe(
+                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} AND the refund of " +
+                    "$price to $payer failed — manual refund required. cause=${cause.message}"
             )
         }
     }
