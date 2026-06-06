@@ -64,7 +64,7 @@ class SchematicRestoreTest {
         val schematics = mockk<SchematicService>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, mockk<SellOfferRepository>(relaxed = true), economy, config(), mockk(relaxed = true), schematics,
+            stallRepo, mockk<SellOfferRepository>(relaxed = true), economy, mockk<GuildProvider>(relaxed = true), config(), mockk(relaxed = true), schematics,
         )
 
         val report = service.tick(now)
@@ -83,7 +83,7 @@ class SchematicRestoreTest {
         val schematics = mockk<SchematicService>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, mockk<SellOfferRepository>(relaxed = true), economy, config(enabled = false), mockk(relaxed = true), schematics,
+            stallRepo, mockk<SellOfferRepository>(relaxed = true), economy, mockk<GuildProvider>(relaxed = true), config(enabled = false), mockk(relaxed = true), schematics,
         )
 
         service.tick(now)

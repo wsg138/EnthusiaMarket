@@ -4,6 +4,7 @@ import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
@@ -67,8 +68,14 @@ class StallRentExtensionService(
             return Result.Extended(pushed, 0L)
         }
 
-        if (!economy.withdraw(actor, amount)) {
-            return Result.Rejected("Insufficient funds: $amount required")
+        val isGuild = stall.owner.type == OwnerType.GUILD
+        val charged = if (isGuild) guildProvider.bankWithdraw(stall.owner.id, amount)
+                      else economy.withdraw(actor, amount)
+        if (!charged) {
+            return Result.Rejected(
+                if (isGuild) "The guild bank has insufficient funds: $amount required"
+                else "Insufficient funds: $amount required"
+            )
         }
 
         val pushed = pushTimer(stall.nextRentAt)
@@ -82,9 +89,10 @@ class StallRentExtensionService(
             // failure (and may also throw), so check both; either way the ORIGINAL persistence
             // exception (root cause) is rethrown.
             val refunded = try {
-                economy.deposit(actor, amount)
+                if (isGuild) guildProvider.bankDeposit(stall.owner.id, amount)
+                else economy.deposit(actor, amount)
             } catch (refund: Exception) {
-                log.severe("StallRentExtensionService.extend: refund of $amount to $actor threw: ${refund.message}")
+                log.severe("StallRentExtensionService.extend: refund of $amount (guild=$isGuild) threw: ${refund.message}")
                 false
             }
             if (refunded) {
