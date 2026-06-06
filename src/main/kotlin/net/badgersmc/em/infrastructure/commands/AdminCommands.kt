@@ -139,8 +139,9 @@ class AdminCommands(
         @Arg("price") price: Long,
         @Arg("duration") duration: String? = null
     ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
         val component = when (val result = auctionService.createAuction(
-            StallId(stall), extractSenderUuid(sender), price, duration
+            StallId(stall), player.uniqueId, price, duration
         )) {
             is AuctionResult.Success -> lang.msg(
                 "admin.auction.start.success",
@@ -161,7 +162,8 @@ class AdminCommands(
         @Arg("auction") auction: String,
         @Arg("amount") amount: Long
     ) {
-        val component = when (val result = auctionService.placeBid(AuctionId(auction), extractSenderUuid(sender), amount)) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
+        val component = when (val result = auctionService.placeBid(AuctionId(auction), player.uniqueId, amount)) {
             is AuctionResult.Success -> lang.msg(
                 "admin.bid.success",
                 "amount" to (result.auction.highBid?.amount ?: amount),
@@ -208,7 +210,8 @@ class AdminCommands(
         @Context sender: CommandSender,
         @Arg("auction") auction: String
     ) {
-        val component = when (val result = auctionService.cancelAuction(AuctionId(auction), extractSenderUuid(sender))) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
+        val component = when (val result = auctionService.cancelAuction(AuctionId(auction), player.uniqueId)) {
             is AuctionResult.Success -> lang.msg("admin.auction.cancel.success", "id" to result.auction.id)
             is AuctionResult.Failure -> lang.msg("admin.auction.cancel.failure", "reason" to result.reason)
             is AuctionResult.NotFound -> lang.msg("admin.auction.cancel.not_found")
@@ -637,10 +640,6 @@ class AdminCommands(
         }
     }
 
-    /** Extract sender UUID, preferring Player sender. */
-    private fun extractSenderUuid(sender: CommandSender): UUID {
-        return if (sender is Player) sender.uniqueId else UUID.randomUUID()
-    }
 
     internal companion object {
         const val KEY_WORLD = "world"
