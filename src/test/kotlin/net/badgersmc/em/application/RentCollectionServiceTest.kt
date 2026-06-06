@@ -292,7 +292,7 @@ class RentCollectionServiceTest {
         val svc = buildService(stalls = listOf(guildStall))
         every { svc.guildProvider.bankWithdraw(guildId, 50L) } returns true
 
-        val report = svc.service.tick()
+        val report = svc.service.tick(now)
 
         assertEquals(1, report.collected)
         assertEquals(0, report.defaults)
@@ -301,7 +301,12 @@ class RentCollectionServiceTest {
 
         verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
         verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
-        verify { svc.stallRepo.save(match { it.state == StallState.OWNED }) }
+        // Rent timer must advance one collection interval (P1D) on the saved stall.
+        verify {
+            svc.stallRepo.save(
+                match { it.state == StallState.OWNED && it.nextRentAt == now.plus(Duration.ofDays(1)) }
+            )
+        }
     }
 
     // --- tick: GUILD stall with insufficient bank balance marks GRACE ---

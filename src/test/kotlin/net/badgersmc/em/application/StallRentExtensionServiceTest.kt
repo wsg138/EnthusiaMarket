@@ -83,27 +83,11 @@ class StallRentExtensionServiceTest {
         bankWithdrawOk: Boolean = true,
         economyWithdrawOk: Boolean = true
     ): ServiceWithMocks {
-        val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
-        every { stallRepo.findById(stallId) } returns stall
-        every { stallRepo.save(any()) } returns Unit
-
+        val stallRepo = mockStallRepo(stall)
         val economy = mockk<EconomyProvider>()
         every { economy.withdraw(any(), any()) } returns economyWithdrawOk
-
-        val guildProvider = mockk<GuildProvider>(relaxed = true)
-        // canManage for a GUILD owner needs both isMember + MANAGE_SHOPS to be true.
-        every { guildProvider.isMember(playerUuid, guildId) } returns canManageGuild
-        every {
-            guildProvider.hasShopPermission(
-                playerUuid,
-                guildId,
-                GuildProvider.GuildPermission.MANAGE_SHOPS
-            )
-        } returns canManageGuild
-        every { guildProvider.bankWithdraw(any(), any()) } returns bankWithdrawOk
-
+        val guildProvider = mockGuildProvider(canManageGuild, bankWithdrawOk)
         val cfg = config()
-
         return ServiceWithMocks(
             service = StallRentExtensionService(stallRepo, economy, guildProvider, cfg),
             stallRepo = stallRepo,
@@ -111,6 +95,24 @@ class StallRentExtensionServiceTest {
             guildProvider = guildProvider,
             config = cfg
         )
+    }
+
+    private fun mockStallRepo(stall: Stall): StallRepository {
+        val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
+        every { stallRepo.findById(stallId) } returns stall
+        every { stallRepo.save(any()) } returns Unit
+        return stallRepo
+    }
+
+    private fun mockGuildProvider(canManageGuild: Boolean, bankWithdrawOk: Boolean): GuildProvider {
+        val guildProvider = mockk<GuildProvider>(relaxed = true)
+        // canManage for a GUILD owner needs both isMember + MANAGE_SHOPS to be true.
+        every { guildProvider.isMember(playerUuid, guildId) } returns canManageGuild
+        every {
+            guildProvider.hasShopPermission(playerUuid, guildId, GuildProvider.GuildPermission.MANAGE_SHOPS)
+        } returns canManageGuild
+        every { guildProvider.bankWithdraw(any(), any()) } returns bankWithdrawOk
+        return guildProvider
     }
 
     // --- extend: guild stall draws from the guild bank ---

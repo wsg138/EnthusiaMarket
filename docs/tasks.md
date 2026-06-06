@@ -405,7 +405,7 @@ References: REQ-024 through REQ-027
 - [x] **Audit M11** — Guild-stall rent collection (guild bank charge + grace/eviction; extension draws the bank)
   References: audit finding M11
   Tag: TDD
-  Description: Collect rent on GUILD-owned stalls from the guild bank. RentCollectionService now branches charge by owner type (SOLO→economy, GUILD→bank). StallRentExtensionServiceextend branches charge + refund. 3 new RentCollectionServiceTest + new StallRentExtensionServiceTest with guild cases. SOLO behavior unchanged.
+  Description: Collect rent on GUILD-owned stalls from the guild bank. RentCollectionService now branches charge by owner type (SOLO→economy, GUILD→bank). StallRentExtensionService.extend branches charge + refund. 3 new RentCollectionServiceTest + new StallRentExtensionServiceTest with guild cases. SOLO behavior unchanged.
   Evidence: docs/superpowers/specs/2026-06-04-guild-rent-collection-design.md; RentCollectionService.kt processStall; StallRentExtensionService.kt extend; RentCollectionServiceTest.kt; StallRentExtensionServiceTest.kt.
 
 ### Pending tasks
