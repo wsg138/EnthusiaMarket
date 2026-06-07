@@ -348,4 +348,42 @@ class RentCollectionServiceTest {
             it.state == StallState.UNOWNED && it.owner == OwnerRef.unowned()
         }) }
     }
+
+    // --- tick: skips OWNED stall whose nextRentAt is in the future (C-10) ---
+
+    @Test
+    fun `tick skips OWNED stall whose nextRentAt is in the future`() {
+        // C-10: voluntary extension / fresh buyout pre-pays by pushing
+        // nextRentAt forward. Ticker must NOT re-charge in that window.
+        val prepaid = ownedStall.copy(nextRentAt = now.plus(Duration.ofDays(1)))
+        val svc = buildService(stalls = listOf(prepaid), economyWithdrawOk = true)
+
+        val report = svc.service.tick(now)
+
+        assertEquals(0, report.collected)
+        assertEquals(0, report.defaults)
+        assertEquals(0, report.evictions)
+        assertEquals(0, report.errors)
+
+        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
+        verify(exactly = 0) { svc.stallRepo.save(any()) }
+    }
+
+    // --- tick: charges OWNED stall whose nextRentAt is due (C-10) ---
+
+    @Test
+    fun `tick charges OWNED stall whose nextRentAt is due`() {
+        // C-10 mirror: when nextRentAt is in the past the charge must fire.
+        val due = ownedStall.copy(nextRentAt = now.minus(Duration.ofMinutes(1)))
+        val svc = buildService(stalls = listOf(due), economyWithdrawOk = true)
+
+        val report = svc.service.tick(now)
+
+        assertEquals(1, report.collected)
+        assertEquals(0, report.defaults)
+        assertEquals(0, report.evictions)
+        assertEquals(0, report.errors)
+
+        verify { svc.economy.withdraw(playerUuid, 50L) }
+    }
 }

@@ -90,8 +90,13 @@ class RentCollectionService(
         )
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun processStall(stall: Stall, now: Instant): ProcessResult {
+        // C-10: honour a future nextRentAt. Buyout/auction-settle/extension push
+        // nextRentAt forward to pre-pay a period; without this guard the fixed-interval
+        // ticker re-charges on its own schedule and the pre-paid period is lost.
+        // A null nextRentAt (legacy/seeded stalls) falls through and is charged as before.
+        stall.nextRentAt?.let { due -> if (now.isBefore(due)) return ProcessResult.Skipped }
+
         // Unowned/NONE stalls have nothing to charge.
         if (stall.owner.type == OwnerType.NONE) return ProcessResult.Skipped
 
@@ -99,100 +104,94 @@ class RentCollectionService(
         val computed = stall.rentTerms.dailyRent(stall.winningBid)
         val rentDue = if (stall.winningBid > 0L) maxOf(computed, 1L) else computed
 
-        val withdrawSuccess = when (stall.owner.type) {
-            OwnerType.SOLO -> {
-                // Corrupt owner id → skip (don't evict on bad data), matching prior behaviour.
-                val ownerUuid = runCatching { UUID.fromString(stall.owner.id) }.getOrNull()
-                    ?: return ProcessResult.Skipped
-                rentDue <= 0L || economy.withdraw(ownerUuid, rentDue)
-            }
-            OwnerType.GUILD -> rentDue <= 0L || guildProvider.bankWithdraw(stall.owner.id, rentDue)
-            OwnerType.NONE -> return ProcessResult.Skipped // unreachable (guarded above)
-        }
+        // null = skip: a corrupt SOLO owner id shouldn't evict on bad data.
+        val withdrawSuccess = chargeRent(stall, rentDue) ?: return ProcessResult.Skipped
+        return if (withdrawSuccess) collect(stall, now) else handleFailure(stall, now)
+    }
 
-        if (withdrawSuccess) {
-            val nextRent = now.plus(collectionInterval())
-            // Payment succeeded — if in GRACE, restore to OWNED
-            if (stall.state == StallState.GRACE) {
-                stallRepository.save(
-                    stall.copy(
-                        state = StallState.OWNED,
-                        ownerSince = now,
-                        nextRentAt = nextRent,
-                    )
-                )
-            } else {
-                // Already OWNED, just persist (ownerSince unchanged)
-                stallRepository.save(stall.copy(nextRentAt = nextRent))
-            }
-            return ProcessResult.Collected
+    /**
+     * Charge one rent period to the stall's owner: SOLO → personal economy,
+     * GUILD → guild bank. Returns the withdraw outcome, or null when the SOLO
+     * owner id is corrupt so the caller skips (rather than evicts) on bad data.
+     */
+    private fun chargeRent(stall: Stall, rentDue: Long): Boolean? = when (stall.owner.type) {
+        OwnerType.SOLO -> {
+            val ownerUuid = runCatching { UUID.fromString(stall.owner.id) }.getOrNull()
+            if (ownerUuid == null) null else rentDue <= 0L || economy.withdraw(ownerUuid, rentDue)
         }
+        OwnerType.GUILD -> rentDue <= 0L || guildProvider.bankWithdraw(stall.owner.id, rentDue)
+        OwnerType.NONE -> null // unreachable (guarded in processStall)
+    }
 
-        // Payment failed
-        return when (stall.state) {
-            StallState.OWNED -> {
-                // First failure — move to GRACE (defaulted), start grace timer
-                stallRepository.save(
-                    stall.copy(state = StallState.GRACE, ownerSince = Instant.now())
+    /** Payment succeeded — advance the rent timer and, if in GRACE, restore to OWNED. */
+    private fun collect(stall: Stall, now: Instant): ProcessResult {
+        val nextRent = now.plus(collectionInterval())
+        if (stall.state == StallState.GRACE) {
+            stallRepository.save(stall.copy(state = StallState.OWNED, ownerSince = now, nextRentAt = nextRent))
+        } else {
+            stallRepository.save(stall.copy(nextRentAt = nextRent))
+        }
+        return ProcessResult.Collected
+    }
+
+    /** Payment failed — OWNED defaults into GRACE; GRACE past its window is evicted. */
+    private fun handleFailure(stall: Stall, now: Instant): ProcessResult = when (stall.state) {
+        StallState.OWNED -> {
+            // First failure — move to GRACE (defaulted), start grace timer.
+            stallRepository.save(stall.copy(state = StallState.GRACE, ownerSince = Instant.now()))
+            ProcessResult.Defaulted
+        }
+        StallState.GRACE -> {
+            val ownerSince = stall.ownerSince
+            if (ownerSince != null && isPastGrace(ownerSince, now)) evict(stall) else ProcessResult.Skipped
+        }
+        else -> ProcessResult.Skipped
+    }
+
+    /** Clear DB ownership + WG perms so the evicted owner immediately loses build rights. */
+    private fun evict(stall: Stall): ProcessResult {
+        stallRepository.save(
+            stall.copy(
+                state = StallState.UNOWNED,
+                owner = OwnerRef.unowned(),
+                ownerSince = null,
+                winningBid = 0L,
+                nextRentAt = null,
+            )
+        )
+        cleanupAfterEviction(stall)
+        return ProcessResult.Evicted
+    }
+
+    /** Best-effort post-eviction cleanup: drop lingering offer, clear WG, restore geometry. */
+    private fun cleanupAfterEviction(stall: Stall) {
+        // M3 — drop any lingering sell offer on the now-UNOWNED stall so a follow-up
+        // click doesn't trip the offer-mutex check (best-effort, logged, never re-thrown).
+        if (offers.findByStall(stall.id) != null) {
+            try {
+                offers.delete(stall.id)
+            } catch (cleanupErr: Exception) {
+                log.warning(
+                    "RentCollectionService: failed to cleanup lingering sell offer for " +
+                        "${stall.id.value}. cause=${cleanupErr.message}"
                 )
-                ProcessResult.Defaulted
             }
-            StallState.GRACE -> {
-                // Already in GRACE — check if grace period has elapsed
-                val ownerSince = stall.ownerSince
-                if (ownerSince != null && isPastGrace(ownerSince, now)) {
-                    // Evict the stall — clear DB ownership AND WG perms
-                    // so the evicted owner immediately loses build
-                    // rights on the region.
-                    stallRepository.save(
-                        stall.copy(
-                            state = StallState.UNOWNED,
-                            owner = OwnerRef.unowned(),
-                            ownerSince = null,
-                            winningBid = 0L,
-                            nextRentAt = null,
-                        )
-                        )
-                    // M3 — drop any lingering sell offer on the
-                    // now-UNOWNED stall so a follow-up click doesn't
-                    // trip the offer-mutex check (matches
-                    // StallBuyoutService cleanup pattern: best-effort,
-                    // logged, never re-thrown).
-                    if (offers.findByStall(stall.id) != null) {
-                        try {
-                            offers.delete(stall.id)
-                        } catch (cleanupErr: Exception) {
-                            log.warning(
-                                "RentCollectionService: failed to cleanup lingering sell offer for " +
-                                    "${stall.id.value}. cause=${cleanupErr.message}"
-                            )
-                        }
-                    }
-                    try {
-                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                    } catch (_: Exception) {
-                        // DB is authoritative; WG can be resynced via /em rg resync.
-                        // Stall is already UNOWNED — eviction stands.
-                    }
-                    // REQ-271 — restore the pre-claim geometry now the stall is
-                    // UNOWNED. Best-effort: a failed paste must not roll back the
-                    // eviction (REQ-272/273). Gated on schematics.enabled.
-                    if (config.schematics.enabled) {
-                        val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
-                        if (restore is SchematicService.Result.Failure) {
-                            log.warning(
-                                "Eviction: schematic restore failed for stall ${stall.id.value}; " +
-                                    "geometry left as-is. cause=${restore.cause.message}"
-                            )
-                        }
-                    }
-                    ProcessResult.Evicted
-                } else {
-                    // Grace not yet expired — do nothing
-                    ProcessResult.Skipped
-                }
+        }
+        try {
+            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        } catch (_: Exception) {
+            // DB is authoritative; WG can be resynced via /em rg resync. Eviction stands.
+        }
+        // REQ-271 — restore the pre-claim geometry now the stall is UNOWNED. Best-effort:
+        // a failed paste must not roll back the eviction (REQ-272/273). Gated on schematics.enabled.
+        if (config.schematics.enabled) {
+            val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+            if (restore is SchematicService.Result.Failure) {
+                log.warning(
+                    "Eviction: schematic restore failed for stall ${stall.id.value}; " +
+                        "geometry left as-is. cause=${restore.cause.message}"
+                )
             }
-            else -> ProcessResult.Skipped
         }
     }
 
