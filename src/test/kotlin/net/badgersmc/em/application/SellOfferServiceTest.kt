@@ -54,6 +54,36 @@ class SellOfferServiceTest {
             shop.taxDestination = taxDestination
         }
 
+    private fun guildStall(guildId: String) = ownedStall().copy(owner = OwnerRef.guild(guildId))
+
+    private data class AlertProbe(val svc: SellOfferService, val alerter: CompensationAlertService)
+
+    /** Wire a purchase that reaches the proceeds payout, with the deposit outcomes the caller sets. */
+    private fun alertProbe(
+        stall: Stall,
+        economyDepositOk: Boolean,
+        guildProvider: GuildProvider = mockk(relaxed = true),
+    ): AlertProbe {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val economy = mockk<EconomyProvider>()
+        val limits = mockk<LimitResolutionService>(relaxed = true)
+        val ownership = mockk<StallOwnershipCounter>(relaxed = true)
+        val alerter = mockk<CompensationAlertService>(relaxed = true)
+        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns stall
+        every { economy.withdraw(buyer, 1100L) } returns true
+        every { economy.deposit(any(), any()) } returns economyDepositOk
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true), economy,
+            config(taxPct = 0.10, taxDestination = "system"),
+            guildProvider, limits, ownership, alerter,
+        )
+        return AlertProbe(svc, alerter)
+    }
+
     @BeforeTest fun mockBukkit() {
         mockkStatic(Bukkit::class)
         val server = mockk<Server>(relaxed = true)
@@ -370,30 +400,12 @@ class SellOfferServiceTest {
     // ===== Compensation alert wiring (C-4) =====
 
     @Test fun `purchase with failed seller deposit fires alert`() {
-        val offers = mockk<SellOfferRepository>(relaxed = true)
-        val stalls = mockk<StallRepository>(relaxed = true)
-        val economy = mockk<EconomyProvider>()
-        val limits = mockk<LimitResolutionService>(relaxed = true)
-        val ownership = mockk<StallOwnershipCounter>(relaxed = true)
-        val alerter = mockk<CompensationAlertService>(relaxed = true)
-        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
-        every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
-        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
-        every { stalls.findById(stallId) } returns ownedStall()
-        every { economy.withdraw(buyer, 1100L) } returns true
-        every { economy.deposit(any(), any()) } returns false  // fails
+        val probe = alertProbe(ownedStall(), economyDepositOk = false)
 
-        val svc = SellOfferService(
-            offers, stalls, mockk(relaxed = true), economy,
-            config(taxPct = 0.10, taxDestination = "system"),
-            mockk(relaxed = true),
-            limits, ownership,
-            alerter,
-        )
-        svc.purchase(stallId, buyer)
+        probe.svc.purchase(stallId, buyer)
 
         verify {
-            alerter.alert(
+            probe.alerter.alert(
                 context = match { it.contains("sell-offer") },
                 detail = any(),
                 affected = seller,
@@ -403,42 +415,14 @@ class SellOfferServiceTest {
     }
 
     @Test fun `purchase with failed guild deposit fires alert`() {
-        val offers = mockk<SellOfferRepository>(relaxed = true)
-        val stalls = mockk<StallRepository>(relaxed = true)
-        val economy = mockk<EconomyProvider>()
         val guildProvider = mockk<GuildProvider>()
-        val limits = mockk<LimitResolutionService>(relaxed = true)
-        val ownership = mockk<StallOwnershipCounter>(relaxed = true)
-        val alerter = mockk<CompensationAlertService>(relaxed = true)
-        val guildId = "g1"
-        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
-        every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
-        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
-        every { stalls.findById(stallId) } returns Stall(
-            id = stallId,
-            regionId = "s1",
-            world = "world",
-            state = StallState.OWNED,
-            owner = OwnerRef.guild(guildId),
-            ownerSince = Instant.now(),
-            winningBid = 100L,
-            rentTerms = RentTerms.formula(1.0),
-        )
-        every { economy.withdraw(buyer, 1100L) } returns true
-        every { economy.deposit(any(), any()) } returns true
-        every { guildProvider.bankDeposit(guildId, 1000L) } returns false  // fails
+        every { guildProvider.bankDeposit("g1", 1000L) } returns false  // fails
+        val probe = alertProbe(guildStall("g1"), economyDepositOk = true, guildProvider = guildProvider)
 
-        val svc = SellOfferService(
-            offers, stalls, mockk(relaxed = true), economy,
-            config(taxPct = 0.10, taxDestination = "system"),
-            guildProvider,
-            limits, ownership,
-            alerter,
-        )
-        svc.purchase(stallId, buyer)
+        probe.svc.purchase(stallId, buyer)
 
         verify {
-            alerter.alert(
+            probe.alerter.alert(
                 context = match { it.contains("sell-offer") },
                 detail = any(),
                 affected = null,
