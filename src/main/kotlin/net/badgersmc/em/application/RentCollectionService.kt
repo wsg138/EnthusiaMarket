@@ -92,6 +92,12 @@ class RentCollectionService(
 
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun processStall(stall: Stall, now: Instant): ProcessResult {
+        // C-10: honour a future nextRentAt. Buyout/auction-settle/extension push
+        // nextRentAt forward to pre-pay a period; without this guard the fixed-interval
+        // ticker re-charges on its own schedule and the pre-paid period is lost.
+        // A null nextRentAt (legacy/seeded stalls) falls through and is charged as before.
+        stall.nextRentAt?.let { due -> if (now.isBefore(due)) return ProcessResult.Skipped }
+
         // Unowned/NONE stalls have nothing to charge.
         if (stall.owner.type == OwnerType.NONE) return ProcessResult.Skipped
 
