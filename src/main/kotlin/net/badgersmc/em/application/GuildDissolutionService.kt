@@ -51,8 +51,12 @@ class GuildDissolutionService(
         var stallsFailed = 0
         for (stall in matchingStalls) {
             try {
-                eviction.evict(stall.id)
-                stallsEvicted++
+                // Only count stalls actually freed. A guild stall in a non-OWNED/GRACE
+                // state (e.g. mid-auction) returns NotOwned and is left as-is, so it must
+                // not inflate the summary count.
+                if (eviction.evict(stall.id) == StallEvictionService.Result.Evicted) {
+                    stallsEvicted++
+                }
             } catch (e: Exception) {
                 stallsFailed++
                 log.warning(
