@@ -60,7 +60,8 @@ class ShopTradeServiceTest {
         val signRepo: SignRepository,
         val stallRepo: StallRepository,
         val economy: EconomyProvider,
-        val items: ItemProvider
+        val items: ItemProvider,
+        val alerter: CompensationAlertService
     )
 
     /** Build service with mock overrides. Every param has a sensible default. */
@@ -74,7 +75,8 @@ class ShopTradeServiceTest {
         depositOk: Boolean = true,
         playerHasItem: Boolean = true,
         takeItemOk: Boolean = true,
-        giveItemOk: Boolean = true
+        giveItemOk: Boolean = true,
+        alerter: CompensationAlertService = mockk<CompensationAlertService>(relaxed = true)
     ): ServiceWithMocks {
         val signRepo = mockk<SignRepository>()
         every { signRepo.findById(sign.id) } returns sign
@@ -96,11 +98,12 @@ class ShopTradeServiceTest {
         every { items.giveItemToPlayer(player, any(), any()) } returns giveItemOk
 
         return ServiceWithMocks(
-            service = ShopTradeService(signRepo, stallRepo, economy, items, config(taxPct)),
+            service = ShopTradeService(signRepo, stallRepo, economy, items, config(taxPct), alerter),
             signRepo = signRepo,
             stallRepo = stallRepo,
             economy = economy,
-            items = items
+            items = items,
+            alerter = alerter
         )
     }
 
@@ -209,7 +212,7 @@ class ShopTradeServiceTest {
         val signRepo = mockk<SignRepository>()
         every { signRepo.findById(999L) } returns null
 
-        val svc = ShopTradeService(signRepo, mockk(), mockk(), mockk(), config())
+        val svc = ShopTradeService(signRepo, mockk(), mockk(), mockk(), config(), mockk(relaxed = true))
 
         val result = svc.execute(999L, player)
         assertIs<ShopTradeService.TradeResult.Failure>(result)
@@ -238,7 +241,7 @@ class ShopTradeServiceTest {
         every { items.takeItemFromPlayer(player, any(), any()) } returns true
         every { items.giveItemToPlayer(player, any(), any()) } returns true
 
-        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config())
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config(), mockk(relaxed = true))
 
         val result = svc.execute(sign.id, player)
 
@@ -267,7 +270,7 @@ class ShopTradeServiceTest {
         val items = mockk<ItemProvider>()
         every { items.giveItemToPlayer(player, any(), any()) } returns false
 
-        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config())
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config(), mockk(relaxed = true))
 
         val result = svc.execute(sign.id, player)
 
@@ -298,7 +301,7 @@ class ShopTradeServiceTest {
         every { items.takeItemFromPlayer(player, any(), any()) } returns true
         every { items.giveItemToPlayer(player, any(), any()) } returns true
 
-        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config())
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config(), mockk(relaxed = true))
 
         val result = svc.execute(sign.id, player)
 
@@ -327,7 +330,7 @@ class ShopTradeServiceTest {
         every { items.takeItemFromPlayer(player, any(), any()) } returns true
         every { items.giveItemToPlayer(player, any(), any()) } returns false  // item return fails
 
-        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config())
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config(), mockk(relaxed = true))
 
         val result = svc.execute(sign.id, player)
 
@@ -354,11 +357,121 @@ class ShopTradeServiceTest {
         val items = mockk<ItemProvider>()
         every { items.giveItemToPlayer(player, any(), any()) } returns false
 
-        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config())
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config(), mockk(relaxed = true))
 
         val result = svc.execute(sign.id, player)
 
         assertIs<ShopTradeService.TradeResult.CompensationFailed>(result)
+    }
+
+    // ===== Compensation alert wiring (C-11 / C-13 / C-14) =====
+    // Every compensation-failure path MUST call CompensationAlertService.alert(...)
+    // so operators (and any TradeCompensationFailedEvent listeners) are notified
+    // that manual reconciliation is required.
+
+    @Test
+    fun `rollbackBuyWithdraw fires alert when item give-back fails`() {
+        val sign = sampleSign.copy(direction = SignDirection.BUY, price = 100L)
+        // owner withdraw fails -> triggers rollbackBuyWithdraw.
+        // giveItemOk = false -> the item-return compensation also fails.
+        val (svc, _, _, _, _, alerter) = buildService(sign = sign, withdrawOk = false, giveItemOk = false)
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.CompensationFailed>(result)
+        verify {
+            alerter.alert(
+                context = match { it.contains("rollbackBuyWithdraw") },
+                detail = any(),
+                affected = player,
+                amount = 100L,
+            )
+        }
+    }
+
+    @Test
+    fun `rollbackBuyDeposit fires alert when compensation fails`() {
+        val sign = sampleSign.copy(direction = SignDirection.BUY, price = 100L)
+        // deposit fails -> triggers rollbackBuyDeposit.
+        // The rollback's owner refund then also fails (same depositOk flag).
+        val (svc, _, _, _, _, alerter) = buildService(sign = sign, depositOk = false)
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.CompensationFailed>(result)
+        verify {
+            alerter.alert(
+                context = match { it.contains("rollbackBuyDeposit") },
+                detail = any(),
+                affected = ownerUuid,
+                amount = 100L,
+            )
+        }
+    }
+
+    @Test
+    fun `rollbackSellDeposit fires alert when compensation fails`() {
+        val sign = sampleSign.copy(direction = SignDirection.SELL, price = 100L)
+        // owner deposit fails (the seller's proceeds credit) -> triggers rollbackSellDeposit.
+        // The rollback's player refund then also fails (same depositOk flag).
+        val (svc, _, _, _, _, alerter) = buildService(sign = sign, depositOk = false)
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.CompensationFailed>(result)
+        verify {
+            alerter.alert(
+                context = match { it.contains("rollbackSellDeposit") },
+                detail = any(),
+                affected = player,
+                amount = 100L,
+            )
+        }
+    }
+
+    @Test
+    fun `rollbackSellItem fires alert when compensation fails`() {
+        val sign = sampleSign.copy(direction = SignDirection.SELL, price = 100L)
+        // To reach rollbackSellItem, the SELL flow must succeed through
+        //   - withdraw player (price)
+        //   - deposit owner (sellerProceeds)
+        // ...and THEN fail on giveItemToPlayer. The compensation inside
+        // rollbackSellItem must also fail (player refund or owner debit).
+        val signRepo = mockk<SignRepository>()
+        every { signRepo.findById(sign.id) } returns sign
+
+        val stallRepo = mockk<StallRepository>()
+        every { stallRepo.findById(stallId) } returns sampleStall
+
+        val economy = mockk<EconomyProvider>()
+        every { economy.balance(player) } returns 1000L
+        every { economy.balance(ownerUuid) } returns 1000L
+        every { economy.withdraw(player, any()) } returns true
+        every { economy.deposit(ownerUuid, any()) } returns true
+        // Compensation inside rollbackSellItem must fail: refund the player fails.
+        every { economy.deposit(player, any()) } returns false
+        // Owner debit succeeds (one failure is enough to trigger CompensationFailed).
+        every { economy.withdraw(ownerUuid, any()) } returns true
+
+        val items = mockk<ItemProvider>()
+        every { items.giveItemToPlayer(player, any(), any()) } returns false  // triggers rollbackSellItem
+
+        val alerter = mockk<CompensationAlertService>(relaxed = true)
+        val svc = ShopTradeService(signRepo, stallRepo, economy, items, config(), alerter)
+
+        val result = svc.execute(sign.id, player)
+
+        assertIs<ShopTradeService.TradeResult.CompensationFailed>(result)
+        // taxPct = 0.02 default -> sellerProceeds = 100 - 2 = 98.
+        // affected = owner (they were credited sellerProceeds that we just pulled back).
+        verify {
+            alerter.alert(
+                context = match { it.contains("rollbackSellItem") },
+                detail = any(),
+                affected = ownerUuid,
+                amount = 98L,
+            )
+        }
     }
 
     // ===== Invalid tax percentage =====
