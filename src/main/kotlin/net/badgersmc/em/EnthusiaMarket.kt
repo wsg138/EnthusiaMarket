@@ -153,6 +153,12 @@ open class EnthusiaMarket : JavaPlugin() {
             if (pruned > 0) logger.info("Pruned $pruned old shop transaction(s)")
         }
 
+        // M-16: on guild disband, free its stalls + unbind its shops.
+        val guildDissolution = ctx.getBean<net.badgersmc.em.application.GuildDissolutionService>()
+        ctx.getBean<net.badgersmc.em.domain.ports.GuildProvider>().onDissolved { guildId ->
+            guildDissolution.handle(guildId)
+        }
+
         // Particle outline render loop (REQ-240/241): every 4 ticks, plan
         // points within the global budget and spawn END_ROD per requesting
         // player. Purges expired outlines first.
