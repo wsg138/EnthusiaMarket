@@ -156,7 +156,7 @@ class AdminCommands(
     }
 
     @Subcommand("bid")
-    @Permission("enthusiamarket.admin")
+    @Permission("enthusiamarket.auction.bid")
     fun bid(
         @Context sender: CommandSender,
         @Arg("auction") auction: String,
