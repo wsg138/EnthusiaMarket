@@ -278,6 +278,56 @@ class SellOfferServiceTest {
         verify(exactly = 0) { offers.delete(any()) }
     }
 
+    @Test fun `purchase of a guild-owned stall pays the guild bank, not the seller`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val economy = mockk<EconomyProvider>()
+        val guildProvider = mockk<GuildProvider>()
+        val limits = mockk<LimitResolutionService>(relaxed = true)
+        val ownership = mockk<StallOwnershipCounter>(relaxed = true)
+        val guildId = "g1"
+        val memberSeller = seller // a guild member listed the offer
+        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, memberSeller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns Stall(
+            id = stallId,
+            regionId = "s1",
+            world = "world",
+            state = StallState.OWNED,
+            owner = OwnerRef.guild(guildId),
+            ownerSince = Instant.now(),
+            winningBid = 100L,
+            rentTerms = RentTerms.formula(1.0),
+        )
+        every { economy.withdraw(buyer, 1100L) } returns true
+        every { economy.deposit(any(), any()) } returns true
+        every { guildProvider.bankDeposit(guildId, 1000L) } returns true
+
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true), economy,
+            config(taxPct = 0.10, taxDestination = "system"),
+            guildProvider,
+            limits, ownership,
+        )
+        val r = svc.purchase(stallId, buyer)
+
+        val ok = assertIs<Result.Purchased>(r)
+        assertEquals(100L, ok.tax) // 10% of 1000
+
+        // Buyer charged TOTAL (price + tax).
+        verify { economy.withdraw(buyer, 1100L) }
+        // Proceeds go to the guild bank, not the seller's personal balance.
+        verify(exactly = 1) { guildProvider.bankDeposit(guildId, 1000L) }
+        verify(exactly = 0) { economy.deposit(memberSeller, 1000L) }
+        // System sink — no tax deposit.
+        verify(exactly = 0) { economy.deposit(taxAccount, any()) }
+        // Buyer owns the stall personally now, even though it was guild-owned before.
+        verify { stalls.save(match { it.owner == OwnerRef.solo(buyer) }) }
+        // Offer closed.
+        verify { offers.delete(stallId) }
+    }
+
     @Test fun `purchase by the seller themselves is Rejected`() {
         val offers = mockk<SellOfferRepository>()
         val stalls = mockk<StallRepository>()
