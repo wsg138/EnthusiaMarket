@@ -3,6 +3,7 @@ package net.badgersmc.em.application
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.stall.OwnerRef
@@ -35,6 +36,7 @@ class RentCollectionService(
     private val stallRepository: StallRepository,
     private val offers: SellOfferRepository,
     private val economy: EconomyProvider,
+    private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
     private val regionMembers: RegionMemberSync,
     private val schematics: SchematicService = SchematicService.Disabled,
@@ -90,27 +92,23 @@ class RentCollectionService(
 
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun processStall(stall: Stall, now: Instant): ProcessResult {
-        // Skip non-player-owned stalls (guild bank integration not yet available)
-        if (stall.owner.type != OwnerType.SOLO) {
-            return ProcessResult.Skipped
-        }
+        // Unowned/NONE stalls have nothing to charge.
+        if (stall.owner.type == OwnerType.NONE) return ProcessResult.Skipped
 
-        val ownerUuid = try {
-            UUID.fromString(stall.owner.id)
-        } catch (_: IllegalArgumentException) {
-            return ProcessResult.Skipped
-        }
-        // M4: floor to at least 1 unit whenever the stall had a real buy
-        // price. Default rent.formulaPct (0.01) on a 1000-coin stall
-        // computes to 0.0001 → toLong() = 0, which previously let
-        // players ride the formula rent-free forever. The floor closes
-        // that hole, matching StallRentExtensionService and
-        // StallSellbackService. True rent-free stalls (winningBid <= 0)
-        // keep the no-charge path so admin-gifted regions don't surprise-bill.
+        // M4: floor to >= 1 for stalls with a real buy price; admin-gifted (winningBid <= 0) stay free.
         val computed = stall.rentTerms.dailyRent(stall.winningBid)
         val rentDue = if (stall.winningBid > 0L) maxOf(computed, 1L) else computed
 
-        val withdrawSuccess = economy.withdraw(ownerUuid, rentDue)
+        val withdrawSuccess = when (stall.owner.type) {
+            OwnerType.SOLO -> {
+                // Corrupt owner id → skip (don't evict on bad data), matching prior behaviour.
+                val ownerUuid = runCatching { UUID.fromString(stall.owner.id) }.getOrNull()
+                    ?: return ProcessResult.Skipped
+                rentDue <= 0L || economy.withdraw(ownerUuid, rentDue)
+            }
+            OwnerType.GUILD -> rentDue <= 0L || guildProvider.bankWithdraw(stall.owner.id, rentDue)
+            OwnerType.NONE -> return ProcessResult.Skipped // unreachable (guarded above)
+        }
 
         if (withdrawSuccess) {
             val nextRent = now.plus(collectionInterval())
