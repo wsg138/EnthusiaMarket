@@ -7,6 +7,7 @@ import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.events.SellOfferCompletedEvent
@@ -130,6 +131,13 @@ class SellOfferService(
         // (logged below). Matches the auction settlement compensation
         // pattern: charge → persist → pay, never the reverse.
         val previousState = stall.state
+        // M-18: capture the pre-transfer owner so step 2 can route
+        // proceeds correctly (guild bank vs seller wallet). `stall`
+        // is the un-transferred load; `awardTo` returns a copy and
+        // never mutates it. Buyer always becomes the personal owner
+        // below — the original owner only matters for the payout.
+        val sellerIsGuild = stall.owner.type == OwnerType.GUILD
+        val proceedsGuildId = stall.owner.id // valid only when sellerIsGuild
         try {
             val now = Instant.now()
             val updated = stall.awardTo(OwnerRef.solo(buyer), offer.price, now)
@@ -147,14 +155,20 @@ class SellOfferService(
             throw e
         }
 
-        // 2. Pay seller + route tax. Failures here are logged but
-        // don't roll back — the stall is already transferred. The
-        // alternative (paying before transferring) risks double-pay
+        // 2. Pay seller (or guild bank) + route tax. Failures here are
+        // logged but don't roll back — the stall is already transferred.
+        // The alternative (paying before transferring) risks double-pay
         // on retry. Tax destination of "system" routes nowhere.
-        if (!economy.deposit(offer.sellerUuid, offer.price)) {
+        val proceedsPaid = if (sellerIsGuild) {
+            guildProvider.bankDeposit(proceedsGuildId, offer.price)
+        } else {
+            economy.deposit(offer.sellerUuid, offer.price)
+        }
+        if (!proceedsPaid) {
             log.warning(
-                "SellOfferService.purchase: seller deposit failed for ${offer.sellerUuid} " +
-                    "(price=${offer.price}); stall transfer already committed."
+                "SellOfferService.purchase: proceeds deposit failed for " +
+                    (if (sellerIsGuild) "guild $proceedsGuildId" else "seller ${offer.sellerUuid}") +
+                    " (price=${offer.price}); stall transfer already committed."
             )
         }
         val taxDestination = parseTaxDestination(config.shop.taxDestination)

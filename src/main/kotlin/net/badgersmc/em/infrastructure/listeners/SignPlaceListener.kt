@@ -8,6 +8,7 @@ import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.events.ShopCreatedEvent
@@ -195,6 +196,14 @@ open class SignPlaceListener(
             creatorId = player.uniqueId,
             direction = direction,
             searchEnabled = config.shop.searchDefault,
+            // Bind the shop to the stall's guild so ContainerTradeService routes
+            // earnings to the guild bank. A corrupt id falls back to a personal
+            // shop rather than crashing sign placement.
+            guildId = if (stall.owner.type == OwnerType.GUILD) {
+                runCatching { java.util.UUID.fromString(stall.owner.id) }.getOrNull()
+            } else {
+                null
+            },
         )
         shopRepository.upsert(shop)
 
