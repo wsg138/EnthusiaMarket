@@ -162,8 +162,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                  container_world, container_x, container_y, container_z,
                  sell_item, sell_amount, cost_item, cost_amount,
                  trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
-                 guild_id, creator_id, direction, search_enabled, sell_material)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 guild_id, creator_id, direction, search_enabled, sell_material, stock_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
             conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS).use { ps ->
                 bind(ps, shop)
@@ -187,11 +187,21 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                      container_world = ?, container_x = ?, container_y = ?, container_z = ?,
                      sell_item = ?, sell_amount = ?, cost_item = ?, cost_amount = ?,
                      trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
-                     guild_id = ?, creator_id = ?, direction = ?, search_enabled = ?, sell_material = ?
+                     guild_id = ?, creator_id = ?, direction = ?, search_enabled = ?, sell_material = ?, stock_count = ?
                    WHERE id = ?"""
             ).use { ps ->
                 bind(ps, shop)
-                ps.setLong(25, shop.id)
+                ps.setLong(26, shop.id)
+                ps.executeUpdate()
+            }
+        }
+    }
+
+    override fun updateStock(id: Long, stockCount: Int) {
+        ds.connection.use { conn ->
+            conn.prepareStatement("UPDATE shop_items SET stock_count = ? WHERE id = ?").use { ps ->
+                ps.setInt(1, stockCount)
+                ps.setLong(2, id)
                 ps.executeUpdate()
             }
         }
@@ -226,6 +236,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ps.setBoolean(23, shop.searchEnabled)
         val mat = sellMaterialOf(shop)
         if (mat != null) ps.setString(24, mat) else ps.setNull(24, java.sql.Types.VARCHAR)
+        ps.setInt(25, shop.stockCount)
     }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Shop? {
@@ -290,6 +301,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                 )
             }.getOrDefault(net.badgersmc.em.domain.shop.SignDirection.SELL),
             searchEnabled = rs.getBoolean("search_enabled"),
+            stockCount = rs.getInt("stock_count"),
         )
     }
 }
