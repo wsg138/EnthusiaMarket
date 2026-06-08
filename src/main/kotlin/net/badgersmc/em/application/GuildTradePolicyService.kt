@@ -5,8 +5,11 @@ import net.badgersmc.em.domain.guild.GuildTradePolicyRepository
 import net.badgersmc.em.domain.guild.PolicyKind
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.events.GuildTradePolicyChangedEvent
 import net.badgersmc.nexus.annotations.Service
+import org.bukkit.Bukkit
 import java.util.UUID
+import java.util.logging.Logger
 
 /**
  * Resolves a guild's trade stance toward a buyer, and lets MANAGE_SHOPS members
@@ -17,6 +20,8 @@ class GuildTradePolicyService(
     private val policies: GuildTradePolicyRepository,
     private val guildProvider: GuildProvider,
 ) {
+    private val log = Logger.getLogger(GuildTradePolicyService::class.java.name)
+
     sealed interface TradeStance {
         /** Trade proceeds; multiply the shop cost by [factor]. */
         data class Allowed(val factor: Double) : TradeStance
@@ -53,21 +58,42 @@ class GuildTradePolicyService(
             if (ratePct !in 0..MAX_TARIFF_PCT)
                 return@mutate PolicyResult.Invalid("tariff must be 0..$MAX_TARIFF_PCT — use an embargo to block a guild entirely")
             policies.upsert(GuildTradePolicy(ownerGuildId, targetGuildId, PolicyKind.TARIFF, ratePct))
+            fireChanged(ownerGuildId, targetGuildId, PolicyKind.TARIFF, ratePct, GuildTradePolicyChangedEvent.Action.SET)
             PolicyResult.Ok
         }
 
     fun setEmbargo(actor: UUID, ownerGuildId: String, targetGuildId: String): PolicyResult =
         mutate(actor, ownerGuildId, targetGuildId) {
             policies.upsert(GuildTradePolicy(ownerGuildId, targetGuildId, PolicyKind.EMBARGO, 0))
+            fireChanged(ownerGuildId, targetGuildId, PolicyKind.EMBARGO, 0, GuildTradePolicyChangedEvent.Action.SET)
             PolicyResult.Ok
         }
 
     fun clear(actor: UUID, ownerGuildId: String, targetGuildId: String): PolicyResult =
         mutate(actor, ownerGuildId, targetGuildId) {
-            policies.delete(ownerGuildId, targetGuildId); PolicyResult.Ok
+            policies.delete(ownerGuildId, targetGuildId)
+            fireChanged(ownerGuildId, targetGuildId, null, 0, GuildTradePolicyChangedEvent.Action.CLEARED)
+            PolicyResult.Ok
         }
 
     fun list(ownerGuildId: String): List<GuildTradePolicy> = policies.listByOwner(ownerGuildId)
+
+    /** A guild's policy toward [buyer]'s guild, ignoring trade direction. Null for solo / own-guild / no policy. */
+    fun policyToward(ownerGuildId: String, buyer: UUID): GuildTradePolicy? {
+        val buyerGuild = guildProvider.guildOf(buyer)?.id ?: return null
+        if (buyerGuild == ownerGuildId) return null
+        return policies.find(ownerGuildId, buyerGuild)
+    }
+
+    private fun fireChanged(owner: String, target: String, kind: PolicyKind?, rate: Int, action: GuildTradePolicyChangedEvent.Action) {
+        try {
+            Bukkit.getServer()?.pluginManager?.callEvent(
+                GuildTradePolicyChangedEvent(owner, target, kind, rate, action)
+            )
+        } catch (e: Exception) {
+            log.warning("GuildTradePolicyService: failed to fire policy-changed event: ${e.message}")
+        }
+    }
 
     private inline fun mutate(
         actor: UUID, ownerGuildId: String, targetGuildId: String, action: () -> PolicyResult

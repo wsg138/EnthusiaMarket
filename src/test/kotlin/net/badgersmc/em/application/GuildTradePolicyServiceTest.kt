@@ -2,15 +2,21 @@ package net.badgersmc.em.application
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import net.badgersmc.em.domain.guild.GuildTradePolicy
 import net.badgersmc.em.domain.guild.GuildTradePolicyRepository
 import net.badgersmc.em.domain.guild.PolicyKind
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.events.GuildTradePolicyChangedEvent
 import java.util.UUID
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 class GuildTradePolicyServiceTest {
     private val buyer = UUID.randomUUID()
@@ -23,6 +29,18 @@ class GuildTradePolicyServiceTest {
             mockk<GuildProvider.GuildRef> { every { id } returns gid }
         }
     }
+
+    private lateinit var pluginManager: org.bukkit.plugin.PluginManager
+
+    @BeforeTest fun mockBukkit() {
+        mockkStatic(org.bukkit.Bukkit::class)
+        val server = mockk<org.bukkit.Server>(relaxed = true)
+        pluginManager = mockk(relaxed = true)
+        every { org.bukkit.Bukkit.getServer() } returns server
+        every { server.pluginManager } returns pluginManager
+    }
+
+    @AfterTest fun unmockBukkit() = unmockkStatic(org.bukkit.Bukkit::class)
 
     @Test fun `solo buyer is allowed at factor 1`() {
         val s = svc(mockk(relaxed = true), gp(null)).stanceFor("g1", buyer, SignDirection.SELL)
@@ -114,5 +132,36 @@ class GuildTradePolicyServiceTest {
         }
         val out = GuildTradePolicyService(repo, mockk(relaxed = true)).list("g1")
         assertEquals(1, out.size); assertEquals("g2", out[0].targetGuildId)
+    }
+
+    // --- New tests for event firing and policyToward ---
+
+    @Test fun `setTariff fires a SET event`() {
+        val repo = mockk<GuildTradePolicyRepository>(relaxed = true)
+        val gpm = mockk<GuildProvider>(relaxed = true); every { gpm.hasShopPermission(any(), any(), any()) } returns true
+        GuildTradePolicyService(repo, gpm).setTariff(buyer, "g1", "g2", 20)
+        io.mockk.verify { pluginManager.callEvent(match<GuildTradePolicyChangedEvent> {
+            it.action == GuildTradePolicyChangedEvent.Action.SET &&
+                it.kind == PolicyKind.TARIFF && it.ratePct == 20 && it.ownerGuildId == "g1" && it.targetGuildId == "g2"
+        }) }
+    }
+    @Test fun `clear fires a CLEARED event`() {
+        val repo = mockk<GuildTradePolicyRepository>(relaxed = true)
+        val gpm = mockk<GuildProvider>(relaxed = true); every { gpm.hasShopPermission(any(), any(), any()) } returns true
+        GuildTradePolicyService(repo, gpm).clear(buyer, "g1", "g2")
+        io.mockk.verify { pluginManager.callEvent(match<GuildTradePolicyChangedEvent> {
+            it.action == GuildTradePolicyChangedEvent.Action.CLEARED
+        }) }
+    }
+    @Test fun `denied setTariff fires no event`() {
+        val gpm = mockk<GuildProvider>(relaxed = true); every { gpm.hasShopPermission(any(), any(), any()) } returns false
+        GuildTradePolicyService(mockk(relaxed = true), gpm).setTariff(buyer, "g1", "g2", 20)
+        io.mockk.verify(exactly = 0) { pluginManager.callEvent(any()) }
+    }
+    @Test fun `policyToward returns null for solo and own guild and the policy otherwise`() {
+        val repo = mockk<GuildTradePolicyRepository> { every { find("g1", "g2") } returns GuildTradePolicy("g1","g2",PolicyKind.TARIFF,15) }
+        assertEquals(15, svc(repo, gp("g2")).policyToward("g1", buyer)!!.ratePct)   // other guild → policy
+        assertNull(svc(repo, gp("g1")).policyToward("g1", buyer))            // own guild → null
+        assertNull(svc(mockk(relaxed = true), gp(null)).policyToward("g1", buyer)) // solo → null
     }
 }
