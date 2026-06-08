@@ -62,6 +62,7 @@ class GuildDissolutionServiceTest {
         val stalls: StallRepository,
         val eviction: StallEvictionService,
         val shops: ShopRepository,
+        val policies: net.badgersmc.em.domain.guild.GuildTradePolicyRepository,
     )
 
     private fun buildService(
@@ -78,11 +79,14 @@ class GuildDissolutionServiceTest {
         every { shops.findByGuildId(guildUuid) } returns guildShops
         every { shops.removeGuildOwnership(any()) } returns null
 
+        val policies = mockk<net.badgersmc.em.domain.guild.GuildTradePolicyRepository>(relaxed = true)
+
         return Wiring(
-            service = GuildDissolutionService(stalls, eviction, shops),
+            service = GuildDissolutionService(stalls, eviction, shops, policies),
             stalls = stalls,
             eviction = eviction,
             shops = shops,
+            policies = policies,
         )
     }
 
@@ -155,7 +159,8 @@ class GuildDissolutionServiceTest {
         val shops = mockk<ShopRepository>(relaxed = true)
         every { shops.findByGuildId(guildUuid) } returns emptyList()
 
-        val service = GuildDissolutionService(stalls, eviction, shops)
+        val policies = mockk<net.badgersmc.em.domain.guild.GuildTradePolicyRepository>(relaxed = true)
+        val service = GuildDissolutionService(stalls, eviction, shops, policies)
         service.handle(guildIdString)
 
         // First stall was attempted (then threw), and the second stall
@@ -163,5 +168,14 @@ class GuildDissolutionServiceTest {
         verify { eviction.evict(StallId("guildA")) }
         verify { eviction.evict(StallId("guildB")) }
         verify { eviction.evict(StallId("guildC")) }
+    }
+
+    @Test fun `handle deletes the disbanded guild's trade policies`() {
+        val guildStallA = ownedStall("guildA", OwnerType.GUILD, guildIdString)
+        val wiring = buildService(allStalls = listOf(guildStallA))
+
+        wiring.service.handle(guildIdString)
+
+        io.mockk.verify { wiring.policies.deleteAllInvolving(guildIdString) }
     }
 }

@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.domain.guild.GuildTradePolicyRepository
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
@@ -30,6 +31,7 @@ class GuildDissolutionService(
     private val stalls: StallRepository,
     private val eviction: StallEvictionService,
     private val shops: ShopRepository,
+    private val policies: GuildTradePolicyRepository,
 ) {
     private val log = Logger.getLogger(GuildDissolutionService::class.java.name)
 
@@ -71,7 +73,14 @@ class GuildDissolutionService(
         //    shop-unbind step — stall eviction still ran above.
         val shopsUnbound = unbindShops(guildId)
 
-        // 3. Summary log so an operator can confirm a disband actually
+        // 3. Delete every trade policy involving this guild (both as owner and target).
+        try {
+            policies.deleteAllInvolving(guildId)
+        } catch (e: Exception) {
+            log.warning("GuildDissolution: failed to delete trade policies for guild=$guildId: ${e.message}")
+        }
+
+        // 4. Summary log so an operator can confirm a disband actually
         //    swept everything.
         log.info(
             "GuildDissolution: guild=$guildId " +
