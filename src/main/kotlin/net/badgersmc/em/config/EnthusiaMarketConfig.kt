@@ -84,7 +84,7 @@ class EnthusiaMarketConfig {
 
     class LimitGroup {
         @Comment("Maximum total stalls a player in this group may own. -1 = unlimited.")
-        var total: Int = 0
+        var total: Int = -1
 
         @Comment("Per-region-kind caps. Key is the region kind name; value -1 = unlimited.")
         var regionkinds: MutableMap<String, Int> = mutableMapOf()
