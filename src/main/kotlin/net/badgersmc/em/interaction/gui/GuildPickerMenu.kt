@@ -38,8 +38,12 @@ class GuildPickerMenu(
             targets.drop(p * perPage).take(perPage).forEach { ref ->
                 pane.addItem(GuiItem(named(Material.PAPER, lang.msg("gui.guildpicker.entry", "name" to ref.name))) {
                     it.isCancelled = true
-                    policyService.setTariff(actor, ownerGuildId, ref.id, DEFAULT_NEW_TARIFF)
-                    GuildTradePolicyMenu(actor, ownerGuildId, policyService, guildProvider, lang).open(player)
+                    val result = policyService.setTariff(actor, ownerGuildId, ref.id, DEFAULT_NEW_TARIFF)
+                    if (result is GuildTradePolicyService.PolicyResult.Invalid) {
+                        player.sendMessage(lang.msg("gui.guildpicker.invalid", "reason" to result.reason))
+                    } else {
+                        GuildTradePolicyMenu(actor, ownerGuildId, policyService, guildProvider, lang).open(player)
+                    }
                 })
             }
             pages.addPane(p, pane)
