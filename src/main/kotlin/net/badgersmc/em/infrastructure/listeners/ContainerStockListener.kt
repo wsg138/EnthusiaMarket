@@ -2,6 +2,7 @@ package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.events.PostShopTransactionEvent
 import net.badgersmc.em.events.ShopStockDepletedEvent
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
@@ -47,6 +48,17 @@ class ContainerStockListener(
         refreshShopsAt(containerBlock)
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    fun onTransaction(event: PostShopTransactionEvent) {
+        val shop = shopRepository.findById(event.shopId) ?: return
+        val signWorld = Bukkit.getWorld(shop.signWorld) ?: return
+        val signBlock = signWorld.getBlockAt(shop.signX, shop.signY, shop.signZ)
+        val state = signBlock.state as? Sign ?: return
+        val trades = recomputeAndPersist(shop)
+        updateSignStock(state, trades)
+        trackDepletion(shop, trades)
+    }
+
     private var previouslyDepletedShops: MutableSet<Long> = mutableSetOf()
 
     private fun containerBlockOf(view: org.bukkit.inventory.InventoryView): Block? {
@@ -55,7 +67,6 @@ class ContainerStockListener(
         return when {
             holder is Container -> holder.block
             holder is org.bukkit.block.DoubleChest -> {
-                // Check both halves of the double chest
                 val leftInv = (top as? DoubleChestInventory)?.leftSide
                 val rightInv = (top as? DoubleChestInventory)?.rightSide
                 val leftBlock = (leftInv?.holder as? Container)?.block
@@ -73,20 +84,33 @@ class ContainerStockListener(
             loc.blockX, loc.blockY, loc.blockZ
         )
         for (shop in shops) {
+            val trades = recomputeAndPersist(shop)
             val signWorld = Bukkit.getWorld(shop.signWorld) ?: continue
             val signBlock = signWorld.getBlockAt(shop.signX, shop.signY, shop.signZ)
             val state = signBlock.state as? Sign ?: continue
-            val trades = computeTradesForShop(shop)
             updateSignStock(state, trades)
             trackDepletion(shop, trades)
         }
     }
 
-    private fun computeTradesForShop(shop: net.badgersmc.em.domain.shop.Shop): Int {
+    private fun recomputeAndPersist(shop: net.badgersmc.em.domain.shop.Shop): Int {
+        val container = getContainer(shop) ?: return 0
+        val rawStock = rawStockOf(container, shop)
+        shopRepository.updateStock(shop.id, rawStock)
+        return rawStock / shop.sellAmount.coerceAtLeast(1)
+    }
+
+    private fun getContainer(shop: net.badgersmc.em.domain.shop.Shop): Container? {
         val containerBlock = Bukkit.getWorld(shop.containerWorld)
             ?.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
-        val containerState = containerBlock?.state as? Container ?: return 0
-        return computeTradesAvailable(shop, containerState)
+        return containerBlock?.state as? Container
+    }
+
+    private fun rawStockOf(container: Container, shop: net.badgersmc.em.domain.shop.Shop): Int {
+        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
+        return container.inventory.contents.filterNotNull()
+            .filter { it.isSimilar(sellStack) }
+            .sumOf { it.amount }
     }
 
     private fun updateSignStock(state: Sign, trades: Int) {
@@ -103,21 +127,5 @@ class ContainerStockListener(
         } else {
             previouslyDepletedShops.remove(shop.id)
         }
-    }
-
-    private fun computeTradesAvailable(
-        shop: net.badgersmc.em.domain.shop.Shop,
-        container: Container
-    ): Int {
-        if (shop.sellAmount <= 0) return 0
-        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
-        sellStack.amount = shop.sellAmount
-        var count = 0
-        for (item in container.inventory.contents) {
-            if (item != null && item.isSimilar(sellStack)) {
-                count += item.amount / shop.sellAmount
-            }
-        }
-        return count
     }
 }
