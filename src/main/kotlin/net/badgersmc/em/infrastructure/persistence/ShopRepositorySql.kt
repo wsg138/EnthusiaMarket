@@ -133,15 +133,24 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                     while (rs.next()) rows.add(rs.getLong("id") to rs.getString("sell_item"))
                 }
             }
-            var updated = 0
-            conn.prepareStatement("UPDATE shop_items SET sell_material = ? WHERE id = ?").use { ps ->
+            // `AND sell_material IS NULL` keeps the batch idempotent: between the
+            // SELECT and this UPDATE another writer may have set sell_material, so
+            // we must not clobber a fresher value with our stale deserialization.
+            conn.prepareStatement(
+                "UPDATE shop_items SET sell_material = ? WHERE id = ? AND sell_material IS NULL"
+            ).use { ps ->
                 for ((id, sellItem) in rows) {
                     val mat = net.badgersmc.em.application.ItemStackSerializer.deserialize(sellItem)?.type?.name ?: continue
-                    ps.setString(1, mat); ps.setLong(2, id); ps.addBatch(); updated++
+                    ps.setString(1, mat); ps.setLong(2, id); ps.addBatch()
                 }
-                ps.executeBatch()
+                return ps.executeBatch().sumOf { count ->
+                    when (count) {
+                        Statement.SUCCESS_NO_INFO -> 1
+                        Statement.EXECUTE_FAILED -> 0
+                        else -> maxOf(count, 0)
+                    }
+                }
             }
-            return updated
         }
     }
 
