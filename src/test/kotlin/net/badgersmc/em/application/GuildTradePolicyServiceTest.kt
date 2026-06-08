@@ -53,4 +53,27 @@ class GuildTradePolicyServiceTest {
         val repo = mockk<GuildTradePolicyRepository> { every { find("g1", "g2") } returns GuildTradePolicy("g1","g2",PolicyKind.TARIFF,150) }
         assertEquals(0.0, assertIs<GuildTradePolicyService.TradeStance.Allowed>(svc(repo, gp("g2")).stanceFor("g1", buyer, SignDirection.BUY)).factor, 1e-9)
     }
+    @Test fun `setTariff persists when actor has MANAGE_SHOPS`() {
+        val repo = mockk<GuildTradePolicyRepository>(relaxed = true)
+        val gpm = mockk<GuildProvider>(relaxed = true)
+        every { gpm.hasShopPermission(buyer, "g1", GuildProvider.GuildPermission.MANAGE_SHOPS) } returns true
+        val r = GuildTradePolicyService(repo, gpm).setTariff(buyer, "g1", "g2", 30)
+        assertIs<GuildTradePolicyService.PolicyResult.Ok>(r)
+        io.mockk.verify { repo.upsert(match { it.ownerGuildId=="g1" && it.targetGuildId=="g2" && it.kind==PolicyKind.TARIFF && it.ratePct==30 }) }
+    }
+    @Test fun `setTariff denied without MANAGE_SHOPS`() {
+        val repo = mockk<GuildTradePolicyRepository>(relaxed = true)
+        val gpm = mockk<GuildProvider>(relaxed = true)
+        every { gpm.hasShopPermission(buyer, "g1", any()) } returns false
+        assertIs<GuildTradePolicyService.PolicyResult.Denied>(GuildTradePolicyService(repo, gpm).setTariff(buyer, "g1", "g2", 30))
+        io.mockk.verify(exactly = 0) { repo.upsert(any()) }
+    }
+    @Test fun `self-target is rejected`() {
+        val gpm = mockk<GuildProvider>(relaxed = true); every { gpm.hasShopPermission(any(), any(), any()) } returns true
+        assertIs<GuildTradePolicyService.PolicyResult.Invalid>(GuildTradePolicyService(mockk(relaxed=true), gpm).setTariff(buyer, "g1", "g1", 10))
+    }
+    @Test fun `rate out of range is rejected`() {
+        val gpm = mockk<GuildProvider>(relaxed = true); every { gpm.hasShopPermission(any(), any(), any()) } returns true
+        assertIs<GuildTradePolicyService.PolicyResult.Invalid>(GuildTradePolicyService(mockk(relaxed=true), gpm).setTariff(buyer, "g1", "g2", 2000))
+    }
 }

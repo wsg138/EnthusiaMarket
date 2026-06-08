@@ -1,5 +1,6 @@
 package net.badgersmc.em.application
 
+import net.badgersmc.em.domain.guild.GuildTradePolicy
 import net.badgersmc.em.domain.guild.GuildTradePolicyRepository
 import net.badgersmc.em.domain.guild.PolicyKind
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -37,5 +38,41 @@ class GuildTradePolicyService(
         SignDirection.SELL -> 1.0 + ratePct / 100.0
         SignDirection.BUY -> (1.0 - ratePct / 100.0).coerceAtLeast(0.0)
         SignDirection.TRADE -> 1.0
+    }
+
+    sealed interface PolicyResult {
+        data object Ok : PolicyResult
+        data object Denied : PolicyResult            // actor lacks MANAGE_SHOPS
+        data class Invalid(val reason: String) : PolicyResult
+    }
+
+    fun setTariff(actor: UUID, ownerGuildId: String, targetGuildId: String, ratePct: Int): PolicyResult =
+        mutate(actor, ownerGuildId, targetGuildId) {
+            if (ratePct !in 0..GuildTradePolicy.MAX_RATE_PCT)
+                return@mutate PolicyResult.Invalid("rate must be 0..${GuildTradePolicy.MAX_RATE_PCT}")
+            policies.upsert(GuildTradePolicy(ownerGuildId, targetGuildId, PolicyKind.TARIFF, ratePct))
+            PolicyResult.Ok
+        }
+
+    fun setEmbargo(actor: UUID, ownerGuildId: String, targetGuildId: String): PolicyResult =
+        mutate(actor, ownerGuildId, targetGuildId) {
+            policies.upsert(GuildTradePolicy(ownerGuildId, targetGuildId, PolicyKind.EMBARGO, 0))
+            PolicyResult.Ok
+        }
+
+    fun clear(actor: UUID, ownerGuildId: String, targetGuildId: String): PolicyResult =
+        mutate(actor, ownerGuildId, targetGuildId) {
+            policies.delete(ownerGuildId, targetGuildId); PolicyResult.Ok
+        }
+
+    fun list(ownerGuildId: String): List<GuildTradePolicy> = policies.listByOwner(ownerGuildId)
+
+    private inline fun mutate(
+        actor: UUID, ownerGuildId: String, targetGuildId: String, action: () -> PolicyResult
+    ): PolicyResult {
+        if (ownerGuildId == targetGuildId) return PolicyResult.Invalid("A guild cannot set a policy on itself")
+        if (!guildProvider.hasShopPermission(actor, ownerGuildId, GuildProvider.GuildPermission.MANAGE_SHOPS))
+            return PolicyResult.Denied
+        return action()
     }
 }
