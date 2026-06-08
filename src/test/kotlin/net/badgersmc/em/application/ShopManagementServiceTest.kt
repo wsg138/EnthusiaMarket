@@ -75,7 +75,7 @@ class ShopManagementServiceTest {
         verify(exactly = 0) { repo.delete(2) }
     }
 
-    @Test fun `deleteAll issues one bulk delete and fires an event per owned shop`() {
+    @Test fun `deleteAll calls deleteByOwner once and returns the affected count`() {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.findByOwner(owner) } returns listOf(shop(1), shop(2))
         every { repo.deleteByOwner(owner) } returns 2
