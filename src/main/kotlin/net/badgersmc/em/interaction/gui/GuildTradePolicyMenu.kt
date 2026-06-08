@@ -49,7 +49,11 @@ class GuildTradePolicyMenu(
         for (p in 0 until pageCount) {
             val pane = OutlinePane(0, 0, 9, 5, Pane.Priority.LOWEST)
             policies.drop(p * PER_PAGE).take(PER_PAGE).forEach { policy ->
-                pane.addItem(GuiItem(icon(policy)) { ev -> ev.isCancelled = true; mutate(player, policy, ev.isLeftClick, ev.isShiftClick) })
+                pane.addItem(GuiItem(icon(policy)) { ev ->
+                    ev.isCancelled = true
+                    // Only left/right clicks mutate; ignore middle/drop/number-key clicks.
+                    if (ev.isLeftClick || ev.isRightClick) mutate(player, policy, ev.isLeftClick, ev.isShiftClick)
+                })
             }
             pages.addPane(p, pane)
         }
@@ -72,9 +76,12 @@ class GuildTradePolicyMenu(
     }
 
     private fun mutate(player: Player, policy: GuildTradePolicy, left: Boolean, shift: Boolean) {
-        val result = applyClick(policy, left, shift)
-        if (result is GuildTradePolicyService.PolicyResult.Invalid) {
-            player.sendMessage(lang.msg("gui.guildpolicy.invalid", "reason" to result.reason))
+        when (val result = applyClick(policy, left, shift)) {
+            is GuildTradePolicyService.PolicyResult.Invalid ->
+                player.sendMessage(lang.msg("gui.guildpolicy.invalid", "reason" to result.reason))
+            GuildTradePolicyService.PolicyResult.Denied ->
+                player.sendMessage(lang.msg("gui.guildpolicy.denied"))
+            GuildTradePolicyService.PolicyResult.Ok -> Unit
         }
         render(player)
     }

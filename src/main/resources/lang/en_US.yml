@@ -246,6 +246,7 @@ gui:
     title: "<dark_red>Guild Trade Policy</dark_red>"
     add: "<green>+ Add a guild</green>"
     invalid: "<red><reason></red>"
+    denied: "<red>You no longer have the MANAGE_SHOPS guild permission.</red>"
     icon_tariff: "<gold><target></gold> <yellow>— tariff <red><rate>%</red></yellow>"
     icon_embargo: "<gold><target></gold> <red>— EMBARGOED</red>"
     icon_controls: "<gray>L +5% · R -5% · Shift-L embargo · Shift-R remove</gray>"

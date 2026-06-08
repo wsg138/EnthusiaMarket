@@ -52,11 +52,13 @@ class GuildPickerMenu(
     }
 
     private fun pickTarget(player: Player, ref: GuildProvider.GuildRef) {
-        val result = policyService.setTariff(actor, ownerGuildId, ref.id, DEFAULT_NEW_TARIFF)
-        if (result is GuildTradePolicyService.PolicyResult.Invalid) {
-            player.sendMessage(lang.msg("gui.guildpicker.invalid", "reason" to result.reason))
-        } else {
-            GuildTradePolicyMenu(actor, ownerGuildId, policyService, guildProvider, lang).open(player)
+        when (val result = policyService.setTariff(actor, ownerGuildId, ref.id, DEFAULT_NEW_TARIFF)) {
+            is GuildTradePolicyService.PolicyResult.Invalid ->
+                player.sendMessage(lang.msg("gui.guildpicker.invalid", "reason" to result.reason))
+            GuildTradePolicyService.PolicyResult.Denied ->
+                player.sendMessage(lang.msg("gui.guildpolicy.denied"))
+            GuildTradePolicyService.PolicyResult.Ok ->
+                GuildTradePolicyMenu(actor, ownerGuildId, policyService, guildProvider, lang).open(player)
         }
     }
 
