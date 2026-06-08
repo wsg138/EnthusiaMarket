@@ -53,6 +53,7 @@ class ShopGuildServiceTest {
         removeGuildOwnershipResult: Shop? = updatedPlayerShop,
         findByGuildIdResult: List<Shop> = emptyList(),
         isMemberResult: Boolean = true,
+        hasShopPermissionResult: Boolean = false,
     ): ServiceWithMocks {
         val shopRepo = mockk<ShopRepository>(relaxUnitFun = true)
         every { shopRepo.findById(any()) } returns findByIdResult
@@ -62,6 +63,9 @@ class ShopGuildServiceTest {
 
         val guildProvider = mockk<GuildProvider>(relaxUnitFun = true)
         every { guildProvider.isMember(any(), any()) } returns isMemberResult
+        every {
+            guildProvider.hasShopPermission(any(), any(), any())
+        } returns hasShopPermissionResult
 
         return ServiceWithMocks(
             service = ShopGuildService(shopRepo, guildProvider),
@@ -177,10 +181,48 @@ class ShopGuildServiceTest {
     fun `unregisterGuildShop removes guild ownership when actor is a guild member (C5)`() {
         val svc = buildService(
             findByIdResult = guildShop,
-            removeGuildOwnershipResult = updatedPlayerShop
+            removeGuildOwnershipResult = updatedPlayerShop,
+            hasShopPermissionResult = true,
         )
 
         val result = svc.service.unregisterGuildShop(1L, creatorId)
+
+        assertTrue(result.isSuccess)
+
+        verify { svc.shopRepo.findById(1L) }
+        verify { svc.shopRepo.removeGuildOwnership(1L) }
+    }
+
+    @Test
+    fun `unregisterGuildShop by member without MANAGE_SHOPS returns failure (C5)`() {
+        val noPermMemberId = UUID.fromString("55555555-5555-5555-5555-555555555555")
+        val svc = buildService(
+            findByIdResult = guildShop,
+            isMemberResult = true,
+            hasShopPermissionResult = false,
+        )
+
+        val result = svc.service.unregisterGuildShop(1L, noPermMemberId)
+
+        assertTrue(result.isFailure)
+        val exception = result.exceptionOrNull()
+        assertIs<IllegalAccessException>(exception)
+        assertTrue(exception.message?.contains("not the shop owner nor a MANAGE_SHOPS member") == true)
+
+        verify { svc.shopRepo.findById(1L) }
+        verify(exactly = 0) { svc.shopRepo.removeGuildOwnership(any()) }
+    }
+
+    @Test
+    fun `unregisterGuildShop by member with MANAGE_SHOPS succeeds (C5)`() {
+        val permMemberId = UUID.fromString("66666666-6666-6666-6666-666666666666")
+        val svc = buildService(
+            findByIdResult = guildShop,
+            removeGuildOwnershipResult = updatedPlayerShop,
+            hasShopPermissionResult = true,
+        )
+
+        val result = svc.service.unregisterGuildShop(1L, permMemberId)
 
         assertTrue(result.isSuccess)
 
@@ -197,7 +239,7 @@ class ShopGuildServiceTest {
         assertTrue(result.isFailure)
         val exception = result.exceptionOrNull()
         assertIs<IllegalAccessException>(exception)
-        assertTrue(exception.message?.contains("not the shop owner nor a member") == true)
+        assertTrue(exception.message?.contains("not the shop owner nor a MANAGE_SHOPS member") == true)
 
         verify { svc.shopRepo.findById(1L) }
         verify(exactly = 0) { svc.shopRepo.removeGuildOwnership(any()) }

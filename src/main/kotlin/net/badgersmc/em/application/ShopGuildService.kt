@@ -78,15 +78,17 @@ class ShopGuildService(
             return Result.failure(IllegalStateException("Shop $shopId is not guild-owned"))
         }
 
-        // C5: actor must either own the shop outright, or be a member of
-        // the guild that owns it. Non-members / strangers must not be able
-        // to dissolve a guild's claim on a shop.
+        // C5: actor must either own the shop outright, or have MANAGE_SHOPS
+        // permission in the guild that owns it. Non-members / members without
+        // the permission must not be able to dissolve a guild's claim on a shop.
         val isShopOwner = shop.owner == actor
-        val isGuildMember = guildProvider.isMember(actor, shop.guildId.toString())
-        if (!isShopOwner && !isGuildMember) {
+        val hasManagePerm = guildProvider.hasShopPermission(
+            actor, shop.guildId.toString(), GuildProvider.GuildPermission.MANAGE_SHOPS
+        )
+        if (!isShopOwner && !hasManagePerm) {
             return Result.failure(
                 IllegalAccessException(
-                    "Player $actor is not the shop owner nor a member of guild ${shop.guildId}"
+                    "Player $actor is not the shop owner nor a MANAGE_SHOPS member of guild ${shop.guildId}"
                 )
             )
         }
