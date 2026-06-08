@@ -337,6 +337,18 @@ class ShopRepositorySqlTest {
         assertTrue(repo.findBySellMaterial("DIAMOND").isEmpty())
     }
 
+    @Test fun `stockCount defaults to 0`() {
+        val shop = Shop(
+            stallId = "stall_sc",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 1, signY = 2, signZ = 3,
+            containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
+            sellItem = "item", sellAmount = 1,
+            costItem = "cost", costAmount = 5,
+        )
+        assertEquals(0, shop.stockCount)
+    }
+
     @Test fun `backfill fills null sell_material rows`() {
         // Insert a row directly with sell_material left NULL (pre-V018 style)
         val diamondB64 = ItemStackSerializer.serialize(org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND))
