@@ -11,7 +11,6 @@ import net.badgersmc.em.interaction.Menu
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Material
-import org.bukkit.block.Container
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
 
@@ -103,14 +102,8 @@ class SearchResultsMenu(
         return item
     }
 
-    private fun tradesAvailable(shop: Shop): Int {
-        val world = Bukkit.getWorld(shop.containerWorld) ?: return 0
-        val state = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state
-        val inv = (state as? Container)?.inventory ?: return 0
-        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
-        val stock = inv.contents.filterNotNull().filter { it.isSimilar(sellStack) }.sumOf { it.amount }
-        return stock / shop.sellAmount.coerceAtLeast(1)
-    }
+    private fun tradesAvailable(shop: Shop): Int =
+        shop.stockCount / shop.sellAmount.coerceAtLeast(1)
 
     private companion object {
         private const val ROWS = 6

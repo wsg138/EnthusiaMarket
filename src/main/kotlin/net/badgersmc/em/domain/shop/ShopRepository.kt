@@ -23,4 +23,6 @@ interface ShopRepository {
     fun findBySellMaterial(material: String): List<Shop>
     /** Populate sell_material for rows missing it (one-time after V018). Returns rows updated. */
     fun backfillSellMaterials(): Int
+    /** Set the denormalized container stock for [id]. */
+    fun updateStock(id: Long, stockCount: Int)
 }

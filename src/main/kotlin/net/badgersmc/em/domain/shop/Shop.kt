@@ -68,10 +68,13 @@ data class Shop(
     val direction: SignDirection = SignDirection.SELL,
     /** Whether this shop appears in /shop search results (REQ — ItemShops parity SP2). */
     val searchEnabled: Boolean = true,
+    /** Denormalized raw container stock (sum of matching item amounts). 0 until first container edit or trade. */
+    val stockCount: Int = 0,
 ) {
     init {
         require(sellAmount > 0) { "sellAmount must be positive, was $sellAmount" }
         require(costAmount > 0) { "costAmount must be positive, was $costAmount" }
+        require(stockCount >= 0) { "stockCount must be non-negative, was $stockCount" }
         require(stallId.isNotBlank()) { "stallId must not be blank" }
     }
 }

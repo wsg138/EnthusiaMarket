@@ -1,6 +1,9 @@
 package net.badgersmc.em
 
+import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.shop.Shop
+import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang
 import net.badgersmc.em.infrastructure.listeners.SignPlaceListener
@@ -180,7 +183,60 @@ open class EnthusiaMarket : JavaPlugin() {
             }
         })
 
+        // M-19: one-time best-effort backfill of stock_count for shops written before V019.
+        scheduleStockBackfill(shopRepoForBackfill)
+
         logger.info("EnthusiaMarket enabled (v${description.version})")
+    }
+
+    /**
+     * Schedule the one-time stock_count backfill on the NEXT tick. Block state is
+     * main-thread-only, so this is NOT async; it only touches shops whose container chunk
+     * is already loaded (never force-loads). Fail-open: a failure only means /shop search
+     * shows a stale count for some shops until they're next edited/traded or the server reboots.
+     */
+    private fun scheduleStockBackfill(repo: ShopRepository) {
+        Bukkit.getScheduler().runTaskLater(this, Runnable {
+            try {
+                val n = backfillStockCount(repo)
+                if (n > 0) logger.info("Backfilled stock_count for $n loaded shop(s)")
+            } catch (e: Exception) {
+                logger.warning("stock_count backfill failed: ${e.message}")
+            }
+        }, 1L)
+    }
+
+    /**
+     * Recompute + persist the denormalized stock_count for every shop whose container chunk
+     * is currently loaded. Main-thread only (reads block state); never force-loads a chunk —
+     * shops in unloaded chunks keep their last-persisted count and refresh on the next
+     * container edit/trade. Returns the number of shops updated.
+     */
+    private fun backfillStockCount(repo: ShopRepository): Int {
+        var updated = 0
+        for (shop in repo.all()) {
+            val stock = stockIfLoaded(shop) ?: continue
+            repo.updateStock(shop.id, stock)
+            updated++
+        }
+        return updated
+    }
+
+    /** Raw container stock for [shop], or null if its container chunk isn't loaded (no force-load). */
+    private fun stockIfLoaded(shop: Shop): Int? {
+        val container = loadedContainer(shop) ?: return null
+        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return null
+        return container.inventory.contents.filterNotNull()
+            .filter { it.isSimilar(sellStack) }
+            .sumOf { it.amount }
+    }
+
+    /** The shop's container block state, only if its chunk is already loaded; null otherwise. */
+    private fun loadedContainer(shop: Shop): org.bukkit.block.Container? {
+        val world = Bukkit.getWorld(shop.containerWorld) ?: return null
+        if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
+        return world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state
+            as? org.bukkit.block.Container
     }
 
     /**

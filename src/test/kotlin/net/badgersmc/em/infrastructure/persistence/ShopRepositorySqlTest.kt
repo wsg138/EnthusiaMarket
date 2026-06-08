@@ -337,6 +337,54 @@ class ShopRepositorySqlTest {
         assertTrue(repo.findBySellMaterial("DIAMOND").isEmpty())
     }
 
+    @Test fun `stockCount defaults to 0`() {
+        val created = repo.upsert(Shop(
+            stallId = "stall_sc",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 1, signY = 2, signZ = 3,
+            containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
+            sellItem = "item", sellAmount = 1,
+            costItem = "cost", costAmount = 5,
+        ))
+        val found = repo.findById(created.id)
+        assertNotNull(found)
+        assertEquals(0, found.stockCount)
+    }
+
+    @Test fun `upsert and findById round-trip stockCount`() {
+        val shop = Shop(
+            stallId = "stall_sc2",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 5, signY = 6, signZ = 7,
+            containerWorld = "world", containerX = 5, containerY = 5, containerZ = 5,
+            sellItem = "item", sellAmount = 1,
+            costItem = "cost", costAmount = 5,
+            stockCount = 7,
+        )
+        val created = repo.upsert(shop)
+        val found = repo.findById(created.id)
+        assertNotNull(found)
+        assertEquals(7, found.stockCount)
+    }
+
+    @Test fun `updateStock sets stockCount and leaves other fields unchanged`() {
+        val created = repo.upsert(Shop(
+            stallId = "stall_sc3",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 10, signY = 11, signZ = 12,
+            containerWorld = "world", containerX = 10, containerY = 10, containerZ = 10,
+            sellItem = "item", sellAmount = 3,
+            costItem = "cost", costAmount = 8,
+            stockCount = 7,
+        ))
+        assertEquals(7, repo.findById(created.id)!!.stockCount)
+        repo.updateStock(created.id, 3)
+        val after = repo.findById(created.id)!!
+        assertEquals(3, after.stockCount)
+        assertEquals(3, after.sellAmount)
+        assertEquals("stall_sc3", after.stallId)
+    }
+
     @Test fun `backfill fills null sell_material rows`() {
         // Insert a row directly with sell_material left NULL (pre-V018 style)
         val diamondB64 = ItemStackSerializer.serialize(org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND))
