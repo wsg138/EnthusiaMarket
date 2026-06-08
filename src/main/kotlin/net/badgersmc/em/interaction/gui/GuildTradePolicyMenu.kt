@@ -34,23 +34,26 @@ class GuildTradePolicyMenu(
 
     override fun open(player: Player) = render(player)
 
-    @Suppress("LongMethod")
     private fun render(player: Player) {
         val policies = policyService.list(ownerGuildId)
+        val pageCount = maxOf(1, (policies.size + PER_PAGE - 1) / PER_PAGE)
         val gui = ChestGui(6, ComponentHolder.of(lang.msg("gui.guildpolicy.title")))
+        val pages = policyPages(player, policies, pageCount)
+        gui.addPane(pages)
+        gui.addPane(controls(player, gui, pages, pageCount))
+        gui.show(player)
+    }
+
+    private fun policyPages(player: Player, policies: List<GuildTradePolicy>, pageCount: Int): PaginatedPane {
         val pages = PaginatedPane(0, 0, 9, 5)
-        val perPage = 45
-        val pageCount = maxOf(1, (policies.size + perPage - 1) / perPage)
         for (p in 0 until pageCount) {
             val pane = OutlinePane(0, 0, 9, 5, Pane.Priority.LOWEST)
-            policies.drop(p * perPage).take(perPage).forEach { policy ->
+            policies.drop(p * PER_PAGE).take(PER_PAGE).forEach { policy ->
                 pane.addItem(GuiItem(icon(policy)) { ev -> ev.isCancelled = true; mutate(player, policy, ev.isLeftClick, ev.isShiftClick) })
             }
             pages.addPane(p, pane)
         }
-        gui.addPane(pages)
-        gui.addPane(controls(player, gui, pages, pageCount))
-        gui.show(player)
+        return pages
     }
 
     private fun controls(player: Player, gui: ChestGui, pages: PaginatedPane, pageCount: Int): StaticPane {
@@ -69,15 +72,20 @@ class GuildTradePolicyMenu(
     }
 
     private fun mutate(player: Player, policy: GuildTradePolicy, left: Boolean, shift: Boolean) {
-        val result = when {
-            shift && left -> policyService.setEmbargo(actor, ownerGuildId, policy.targetGuildId)
-            shift && !left -> policyService.clear(actor, ownerGuildId, policy.targetGuildId)
+        val result = applyClick(policy, left, shift)
+        if (result is GuildTradePolicyService.PolicyResult.Invalid) {
+            player.sendMessage(lang.msg("gui.guildpolicy.invalid", "reason" to result.reason))
+        }
+        render(player)
+    }
+
+    private fun applyClick(policy: GuildTradePolicy, left: Boolean, shift: Boolean): GuildTradePolicyService.PolicyResult =
+        when {
+            shift -> if (left) policyService.setEmbargo(actor, ownerGuildId, policy.targetGuildId)
+                     else policyService.clear(actor, ownerGuildId, policy.targetGuildId)
             left -> policyService.setTariff(actor, ownerGuildId, policy.targetGuildId, stepUp(currentRate(policy)))
             else -> policyService.setTariff(actor, ownerGuildId, policy.targetGuildId, stepDown(currentRate(policy)))
         }
-        if (result is GuildTradePolicyService.PolicyResult.Invalid) player.sendMessage(lang.msg("gui.guildpolicy.invalid", "reason" to result.reason))
-        render(player)
-    }
 
     private fun currentRate(policy: GuildTradePolicy): Int =
         if (policy.kind == PolicyKind.TARIFF) policy.ratePct else MIN_TARIFF_PCT
@@ -99,6 +107,7 @@ class GuildTradePolicyMenu(
 
     companion object {
         const val MIN_TARIFF_PCT = 5
+        private const val PER_PAGE = 45
         fun stepUp(current: Int): Int = (current + 5).coerceAtMost(GuildTradePolicyService.MAX_TARIFF_PCT)
         fun stepDown(current: Int): Int = (current - 5).coerceAtLeast(MIN_TARIFF_PCT)
     }
