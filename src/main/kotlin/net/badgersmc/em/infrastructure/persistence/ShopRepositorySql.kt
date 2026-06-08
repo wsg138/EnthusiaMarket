@@ -118,6 +118,26 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         }
     }
 
+    override fun findBySellMaterial(material: String): List<Shop> =
+        queryMany("SELECT * FROM shop_items WHERE sell_material = ? AND search_enabled = 1") {
+            setString(1, material)
+        }
+
+    override fun backfillSellMaterials(): Int {
+        var updated = 0
+        val nullRows = queryMany("SELECT * FROM shop_items WHERE sell_material IS NULL") {}
+        ds.connection.use { conn ->
+            conn.prepareStatement("UPDATE shop_items SET sell_material = ? WHERE id = ?").use { ps ->
+                for (shop in nullRows) {
+                    val mat = sellMaterialOf(shop) ?: continue
+                    ps.setString(1, mat); ps.setLong(2, shop.id); ps.addBatch(); updated++
+                }
+                ps.executeBatch()
+            }
+        }
+        return updated
+    }
+
     private fun insert(shop: Shop): Shop {
         ds.connection.use { conn ->
             val sql = """
@@ -126,8 +146,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                  container_world, container_x, container_y, container_z,
                  sell_item, sell_amount, cost_item, cost_amount,
                  trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
-                 guild_id, creator_id, direction, search_enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 guild_id, creator_id, direction, search_enabled, sell_material)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
             conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS).use { ps ->
                 bind(ps, shop)
@@ -151,15 +171,18 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                      container_world = ?, container_x = ?, container_y = ?, container_z = ?,
                      sell_item = ?, sell_amount = ?, cost_item = ?, cost_amount = ?,
                      trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
-                     guild_id = ?, creator_id = ?, direction = ?, search_enabled = ?
+                     guild_id = ?, creator_id = ?, direction = ?, search_enabled = ?, sell_material = ?
                    WHERE id = ?"""
             ).use { ps ->
                 bind(ps, shop)
-                ps.setLong(24, shop.id)
+                ps.setLong(25, shop.id)
                 ps.executeUpdate()
             }
         }
     }
+
+    private fun sellMaterialOf(shop: Shop): String? =
+        net.badgersmc.em.application.ItemStackSerializer.deserialize(shop.sellItem)?.type?.name
 
     private fun bind(ps: PreparedStatement, shop: Shop) {
         ps.setString(1, shop.stallId)
@@ -185,6 +208,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         if (shop.creatorId != null) ps.setString(21, shop.creatorId.toString()) else ps.setNull(21, java.sql.Types.VARCHAR)
         ps.setString(22, shop.direction.name)
         ps.setBoolean(23, shop.searchEnabled)
+        val mat = sellMaterialOf(shop)
+        if (mat != null) ps.setString(24, mat) else ps.setNull(24, java.sql.Types.VARCHAR)
     }
 
     private fun queryOne(sql: String, prep: PreparedStatement.() -> Unit): Shop? {

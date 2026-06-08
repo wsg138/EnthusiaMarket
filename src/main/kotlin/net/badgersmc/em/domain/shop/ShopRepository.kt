@@ -19,4 +19,8 @@ interface ShopRepository {
     fun delete(id: Long)
     fun deleteByContainer(world: String, x: Int, y: Int, z: Int)
     fun deleteByOwner(owner: UUID): Int
+    /** Search-enabled shops whose sell item is [material] (UPPERCASE Material name). */
+    fun findBySellMaterial(material: String): List<Shop>
+    /** Populate sell_material for rows missing it (one-time after V018). Returns rows updated. */
+    fun backfillSellMaterials(): Int
 }
