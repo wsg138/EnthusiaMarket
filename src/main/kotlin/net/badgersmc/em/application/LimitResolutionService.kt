@@ -82,7 +82,6 @@ class LimitResolutionService(
         currentForKind: Int,
     ): ClaimDecision {
         val limits = effectiveLimits(player)
-        if (limits.isUnlimited) return ClaimDecision.Allowed
 
         // Total cap check.
         if (limits.total >= 0 && currentTotal >= limits.total) {

@@ -173,4 +173,37 @@ class LimitResolutionServiceTest {
             service.canClaim(player, kind = "shop", currentTotal = 999, currentForKind = 999),
         )
     }
+
+    @Test fun `unlimited total does not bypass per-kind cap`() {
+        val config = configWithGroups(
+            "patron" to group(total = -1, regionkinds = mapOf("premium" to 1))
+        )
+        val perms = mockk<PermissionChecker>()
+        every { perms.has(player, "enthusiamarket.admin.bypasslimit") } returns false
+        every { perms.has(player, "enthusiamarket.limit.patron") } returns true
+
+        val service = LimitResolutionService(config, perms)
+
+        // total is unlimited (-1) but kind cap is 1, currentForKind = 1 → rejected
+        assertEquals(
+            LimitResolutionService.ClaimDecision.Rejected.KindCapReached("premium", 1),
+            service.canClaim(player, kind = "premium", currentTotal = 5, currentForKind = 1),
+        )
+    }
+
+    @Test fun `fully unlimited player is still allowed`() {
+        val config = configWithGroups(
+            "patron" to group(total = -1, regionkinds = mapOf("premium" to -1))
+        )
+        val perms = mockk<PermissionChecker>()
+        every { perms.has(player, "enthusiamarket.admin.bypasslimit") } returns false
+        every { perms.has(player, "enthusiamarket.limit.patron") } returns true
+
+        val service = LimitResolutionService(config, perms)
+
+        assertEquals(
+            LimitResolutionService.ClaimDecision.Allowed,
+            service.canClaim(player, kind = "premium", currentTotal = 999, currentForKind = 999),
+        )
+    }
 }
