@@ -42,6 +42,7 @@ class SellOfferService(
     private val guildProvider: GuildProvider,
     private val limits: LimitResolutionService,
     private val ownership: StallOwnershipCounter,
+    private val alerter: CompensationAlertService,
 ) {
 
     private val log = Logger.getLogger(SellOfferService::class.java.name)
@@ -169,6 +170,13 @@ class SellOfferService(
                 "SellOfferService.purchase: proceeds deposit failed for " +
                     (if (sellerIsGuild) "guild $proceedsGuildId" else "seller ${offer.sellerUuid}") +
                     " (price=${offer.price}); stall transfer already committed."
+            )
+            alerter.alert(
+                context = "sell-offer:proceeds",
+                detail = "stall ${stallId.value} transferred to buyer $buyer but proceeds payout failed " +
+                    (if (sellerIsGuild) "to guild $proceedsGuildId" else "to seller ${offer.sellerUuid}"),
+                affected = if (sellerIsGuild) null else offer.sellerUuid,
+                amount = offer.price,
             )
         }
         val taxDestination = parseTaxDestination(config.shop.taxDestination)

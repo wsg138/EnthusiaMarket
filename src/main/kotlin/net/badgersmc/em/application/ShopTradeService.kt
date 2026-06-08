@@ -24,7 +24,8 @@ class ShopTradeService(
     private val stallRepository: StallRepository,
     private val economy: EconomyProvider,
     private val items: ItemProvider,
-    private val config: EnthusiaMarketConfig
+    private val config: EnthusiaMarketConfig,
+    private val alerter: CompensationAlertService
 ) {
     private val logger = Logger.getLogger(ShopTradeService::class.java.name)
 
@@ -169,9 +170,14 @@ class ShopTradeService(
         return TradeResult.Success("Sold $amount x $itemKey for $price ($sellerProceeds after tax)")
     }
 
-    private fun rollbackBuyWithdraw(playerUuid: UUID, itemKey: String, amount: Int, @Suppress("UnusedParameter") price: Long): TradeResult {
+    private fun rollbackBuyWithdraw(playerUuid: UUID, itemKey: String, amount: Int, price: Long): TradeResult {
         if (!items.giveItemToPlayer(playerUuid, itemKey, amount)) {
-            logger.warning("Trade rollback: withdraw failed, item return failed")
+            alerter.alert(
+                context = "shop-trade:rollbackBuyWithdraw",
+                detail = "Trade rollback: withdraw failed, item return failed",
+                affected = playerUuid,
+                amount = price,
+            )
             return TradeResult.CompensationFailed(
                 originalError = "Economy withdrawal from shop owner failed",
                 compensationError = "Failed to return item to player during rollback"
@@ -190,7 +196,12 @@ class ShopTradeService(
                 if (!ownerRefunded) add("failed to refund owner")
                 if (!itemReturned) add("failed to return item")
             }
-            logger.warning("Trade rollback: deposit failed, ${failures.joinToString("; ")}")
+            alerter.alert(
+                context = "shop-trade:rollbackBuyDeposit",
+                detail = "Trade rollback: deposit failed, ${failures.joinToString("; ")}",
+                affected = ownerUuid,
+                amount = price,
+            )
             return TradeResult.CompensationFailed(
                 originalError = "Economy deposit to player failed",
                 compensationError = failures.joinToString("; ")
@@ -228,7 +239,12 @@ class ShopTradeService(
 
     private fun rollbackSellDeposit(playerUuid: UUID, price: Long): TradeResult {
         if (!economy.deposit(playerUuid, price)) {
-            logger.warning("Trade rollback: owner deposit failed, player refund failed")
+            alerter.alert(
+                context = "shop-trade:rollbackSellDeposit",
+                detail = "Trade rollback: owner deposit failed, player refund failed",
+                affected = playerUuid,
+                amount = price,
+            )
             return TradeResult.CompensationFailed(
                 originalError = "Failed to credit shop owner",
                 compensationError = "Failed to refund player during rollback"
@@ -247,7 +263,12 @@ class ShopTradeService(
                 if (!playerRefunded) add("failed to refund player")
                 if (!ownerDebited) add("failed to debit owner")
             }
-            logger.warning("Trade rollback: item give failed, ${failures.joinToString("; ")}")
+            alerter.alert(
+                context = "shop-trade:rollbackSellItem",
+                detail = "Trade rollback: item give failed, ${failures.joinToString("; ")}",
+                affected = ownerUuid,
+                amount = sellerProceeds,
+            )
             return TradeResult.CompensationFailed(
                 originalError = "Failed to give item to player",
                 compensationError = failures.joinToString("; ")
