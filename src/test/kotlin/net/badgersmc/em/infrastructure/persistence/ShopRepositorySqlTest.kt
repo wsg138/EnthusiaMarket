@@ -338,15 +338,17 @@ class ShopRepositorySqlTest {
     }
 
     @Test fun `stockCount defaults to 0`() {
-        val shop = Shop(
+        val created = repo.upsert(Shop(
             stallId = "stall_sc",
             owner = UUID.randomUUID(),
             signWorld = "world", signX = 1, signY = 2, signZ = 3,
             containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
             sellItem = "item", sellAmount = 1,
             costItem = "cost", costAmount = 5,
-        )
-        assertEquals(0, shop.stockCount)
+        ))
+        val found = repo.findById(created.id)
+        assertNotNull(found)
+        assertEquals(0, found.stockCount)
     }
 
     @Test fun `upsert and findById round-trip stockCount`() {

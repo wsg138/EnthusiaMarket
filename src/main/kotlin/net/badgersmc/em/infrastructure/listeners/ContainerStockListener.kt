@@ -51,10 +51,13 @@ class ContainerStockListener(
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onTransaction(event: PostShopTransactionEvent) {
         val shop = shopRepository.findById(event.shopId) ?: return
+        // Persist stock FIRST — the trade already mutated the container, so stock_count
+        // must update even if the sign is gone (mirrors refreshShopsAt). Otherwise a
+        // missing/destroyed sign would leave search showing stale availability.
+        val trades = recomputeAndPersist(shop)
         val signWorld = Bukkit.getWorld(shop.signWorld) ?: return
         val signBlock = signWorld.getBlockAt(shop.signX, shop.signY, shop.signZ)
         val state = signBlock.state as? Sign ?: return
-        val trades = recomputeAndPersist(shop)
         updateSignStock(state, trades)
         trackDepletion(shop, trades)
     }

@@ -74,6 +74,7 @@ data class Shop(
     init {
         require(sellAmount > 0) { "sellAmount must be positive, was $sellAmount" }
         require(costAmount > 0) { "costAmount must be positive, was $costAmount" }
+        require(stockCount >= 0) { "stockCount must be non-negative, was $stockCount" }
         require(stallId.isNotBlank()) { "stallId must not be blank" }
     }
 }

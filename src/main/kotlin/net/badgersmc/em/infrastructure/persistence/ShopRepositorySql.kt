@@ -181,20 +181,24 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 
     private fun update(shop: Shop) {
         ds.connection.use { conn ->
-            conn.prepareStatement(
-                """UPDATE shop_items SET
-                     stall_id = ?, owner = ?, sign_world = ?, sign_x = ?, sign_y = ?, sign_z = ?,
-                     container_world = ?, container_x = ?, container_y = ?, container_z = ?,
-                     sell_item = ?, sell_amount = ?, cost_item = ?, cost_amount = ?,
-                     trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
-                     guild_id = ?, creator_id = ?, direction = ?, search_enabled = ?, sell_material = ?, stock_count = ?
-                   WHERE id = ?"""
-            ).use { ps ->
+            conn.prepareStatement(UPDATE_SQL).use { ps ->
                 bind(ps, shop)
                 ps.setLong(26, shop.id)
                 ps.executeUpdate()
             }
         }
+    }
+
+    private companion object {
+        private val UPDATE_SQL = """
+            UPDATE shop_items SET
+              stall_id = ?, owner = ?, sign_world = ?, sign_x = ?, sign_y = ?, sign_z = ?,
+              container_world = ?, container_x = ?, container_y = ?, container_z = ?,
+              sell_item = ?, sell_amount = ?, cost_item = ?, cost_amount = ?,
+              trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
+              guild_id = ?, creator_id = ?, direction = ?, search_enabled = ?, sell_material = ?, stock_count = ?
+            WHERE id = ?
+        """.trimIndent()
     }
 
     override fun updateStock(id: Long, stockCount: Int) {
