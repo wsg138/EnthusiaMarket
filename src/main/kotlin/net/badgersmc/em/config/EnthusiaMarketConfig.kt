@@ -30,6 +30,8 @@ class EnthusiaMarketConfig {
     var schematics: Schematics = Schematics()
     @Comment("Stall boundary particle outline rendering (REQ-220 region kinds)")
     var particles: Particles = Particles()
+    @Comment("Guild tariff/embargo player notifications")
+    var guildPolicy: GuildPolicy = GuildPolicy()
 
     class Particles {
         @Comment("Master switch for stall boundary particle outlines.")
@@ -39,6 +41,15 @@ class EnthusiaMarketConfig {
                 "Caps render cost on busy servers; excess is deferred to later ticks."
         )
         var maxPerTick: Int = 200
+    }
+
+    class GuildPolicy {
+        @Comment("Broadcast to the whole server when a guild sets/changes/lifts a tariff or embargo.")
+        var announceEnabled: Boolean = true
+        @Comment("Warn a player on entering a guild stall where their guild is tariffed/embargoed.")
+        var entryWarningEnabled: Boolean = true
+        @Comment("Minimum seconds between a guild's policy-change broadcasts (anti-spam).")
+        var announceCooldownSeconds: Int = 30
     }
 
     class Schematics {
