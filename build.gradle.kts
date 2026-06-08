@@ -192,6 +192,7 @@ configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
         node("enthusiamarket.shop.break", default = Default.TRUE, description = "Break a shop sign")
         node("enthusiamarket.shop.buy", default = Default.TRUE, description = "Buy from a shop")
         node("enthusiamarket.shop.sell", default = Default.TRUE, description = "Sell to a shop")
+        node("enthusiamarket.guild.policy", default = Default.TRUE, description = "Open /em guild policy to manage guild tariffs/embargoes (MANAGE_SHOPS still required in-guild)")
         // Auction permissions
         node("enthusiamarket.auction.start", default = Default.TRUE, description = "Start an auction")
         node("enthusiamarket.auction.bid", default = Default.TRUE, description = "Bid in an auction")

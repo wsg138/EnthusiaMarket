@@ -19,7 +19,10 @@ import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.nexus.i18n.LangService
+import net.badgersmc.em.application.GuildTradePolicyService
+import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.interaction.gui.AuctionBrowserMenu
+import net.badgersmc.em.interaction.gui.GuildTradePolicyMenu
 import net.badgersmc.nexus.commands.annotations.Arg
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
@@ -55,6 +58,8 @@ class AdminCommands(
     private val stallEviction: StallEvictionService,
     private val limits: LimitResolutionService,
     private val ownership: StallOwnershipCounter,
+    private val policyService: GuildTradePolicyService,
+    private val guildProvider: GuildProvider,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -606,6 +611,19 @@ class AdminCommands(
             java.time.Instant.now().plusSeconds(dur.toLong())
         )
         sender.sendMessage(lang.msg("stall.outline.ok", "stall" to stallId, "seconds" to dur))
+    }
+
+    // ----- Guild trade policy -----
+
+    @Subcommand("guild policy")
+    @Permission("enthusiamarket.guild.policy")
+    fun guildPolicy(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
+        val guild = guildProvider.guildOf(player.uniqueId) ?: run { player.sendMessage(lang.msg("guildpolicy.not_in_guild")); return }
+        if (!guildProvider.hasShopPermission(player.uniqueId, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS)) {
+            player.sendMessage(lang.msg("guildpolicy.no_permission")); return
+        }
+        GuildTradePolicyMenu(player.uniqueId, guild.id, policyService, guildProvider, lang).open(player)
     }
 
     // ----- Admin evict (force unclaim) -----
