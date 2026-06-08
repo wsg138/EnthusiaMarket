@@ -376,3 +376,12 @@ bedrock:
 
 container_sign:
   stock_line: "<gray>Stock: <trades>"
+
+guildpolicy:
+  announce:
+    tariff: "<gold>📢 <yellow><owner></yellow> has imposed a <red><rate>%</red> tariff on <yellow><target></yellow>."
+    embargo: "<gold>📢 <yellow><owner></yellow> has <red>embargoed</red> <yellow><target></yellow>."
+    cleared: "<gold>📢 <yellow><owner></yellow> has lifted its trade policy on <yellow><target></yellow>."
+  entry:
+    tariff: "<gold>⚠ Your guild is tariffed <red><rate>%</red> at <yellow><owner></yellow>'s shops here.</gold>"
+    embargo: "<red>⛔ Your guild is embargoed — you cannot trade at <yellow><owner></yellow>'s shops here.</red>"
