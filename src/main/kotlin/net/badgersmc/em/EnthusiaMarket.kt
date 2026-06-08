@@ -168,6 +168,10 @@ open class EnthusiaMarket : JavaPlugin() {
             particleService.renderTick(cfg.particles.maxPerTick, this)
         }, 0L, 4L)
 
+        // M-20: one-time backfill of sell_material for shops written before V018.
+        val backfilled = ctx.getBean<net.badgersmc.em.domain.shop.ShopRepository>().backfillSellMaterials()
+        if (backfilled > 0) logger.info("Backfilled sell_material for $backfilled shop(s)")
+
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }
 
