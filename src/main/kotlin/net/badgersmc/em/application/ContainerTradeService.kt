@@ -13,6 +13,7 @@ import org.bukkit.entity.Player
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import java.util.UUID
+import kotlin.math.roundToLong
 
 sealed class ContainerTradeResult {
     data class Success(val message: String) : ContainerTradeResult()
@@ -39,14 +40,34 @@ open class ContainerTradeService(
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider?,
     private val vaultService: ShopVaultService,
+    private val policyService: GuildTradePolicyService? = null,
 ) {
+    private sealed interface EffectiveCost {
+        data class Cost(val value: Long) : EffectiveCost
+        data object Embargoed : EffectiveCost
+    }
+
+    private fun effectiveCostOrEmbargo(shop: Shop, playerUuid: UUID): EffectiveCost {
+        val base = shop.costAmount.toLong()
+        val guildId = shop.guildId ?: return EffectiveCost.Cost(base)
+        val svc = policyService ?: return EffectiveCost.Cost(base)
+        return when (val stance = svc.stanceFor(guildId.toString(), playerUuid, shop.direction)) {
+            is GuildTradePolicyService.TradeStance.Embargoed -> EffectiveCost.Embargoed
+            is GuildTradePolicyService.TradeStance.Allowed ->
+                EffectiveCost.Cost((base * stance.factor).roundToLong().coerceAtLeast(0L))
+        }
+    }
+
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
         if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
+        val eff = effectiveCostOrEmbargo(shop, playerUuid)
+        if (eff is EffectiveCost.Embargoed) return ContainerTradeResult.Failure("Your guild is embargoed by this shop's guild")
+        val cost = (eff as EffectiveCost.Cost).value
         val preconditions = buyPreconditions(shop, playerUuid)
         if (preconditions.result != null) return preconditions.result!!
-        if (!canAffordShopCost(shop, preconditions.ownerUuid!!)) return ContainerTradeResult.Failure("Shop can't afford this")
-        return executeBuyTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!)
+        if (!canAffordShopCost(cost, shop.guildId, preconditions.ownerUuid!!)) return ContainerTradeResult.Failure("Shop can't afford this")
+        return executeBuyTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!, cost)
     }
 
     private data class BuyPreconditions(
@@ -72,7 +93,7 @@ open class ContainerTradeService(
         return BuyPreconditions(ownerUuid, TradeContext(ownerUuid, player, container.inventory), sellStack)
     }
 
-    private fun executeBuyTransaction(shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack): ContainerTradeResult {
+    private fun executeBuyTransaction(shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack, cost: Long): ContainerTradeResult {
         val removalResult = ctx.player.inventory.removeItem(sellStack.clone())
         if (removalResult.isNotEmpty()) return ContainerTradeResult.Failure("Not enough items in inventory")
 
@@ -82,7 +103,6 @@ open class ContainerTradeService(
             return ContainerTradeResult.Failure("Container is full")
         }
 
-        val cost = shop.costAmount.toLong()
         val guildId = shop.guildId
 
         val withdrawSuccess = withdrawFromShop(guildId, ctx.ownerUuid, cost)
@@ -104,9 +124,12 @@ open class ContainerTradeService(
     fun executeSell(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
         if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
+        val eff = effectiveCostOrEmbargo(shop, playerUuid)
+        if (eff is EffectiveCost.Embargoed) return ContainerTradeResult.Failure("Your guild is embargoed by this shop's guild")
+        val cost = (eff as EffectiveCost.Cost).value
         val preconditions = sellPreconditions(shop, playerUuid)
         if (preconditions.result != null) return preconditions.result!!
-        return executeSellTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!)
+        return executeSellTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!, cost)
     }
 
     private data class SellPreconditions(
@@ -133,9 +156,8 @@ open class ContainerTradeService(
     }
 
     private fun executeSellTransaction(
-        shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack
+        shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack, cost: Long
     ): ContainerTradeResult {
-        val cost = shop.costAmount.toLong()
         if (economy.balance(playerUuid) < cost) return ContainerTradeResult.Failure("Insufficient funds")
         if (!economy.withdraw(playerUuid, cost)) return ContainerTradeResult.Failure("Withdraw failed")
 
@@ -171,9 +193,7 @@ open class ContainerTradeService(
         economy.deposit(playerUuid, cost)
     }
 
-    private fun canAffordShopCost(shop: Shop, ownerUuid: UUID): Boolean {
-        val cost = shop.costAmount.toLong()
-        val guildId = shop.guildId
+    private fun canAffordShopCost(cost: Long, guildId: UUID?, ownerUuid: UUID): Boolean {
         return if (guildId != null) {
             guildProvider != null && guildProvider.bankBalance(guildId.toString()) >= cost
         } else {

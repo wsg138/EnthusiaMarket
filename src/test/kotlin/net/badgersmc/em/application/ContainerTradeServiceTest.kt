@@ -81,9 +81,10 @@ class ContainerTradeServiceTest {
         economy: EconomyProvider = mockk(relaxed = true),
         guildProvider: GuildProvider? = null,
         mockItemStack: ItemStack = mockk(relaxed = true),
-        mockContainer: Container = mockk(relaxed = true)
+        mockContainer: Container = mockk(relaxed = true),
+        policyService: GuildTradePolicyService? = null,
     ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider, mockk(relaxed = true)) {
+        return object : ContainerTradeService(stallRepo, economy, guildProvider, mockk(relaxed = true), policyService) {
             override fun deserializeStack(base64: String): ItemStack? = mockItemStack
             override fun getContainer(shop: Shop): Container? = mockContainer
         }
@@ -180,7 +181,7 @@ class ContainerTradeServiceTest {
         every { player.inventory } returns playerInv
         every { Bukkit.getPlayer(playerUuid) } returns player
 
-        val service = object : ContainerTradeService(stallRepo, economy, null, mockk(relaxed = true)) {
+        val service = object : ContainerTradeService(stallRepo, economy, null, mockk(relaxed = true), null) {
             override fun deserializeStack(base64: String): ItemStack? = mockk(relaxed = true)
             override fun getContainer(shop: Shop): Container? = null
         }
@@ -198,7 +199,7 @@ class ContainerTradeServiceTest {
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns mockk(relaxed = true)
 
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, mockk(relaxed = true)) {
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, mockk(relaxed = true), null) {
             override fun deserializeStack(base64: String): ItemStack? = mockk(relaxed = true)
             override fun getContainer(shop: Shop): Container? = null
         }
