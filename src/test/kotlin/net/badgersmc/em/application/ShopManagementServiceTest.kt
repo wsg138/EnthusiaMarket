@@ -75,14 +75,15 @@ class ShopManagementServiceTest {
         verify(exactly = 0) { repo.delete(2) }
     }
 
-    @Test fun `deleteAll removes every owned shop and counts`() {
+    @Test fun `deleteAll issues one bulk delete and fires an event per owned shop`() {
         val repo = mockk<ShopRepository>(relaxed = true)
-        every { repo.findByOwner(owner) } returns listOf(shop(1), shop(2), shop(3))
+        every { repo.findByOwner(owner) } returns listOf(shop(1), shop(2))
+        every { repo.deleteByOwner(owner) } returns 2
         val svc = ShopManagementService(repo)
-        assertEquals(3, svc.deleteAll(owner))
-        verify { repo.delete(1) }
-        verify { repo.delete(2) }
-        verify { repo.delete(3) }
+        val result = svc.deleteAll(owner)
+        assertEquals(2, result)
+        verify(exactly = 1) { repo.deleteByOwner(owner) }
+        verify(exactly = 0) { repo.delete(any()) }
     }
 
     @Test fun `trustAll trusts target on every owned shop`() {
@@ -93,5 +94,17 @@ class ShopManagementServiceTest {
         every { repo.upsert(any()) } answers { firstArg() }
         val svc = ShopManagementService(repo)
         assertEquals(2, svc.trustAll(owner, target))
+    }
+
+    @Test fun `trustAll mutates owned shops without re-fetching them by id`() {
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.findByOwner(owner) } returns listOf(shop(1), shop(2))
+        val svc = ShopManagementService(repo)
+        val saved = mutableListOf<Shop>()
+        every { repo.upsert(capture(saved)) } answers { firstArg() }
+        val result = svc.trustAll(owner, target)
+        assertEquals(2, result)
+        verify(exactly = 0) { repo.findById(any()) }
+        verify(exactly = 2) { repo.upsert(match { target in it.trusted }) }
     }
 }

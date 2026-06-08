@@ -2,6 +2,7 @@ package net.badgersmc.em.domain.shop
 
 import java.util.UUID
 
+@Suppress("TooManyFunctions")
 interface ShopRepository {
     fun upsert(shop: Shop): Shop
     fun findById(id: Long): Shop?

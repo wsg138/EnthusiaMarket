@@ -27,10 +27,10 @@ class ShopManagementService(
         mutateOwned(actor, shopIds) { it.copy(trusted = it.trusted - target) }
 
     fun trustAll(actor: UUID, target: UUID): Int =
-        trust(actor, target, shopsOwnedBy(actor).map { it.id })
+        mutateAll(shopsOwnedBy(actor)) { it.copy(trusted = it.trusted + target) }
 
     fun untrustAll(actor: UUID, target: UUID): Int =
-        untrust(actor, target, shopsOwnedBy(actor).map { it.id })
+        mutateAll(shopsOwnedBy(actor)) { it.copy(trusted = it.trusted - target) }
 
     /** Delete a single shop if [actor] owns it. Returns true when deleted. */
     fun delete(actor: UUID, shopId: Long): Boolean {
@@ -44,11 +44,10 @@ class ShopManagementService(
     /** Delete every shop [actor] owns. Returns count deleted. */
     fun deleteAll(actor: UUID): Int {
         val owned = shopsOwnedBy(actor)
-        owned.forEach {
-            shopRepository.delete(it.id)
-            fireShopDeleted(it.owner)
-        }
-        return owned.size
+        if (owned.isEmpty()) return 0
+        val deleted = shopRepository.deleteByOwner(actor)
+        owned.forEach { fireShopDeleted(it.owner) }
+        return deleted
     }
 
     /** Delete a shop regardless of owner (admin tooling, SP5). Returns true when deleted. */
@@ -81,6 +80,19 @@ class ShopManagementService(
         for (id in shopIds) {
             val shop = shopRepository.findById(id) ?: continue
             if (shop.owner != actor) continue
+            val updated = edit(shop)
+            if (updated != shop) {
+                shopRepository.upsert(updated)
+                changed++
+            }
+        }
+        return changed
+    }
+
+    /** Apply [edit] to shops already known to belong to the actor (no re-fetch, no owner re-check). */
+    private fun mutateAll(owned: List<Shop>, edit: (Shop) -> Shop): Int {
+        var changed = 0
+        for (shop in owned) {
             val updated = edit(shop)
             if (updated != shop) {
                 shopRepository.upsert(updated)
