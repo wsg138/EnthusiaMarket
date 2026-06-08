@@ -24,7 +24,7 @@ Look for stalls with signs showing **"Available"** or similar. These are either 
 
 When an auction is running, you can bid:
 
-```
+```text
 /em bid <auction-id> <amount>
 ```
 
@@ -48,11 +48,12 @@ To pay rent, simply **click the stall sign** and confirm. The payment comes from
 
 Inside your stall, place a **sign on a container** (chest, barrel, etc.) to create a shop:
 
-1. Place a sign on the side of a container.
-2. On the first line, type `[em]` (the default trigger token).
-3. On the second line, type the **quantity** you want to sell.
-4. On the third line, type the **price**.
-5. The sign auto-formats into a working shop.
+1. **Hold the item** you want to trade in your hand.
+2. Place a wall sign on the side of the container.
+3. On the first line, type a **direction token** — `[SELL]`, `[BUY]`, or `[TRADE]`.
+4. On the second line, type the **quantity** per trade.
+5. On the third line, type the **price**.
+6. The sign auto-formats into a working shop.
 
 Now other players can click your sign to buy from your container.
 
@@ -60,7 +61,7 @@ Now other players can click your sign to buy from your container.
 
 Stock your container with items. When another player clicks your sign and the trade succeeds, the payment goes to your **shop vault**. Open it with:
 
-```
+```text
 /shopvault open
 ```
 

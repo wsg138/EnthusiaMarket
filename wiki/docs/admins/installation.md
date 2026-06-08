@@ -108,7 +108,7 @@ database:
 
 After configuring WorldGuard regions for your market:
 
-```
+```text
 /em import
 ```
 
@@ -137,6 +137,7 @@ Assign groups with permissions: `enthusiamarket.limit.default`, `enthusiamarket.
 | Permission | Description |
 |-----------|-------------|
 | `enthusiamarket.shop.use` | Use `/shop` commands |
+| `enthusiamarket.shop.create` | Create shop signs |
 | `enthusiamarket.shop.vault` | Access shop vault |
 | `enthusiamarket.shop.delete.all` | Delete all shops at once |
 | `enthusiamarket.stall.info` | View stall info |
@@ -145,6 +146,8 @@ Assign groups with permissions: `enthusiamarket.limit.default`, `enthusiamarket.
 | `enthusiamarket.stall.buy` | Buy stalls from sell offers |
 | `enthusiamarket.stall.sellback` | Sell stalls back to system |
 | `enthusiamarket.auction.list` | Browse auctions |
+| `enthusiamarket.auction.bid` | Bid in auctions (`/em bid`) |
+| `enthusiamarket.guild.policy` | Manage guild tariffs/embargoes (`/em guild policy`) |
 | `enthusiamarket.admin` | Full admin access |
 | `enthusiamarket.admin.shop` | Shop admin commands |
 | `enthusiamarket.admin.import` | Import stalls |

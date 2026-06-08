@@ -38,7 +38,7 @@ A: No. Bids are final. Only an admin can cancel an auction.
 ## Shops
 
 **Q: How do I create a shop sign?**
-A: Place a sign on a container, type `[em]` on line 1, quantity on line 2, price on line 3. See [Shops](../players/shops.md) for full details.
+A: Hold the item you're trading, place a sign on a container inside your stall, and put a direction token — `[SELL]`, `[BUY]`, or `[TRADE]` — on line 1, the quantity on line 2, and the price on line 3. See [Shops](../players/shops.md) for full details.
 
 **Q: Where does the money from sales go?**
 A: Into your shop vault. Open it with `/shopvault open` (or `/svault open`).
@@ -63,7 +63,7 @@ A: Yes. Use `/em sellback <stall>` to relinquish ownership for a refund, or use 
 ## Troubleshooting
 
 **Q: My shop sign isn't working.**
-A: Make sure: (1) the sign is on a container, (2) line 1 says `[em]`, (3) lines 2-3 have valid numbers, (4) the container has stock.
+A: Make sure: (1) the sign is on a container inside your stall, (2) you were holding the item and line 1 has a valid direction token (`[SELL]`, `[BUY]`, or `[TRADE]`), (3) lines 2-3 have valid numbers, (4) the container has stock.
 
 **Q: I can't build in my stall.**
 A: You need to be the stall owner, a member, or have build permissions. Ask the stall owner to add you as a member.
