@@ -1,0 +1,56 @@
+package net.badgersmc.em.application
+
+import io.mockk.every
+import io.mockk.mockk
+import net.badgersmc.em.domain.guild.GuildTradePolicy
+import net.badgersmc.em.domain.guild.GuildTradePolicyRepository
+import net.badgersmc.em.domain.guild.PolicyKind
+import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.shop.SignDirection
+import java.util.UUID
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+
+class GuildTradePolicyServiceTest {
+    private val buyer = UUID.randomUUID()
+    private fun svc(repo: GuildTradePolicyRepository, gp: GuildProvider) = GuildTradePolicyService(repo, gp)
+
+    // Mock GuildRef rather than construct it — GuildRef may carry extra fields (tag/emoji);
+    // we only need `.id`.
+    private fun gp(buyerGuild: String?): GuildProvider = mockk(relaxed = true) {
+        every { guildOf(buyer) } returns buyerGuild?.let { gid ->
+            mockk<GuildProvider.GuildRef> { every { id } returns gid }
+        }
+    }
+
+    @Test fun `solo buyer is allowed at factor 1`() {
+        val s = svc(mockk(relaxed = true), gp(null)).stanceFor("g1", buyer, SignDirection.SELL)
+        assertEquals(1.0, assertIs<GuildTradePolicyService.TradeStance.Allowed>(s).factor)
+    }
+    @Test fun `own-guild buyer is allowed at factor 1`() {
+        val s = svc(mockk(relaxed = true), gp("g1")).stanceFor("g1", buyer, SignDirection.SELL)
+        assertEquals(1.0, assertIs<GuildTradePolicyService.TradeStance.Allowed>(s).factor)
+    }
+    @Test fun `no policy is allowed at factor 1`() {
+        val repo = mockk<GuildTradePolicyRepository> { every { find("g1", "g2") } returns null }
+        val s = svc(repo, gp("g2")).stanceFor("g1", buyer, SignDirection.SELL)
+        assertEquals(1.0, assertIs<GuildTradePolicyService.TradeStance.Allowed>(s).factor)
+    }
+    @Test fun `embargo blocks`() {
+        val repo = mockk<GuildTradePolicyRepository> { every { find("g1", "g2") } returns GuildTradePolicy("g1","g2",PolicyKind.EMBARGO,0) }
+        assertIs<GuildTradePolicyService.TradeStance.Embargoed>(svc(repo, gp("g2")).stanceFor("g1", buyer, SignDirection.SELL))
+    }
+    @Test fun `tariff raises a SELL shop`() {
+        val repo = mockk<GuildTradePolicyRepository> { every { find("g1", "g2") } returns GuildTradePolicy("g1","g2",PolicyKind.TARIFF,20) }
+        assertEquals(1.2, assertIs<GuildTradePolicyService.TradeStance.Allowed>(svc(repo, gp("g2")).stanceFor("g1", buyer, SignDirection.SELL)).factor, 1e-9)
+    }
+    @Test fun `tariff cuts a BUY shop`() {
+        val repo = mockk<GuildTradePolicyRepository> { every { find("g1", "g2") } returns GuildTradePolicy("g1","g2",PolicyKind.TARIFF,20) }
+        assertEquals(0.8, assertIs<GuildTradePolicyService.TradeStance.Allowed>(svc(repo, gp("g2")).stanceFor("g1", buyer, SignDirection.BUY)).factor, 1e-9)
+    }
+    @Test fun `BUY tariff over 100 floors at 0`() {
+        val repo = mockk<GuildTradePolicyRepository> { every { find("g1", "g2") } returns GuildTradePolicy("g1","g2",PolicyKind.TARIFF,150) }
+        assertEquals(0.0, assertIs<GuildTradePolicyService.TradeStance.Allowed>(svc(repo, gp("g2")).stanceFor("g1", buyer, SignDirection.BUY)).factor, 1e-9)
+    }
+}
