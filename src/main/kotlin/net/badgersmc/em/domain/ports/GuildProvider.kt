@@ -50,6 +50,9 @@ interface GuildProvider {
     fun bankWithdraw(guildId: String, amount: Long): Boolean
     fun bankDeposit(guildId: String, amount: Long): Boolean
 
+    /** Every guild known to the backing system (for pickers). */
+    fun listGuilds(): List<GuildRef>
+
     /** Register a callback invoked when a guild is dissolved. */
     fun onDissolved(handler: (guildId: String) -> Unit)
 }

@@ -53,6 +53,9 @@ class LumaGuildsGuildProvider : GuildProvider {
         return toGuildRef(guild)
     }
 
+    override fun listGuilds(): List<GuildProvider.GuildRef> =
+        resolvedGuildService.getAllGuilds().map { toGuildRef(it) }
+
     /** Map a LumaGuilds guild to [GuildProvider.GuildRef], normalising tag/emoji to MiniMessage. */
     private fun toGuildRef(guild: Guild): GuildProvider.GuildRef =
         GuildProvider.GuildRef(
