@@ -27,7 +27,6 @@ class ShopCommands(
     private val management: ShopManagementService,
     private val shopRepository: ShopRepository,
     private val breakDelete: BreakDeleteMode,
-    private val search: ShopSearchService,
     private val transactions: ShopTransactionRepository,
     private val lookAt: LookAtShopResolver,
     private val adminBreak: AdminBreakMode,
