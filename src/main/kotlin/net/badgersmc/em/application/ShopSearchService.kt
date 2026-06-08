@@ -1,6 +1,5 @@
 package net.badgersmc.em.application
 
-import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Material
 
@@ -26,16 +25,4 @@ class ShopSearchService {
             SearchMode.BUY -> false
         }
     }
-
-    /**
-     * Filter [shops] to those matching [query]/[mode], using [sellMaterialOf] to
-     * resolve each shop's sell-item material (injected so this is unit-testable
-     * without Bukkit ItemStack deserialization). Order preserved.
-     */
-    fun search(
-        query: Material,
-        mode: SearchMode,
-        shops: List<Shop>,
-        sellMaterialOf: (Shop) -> Material?,
-    ): List<Shop> = shops.filter { matches(it.searchEnabled, sellMaterialOf(it), query, mode) }
 }

@@ -163,9 +163,8 @@ class ShopCommands(
         if (mode == ShopSearchService.SearchMode.BUY) {
             player.sendMessage(lang.msg("shop.cmd.search.buy_unavailable")); return
         }
-        val results = search.search(material, mode, shopRepository.all()) { shop ->
-            ItemStackSerializer.deserialize(shop.sellItem)?.type
-        }
+        // SELL/ANY both match the sell item today (BUY is rejected above). SQL-filtered, no full scan.
+        val results = shopRepository.findBySellMaterial(material.name)
         if (results.isEmpty()) { player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query)); return }
         net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
     }
