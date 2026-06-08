@@ -2,11 +2,14 @@ package net.badgersmc.em.infrastructure.persistence
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockbukkit.mockbukkit.MockBukkit
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -19,6 +22,7 @@ class ShopRepositorySqlTest {
 
     @BeforeEach
     fun setUp() {
+        MockBukkit.mock()
         ds = HikariDataSource(HikariConfig().apply {
             jdbcUrl = "jdbc:sqlite::memory:"
             maximumPoolSize = 1
@@ -28,7 +32,7 @@ class ShopRepositorySqlTest {
     }
 
     @AfterEach
-    fun tearDown() { ds.close() }
+    fun tearDown() { ds.close(); MockBukkit.unmock() }
 
     @Test fun `upsert and findById round-trips`() {
         val shop = Shop(
@@ -300,5 +304,78 @@ class ShopRepositorySqlTest {
         assertNotNull(cleared)
         assertNull(cleared.guildId)
         assertNull(cleared.creatorId)
+    }
+
+    @Test fun `upsert stores sell_material derived from the sell item`() {
+        val diamondB64 = ItemStackSerializer.serialize(org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND))
+        val shop = Shop(
+            stallId = "stall_mat",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 1, signY = 2, signZ = 3,
+            containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
+            sellItem = diamondB64, sellAmount = 1,
+            costItem = "cost", costAmount = 10,
+            direction = SignDirection.SELL, searchEnabled = true,
+        )
+        val created = repo.upsert(shop)
+        val found = repo.findBySellMaterial("DIAMOND")
+        assertEquals(listOf(created.id), found.map { it.id })
+    }
+
+    @Test fun `findBySellMaterial excludes search-disabled shops`() {
+        val diamondB64 = ItemStackSerializer.serialize(org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND))
+        val shop = Shop(
+            stallId = "stall_disabled",
+            owner = UUID.randomUUID(),
+            signWorld = "world", signX = 1, signY = 2, signZ = 3,
+            containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
+            sellItem = diamondB64, sellAmount = 1,
+            costItem = "cost", costAmount = 10,
+            direction = SignDirection.SELL, searchEnabled = false,
+        )
+        repo.upsert(shop)
+        assertTrue(repo.findBySellMaterial("DIAMOND").isEmpty())
+    }
+
+    @Test fun `backfill fills null sell_material rows`() {
+        // Insert a row directly with sell_material left NULL (pre-V018 style)
+        val diamondB64 = ItemStackSerializer.serialize(org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND))
+        ds.connection.use { conn ->
+            conn.prepareStatement(
+                """INSERT INTO shop_items
+                (stall_id, owner, sign_world, sign_x, sign_y, sign_z,
+                 container_world, container_x, container_y, container_z,
+                 sell_item, sell_amount, cost_item, cost_amount,
+                 trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
+                 guild_id, creator_id, direction, search_enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+            ).use { ps ->
+                val shop = Shop(
+                    stallId = "stall_bf",
+                    owner = UUID.randomUUID(),
+                    signWorld = "world", signX = 1, signY = 2, signZ = 3,
+                    containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
+                    sellItem = diamondB64, sellAmount = 1,
+                    costItem = "cost", costAmount = 10,
+                    direction = SignDirection.SELL, searchEnabled = true,
+                )
+                ps.setString(1, shop.stallId)
+                ps.setString(2, shop.owner.toString())
+                ps.setString(3, shop.signWorld); ps.setInt(4, shop.signX); ps.setInt(5, shop.signY); ps.setInt(6, shop.signZ)
+                ps.setString(7, shop.containerWorld); ps.setInt(8, shop.containerX); ps.setInt(9, shop.containerY); ps.setInt(10, shop.containerZ)
+                ps.setString(11, shop.sellItem); ps.setInt(12, shop.sellAmount)
+                ps.setString(13, shop.costItem); ps.setInt(14, shop.costAmount)
+                ps.setString(15, "")
+                ps.setBoolean(16, true); ps.setBoolean(17, true); ps.setBoolean(18, false); ps.setBoolean(19, false)
+                ps.setNull(20, java.sql.Types.VARCHAR); ps.setNull(21, java.sql.Types.VARCHAR)
+                ps.setString(22, shop.direction.name)
+                ps.setBoolean(23, shop.searchEnabled)
+                ps.executeUpdate()
+            }
+        }
+        val updated = repo.backfillSellMaterials()
+        assertTrue(updated > 0)
+        val found = repo.findBySellMaterial("DIAMOND")
+        assertEquals(1, found.size)
     }
 }
