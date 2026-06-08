@@ -145,6 +145,15 @@ class GuildTradePolicyServiceTest {
                 it.kind == PolicyKind.TARIFF && it.ratePct == 20 && it.ownerGuildId == "g1" && it.targetGuildId == "g2"
         }) }
     }
+    @Test fun `setEmbargo fires a SET event`() {
+        val repo = mockk<GuildTradePolicyRepository>(relaxed = true)
+        val gpm = mockk<GuildProvider>(relaxed = true); every { gpm.hasShopPermission(any(), any(), any()) } returns true
+        GuildTradePolicyService(repo, gpm).setEmbargo(buyer, "g1", "g2")
+        io.mockk.verify { pluginManager.callEvent(match<GuildTradePolicyChangedEvent> {
+            it.action == GuildTradePolicyChangedEvent.Action.SET &&
+                it.kind == PolicyKind.EMBARGO && it.ratePct == 0 && it.ownerGuildId == "g1" && it.targetGuildId == "g2"
+        }) }
+    }
     @Test fun `clear fires a CLEARED event`() {
         val repo = mockk<GuildTradePolicyRepository>(relaxed = true)
         val gpm = mockk<GuildProvider>(relaxed = true); every { gpm.hasShopPermission(any(), any(), any()) } returns true

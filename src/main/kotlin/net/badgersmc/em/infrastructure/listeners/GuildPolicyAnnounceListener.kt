@@ -28,6 +28,8 @@ class GuildPolicyAnnounceListener(
 
     internal fun onCooldown(key: String, now: Long = System.currentTimeMillis()): Boolean {
         val window = config.guildPolicy.announceCooldownSeconds * 1000L
+        // Drop entries past the window so the map stays bounded to recently-active guilds.
+        lastAnnounce.entries.removeIf { now - it.value >= window }
         val last = lastAnnounce[key]
         if (last != null && now - last < window) return true
         lastAnnounce[key] = now
