@@ -64,11 +64,11 @@ class ShopGuildService(
      *
      * @param shopId The ID of the shop to unregister.
      * @param actor The player attempting the unregister. Must own the shop
-     *              (player-owned case) or be a member of the owning guild
-     *              (guild-owned case) for the call to succeed.
+     *              outright, or hold the MANAGE_SHOPS permission in the owning
+     *              guild, for the call to succeed.
      * @return [Result.success] with the updated [Shop] on success,
      *         [Result.failure] if the shop does not exist, is not guild-owned,
-     *         or the actor lacks ownership / membership to unregister it.
+     *         or the actor lacks ownership / MANAGE_SHOPS permission to unregister it.
      */
     fun unregisterGuildShop(shopId: Long, actor: UUID): Result<Shop> {
         val shop = shopRepository.findById(shopId)
