@@ -169,8 +169,16 @@ open class EnthusiaMarket : JavaPlugin() {
         }, 0L, 4L)
 
         // M-20: one-time backfill of sell_material for shops written before V018.
-        val backfilled = ctx.getBean<net.badgersmc.em.domain.shop.ShopRepository>().backfillSellMaterials()
-        if (backfilled > 0) logger.info("Backfilled sell_material for $backfilled shop(s)")
+        // Off the main thread + fail-open so a large table or a DB hiccup can't stall boot.
+        val shopRepoForBackfill = ctx.getBean<net.badgersmc.em.domain.shop.ShopRepository>()
+        Bukkit.getScheduler().runTaskAsynchronously(this, Runnable {
+            try {
+                val backfilled = shopRepoForBackfill.backfillSellMaterials()
+                if (backfilled > 0) logger.info("Backfilled sell_material for $backfilled shop(s)")
+            } catch (e: Exception) {
+                logger.warning("sell_material backfill failed (search may be incomplete until next boot): ${e.message}")
+            }
+        })
 
         logger.info("EnthusiaMarket enabled (v${description.version})")
     }

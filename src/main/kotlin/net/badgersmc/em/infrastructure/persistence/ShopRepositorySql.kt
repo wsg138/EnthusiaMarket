@@ -124,18 +124,25 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         }
 
     override fun backfillSellMaterials(): Int {
-        var updated = 0
-        val nullRows = queryMany("SELECT * FROM shop_items WHERE sell_material IS NULL") {}
+        // Read only id + sell_item so a malformed legacy row (bad trusted/UUID/direction)
+        // can't abort the backfill via mapRow's strict parsing.
+        val rows = mutableListOf<Pair<Long, String>>()
         ds.connection.use { conn ->
+            conn.prepareStatement("SELECT id, sell_item FROM shop_items WHERE sell_material IS NULL").use { ps ->
+                ps.executeQuery().use { rs ->
+                    while (rs.next()) rows.add(rs.getLong("id") to rs.getString("sell_item"))
+                }
+            }
+            var updated = 0
             conn.prepareStatement("UPDATE shop_items SET sell_material = ? WHERE id = ?").use { ps ->
-                for (shop in nullRows) {
-                    val mat = sellMaterialOf(shop) ?: continue
-                    ps.setString(1, mat); ps.setLong(2, shop.id); ps.addBatch(); updated++
+                for ((id, sellItem) in rows) {
+                    val mat = net.badgersmc.em.application.ItemStackSerializer.deserialize(sellItem)?.type?.name ?: continue
+                    ps.setString(1, mat); ps.setLong(2, id); ps.addBatch(); updated++
                 }
                 ps.executeBatch()
             }
+            return updated
         }
-        return updated
     }
 
     private fun insert(shop: Shop): Shop {
