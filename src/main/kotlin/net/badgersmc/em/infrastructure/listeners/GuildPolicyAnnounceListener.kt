@@ -34,9 +34,11 @@ class GuildPolicyAnnounceListener(
         return false
     }
 
+    private fun name(id: String): String = guildProvider.guildById(id)?.name ?: id
+
     internal fun buildMessage(event: GuildTradePolicyChangedEvent): TextComponent? {
-        val owner = guildProvider.guildById(event.ownerGuildId)?.name ?: event.ownerGuildId
-        val target = guildProvider.guildById(event.targetGuildId)?.name ?: event.targetGuildId
+        val owner = name(event.ownerGuildId)
+        val target = name(event.targetGuildId)
         return when {
             event.action == GuildTradePolicyChangedEvent.Action.CLEARED ->
                 lang.msg("guildpolicy.announce.cleared", "owner" to owner, "target" to target)

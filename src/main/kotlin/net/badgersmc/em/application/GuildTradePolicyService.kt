@@ -58,21 +58,21 @@ class GuildTradePolicyService(
             if (ratePct !in 0..MAX_TARIFF_PCT)
                 return@mutate PolicyResult.Invalid("tariff must be 0..$MAX_TARIFF_PCT — use an embargo to block a guild entirely")
             policies.upsert(GuildTradePolicy(ownerGuildId, targetGuildId, PolicyKind.TARIFF, ratePct))
-            fireChanged(ownerGuildId, targetGuildId, PolicyKind.TARIFF, ratePct, GuildTradePolicyChangedEvent.Action.SET)
+            fireChanged(GuildTradePolicyChangedEvent(ownerGuildId, targetGuildId, PolicyKind.TARIFF, ratePct, GuildTradePolicyChangedEvent.Action.SET))
             PolicyResult.Ok
         }
 
     fun setEmbargo(actor: UUID, ownerGuildId: String, targetGuildId: String): PolicyResult =
         mutate(actor, ownerGuildId, targetGuildId) {
             policies.upsert(GuildTradePolicy(ownerGuildId, targetGuildId, PolicyKind.EMBARGO, 0))
-            fireChanged(ownerGuildId, targetGuildId, PolicyKind.EMBARGO, 0, GuildTradePolicyChangedEvent.Action.SET)
+            fireChanged(GuildTradePolicyChangedEvent(ownerGuildId, targetGuildId, PolicyKind.EMBARGO, 0, GuildTradePolicyChangedEvent.Action.SET))
             PolicyResult.Ok
         }
 
     fun clear(actor: UUID, ownerGuildId: String, targetGuildId: String): PolicyResult =
         mutate(actor, ownerGuildId, targetGuildId) {
             policies.delete(ownerGuildId, targetGuildId)
-            fireChanged(ownerGuildId, targetGuildId, null, 0, GuildTradePolicyChangedEvent.Action.CLEARED)
+            fireChanged(GuildTradePolicyChangedEvent(ownerGuildId, targetGuildId, null, 0, GuildTradePolicyChangedEvent.Action.CLEARED))
             PolicyResult.Ok
         }
 
@@ -85,11 +85,9 @@ class GuildTradePolicyService(
         return policies.find(ownerGuildId, buyerGuild)
     }
 
-    private fun fireChanged(owner: String, target: String, kind: PolicyKind?, rate: Int, action: GuildTradePolicyChangedEvent.Action) {
+    private fun fireChanged(event: GuildTradePolicyChangedEvent) {
         try {
-            Bukkit.getServer()?.pluginManager?.callEvent(
-                GuildTradePolicyChangedEvent(owner, target, kind, rate, action)
-            )
+            Bukkit.getServer()?.pluginManager?.callEvent(event)
         } catch (e: Exception) {
             log.warning("GuildTradePolicyService: failed to fire policy-changed event: ${e.message}")
         }
