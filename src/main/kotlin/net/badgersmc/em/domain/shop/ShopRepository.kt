@@ -2,6 +2,7 @@ package net.badgersmc.em.domain.shop
 
 import java.util.UUID
 
+@Suppress("TooManyFunctions")
 interface ShopRepository {
     fun upsert(shop: Shop): Shop
     fun findById(id: Long): Shop?
@@ -17,4 +18,5 @@ interface ShopRepository {
     fun countByOwner(owner: UUID): Int
     fun delete(id: Long)
     fun deleteByContainer(world: String, x: Int, y: Int, z: Int)
+    fun deleteByOwner(owner: UUID): Int
 }

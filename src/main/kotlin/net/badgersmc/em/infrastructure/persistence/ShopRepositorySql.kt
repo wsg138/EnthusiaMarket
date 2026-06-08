@@ -109,6 +109,15 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         }
     }
 
+    override fun deleteByOwner(owner: UUID): Int {
+        ds.connection.use { conn ->
+            conn.prepareStatement("DELETE FROM shop_items WHERE owner = ?").use { ps ->
+                ps.setString(1, owner.toString())
+                return ps.executeUpdate()
+            }
+        }
+    }
+
     private fun insert(shop: Shop): Shop {
         ds.connection.use { conn ->
             val sql = """
