@@ -377,11 +377,21 @@ bedrock:
 container_sign:
   stock_line: "<gray>Stock: <trades>"
 
+  common:
+    prev: "<gray>« Previous</gray>"
+    next: "<gray>Next »</gray>"
+    back: "<gray>« Back</gray>"
+  guildpolicy:
+    title: "<dark_red>Guild Trade Policy</dark_red>"
+    add: "<green>+ Add a guild</green>"
+    invalid: "<red><reason></red>"
+    icon_tariff: "<gold><target></gold> <yellow>— tariff <red><rate>%</red></yellow>"
+    icon_embargo: "<gold><target></gold> <red>— EMBARGOED</red>"
+    icon_controls: "<gray>L +5% · R -5% · Shift-L embargo · Shift-R remove</gray>"
+  guildpicker:
+    title: "<dark_aqua>Pick a guild to target</dark_aqua>"
+    entry: "<yellow><name></yellow>"
+
 guildpolicy:
-  announce:
-    tariff: "<gold>📢 <yellow><owner></yellow> has imposed a <red><rate>%</red> tariff on <yellow><target></yellow>."
-    embargo: "<gold>📢 <yellow><owner></yellow> has <red>embargoed</red> <yellow><target></yellow>."
-    cleared: "<gold>📢 <yellow><owner></yellow> has lifted its trade policy on <yellow><target></yellow>."
-  entry:
-    tariff: "<gold>⚠ Your guild is tariffed <red><rate>%</red> at <yellow><owner></yellow>'s shops here.</gold>"
-    embargo: "<red>⛔ Your guild is embargoed — you cannot trade at <yellow><owner></yellow>'s shops here.</red>"
+  not_in_guild: "<red>You must be in a guild to manage trade policy.</red>"
+  no_permission: "<red>You need the MANAGE_SHOPS guild permission for that.</red>"
