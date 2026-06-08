@@ -176,6 +176,6 @@ class GuildDissolutionServiceTest {
 
         wiring.service.handle(guildIdString)
 
-        io.mockk.verify { wiring.policies.deleteAllInvolving(guildIdString) }
+        verify { wiring.policies.deleteAllInvolving(guildIdString) }
     }
 }

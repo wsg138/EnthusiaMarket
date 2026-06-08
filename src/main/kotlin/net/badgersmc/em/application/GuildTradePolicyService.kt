@@ -48,8 +48,10 @@ class GuildTradePolicyService(
 
     fun setTariff(actor: UUID, ownerGuildId: String, targetGuildId: String, ratePct: Int): PolicyResult =
         mutate(actor, ownerGuildId, targetGuildId) {
-            if (ratePct !in 0..GuildTradePolicy.MAX_RATE_PCT)
-                return@mutate PolicyResult.Invalid("rate must be 0..${GuildTradePolicy.MAX_RATE_PCT}")
+            // Tariffs cap below 100%: at 100%+ a BUY shop would pay the outsider nothing
+            // (confiscation). To block a guild entirely, use an embargo instead.
+            if (ratePct !in 0..MAX_TARIFF_PCT)
+                return@mutate PolicyResult.Invalid("tariff must be 0..$MAX_TARIFF_PCT — use an embargo to block a guild entirely")
             policies.upsert(GuildTradePolicy(ownerGuildId, targetGuildId, PolicyKind.TARIFF, ratePct))
             PolicyResult.Ok
         }
@@ -74,5 +76,10 @@ class GuildTradePolicyService(
         if (!guildProvider.hasShopPermission(actor, ownerGuildId, GuildProvider.GuildPermission.MANAGE_SHOPS))
             return PolicyResult.Denied
         return action()
+    }
+
+    companion object {
+        /** Max tariff a guild may set. Caps below 100% so a BUY shop never pays 0 (confiscation). */
+        const val MAX_TARIFF_PCT = 99
     }
 }
