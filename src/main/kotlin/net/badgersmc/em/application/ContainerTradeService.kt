@@ -12,7 +12,6 @@ import org.bukkit.block.Container
 import org.bukkit.entity.Player
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
-import java.util.Base64
 import java.util.UUID
 
 sealed class ContainerTradeResult {
@@ -229,15 +228,8 @@ open class ContainerTradeService(
 
     protected open fun getPlayer(uuid: UUID): Player? = Bukkit.getPlayer(uuid)
 
-    protected open fun deserializeStack(base64: String): ItemStack? {
-        return try {
-            val bytes = Base64.getDecoder().decode(base64)
-            val stream = java.io.ByteArrayInputStream(bytes)
-            org.bukkit.util.io.BukkitObjectInputStream(stream).readObject() as ItemStack
-        } catch (_: Exception) {
-            null
-        }
-    }
+    protected open fun deserializeStack(base64: String): ItemStack? =
+        ItemStackSerializer.deserialize(base64)
 
     @Suppress("TooGenericExceptionCaught")
     fun executeTrade(shop: Shop, playerUuid: UUID): ContainerTradeResult {
