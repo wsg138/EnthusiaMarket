@@ -9,8 +9,8 @@ import net.badgersmc.nexus.annotations.Service
 import java.util.UUID
 
 /**
- * Resolves a guild's trade stance toward a buyer, and (Task 4) lets MANAGE_SHOPS
- * members edit policies. Solo buyers and same-guild buyers are always exempt.
+ * Resolves a guild's trade stance toward a buyer, and lets MANAGE_SHOPS members
+ * edit policies. Solo buyers and same-guild buyers are always exempt.
  */
 @Service
 class GuildTradePolicyService(
