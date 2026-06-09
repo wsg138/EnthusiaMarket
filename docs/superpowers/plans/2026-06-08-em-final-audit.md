@@ -1,0 +1,80 @@
+# EnthusiaMarket — Final Hardening Audit (full per-package swarm)
+
+Exhaustive, read-only audit of the entire EnthusiaMarket main source tree. Fan out a
+parallel sub-agent per **audit unit** below; each reads *every* file in its unit and
+reports findings against the rubric. Consolidate into one report. **No code changes.**
+
+## Audit units (one sub-agent each, parallel)
+
+| # | Unit | Paths |
+|---|------|-------|
+| 1 | domain-shop-sign | `domain/shop`, `domain/sign` |
+| 2 | domain-auction-offer | `domain/auction`, `domain/offer` |
+| 3 | domain-stall-guild-ports | `domain/stall`, `domain/guild`, `domain/ports` |
+| 4 | app-trade | `application/*` shop/trade/vault/policy services (ContainerTradeService, ShopGuildService, ShopVaultService, GuildTradePolicyService, ShopSearchService, ItemStackSerializer) |
+| 5 | app-lifecycle | `application/*` remaining: rent, auction, offer, stall import, guild dissolution, particle, entity-limit, schematic |
+| 6 | persistence | `infrastructure/persistence` (ALL SQL repos + `resources/migrations/*`) |
+| 7 | listeners | `infrastructure/listeners` |
+| 8 | commands | `infrastructure/commands` |
+| 9 | integrations | `infrastructure/{vault,scheduler,worldguard,bukkit,api,lumaguilds,bedrock,papi,i18n}` |
+| 10 | interaction-config | `interaction/{gui,bedrock}`, `config`, `events`, `api` |
+
+## Rubric — what to flag (per file, every file)
+
+**Economy integrity (HIGHEST priority — real money/items):**
+- Item duplication or loss; partial-failure paths that don't roll back both legs of a trade.
+- Negative balances, integer overflow, rounding/`roundToLong` abuse, off-by-one on amounts.
+- Confiscation-class bugs (the tariff factor-0 class): any path where a player pays/gives and receives nothing.
+- Vault/bank deposit-withdraw asymmetry; double-spend; refund-after-success.
+
+**Authorization / permission:**
+- Missing owner / guild-membership / trust checks before mutating a shop, stall, vault, policy.
+- Permission node gaps on commands/subcommands; admin verbs reachable by non-admins.
+- Cross-plugin trust boundary (ShopGuildLookup, GuildProvider) — unvalidated guild IDs / player IDs.
+
+**Persistence / SQL:**
+- Unparameterized SQL (injection); param-index drift; columns/placeholders mismatch.
+- Migration safety (idempotency, NOT NULL on existing rows, data-loss DDL).
+- Strict-parse crashes on legacy/malformed rows (mapRow blowing up a whole query).
+- Transaction boundaries: multi-statement mutations without atomicity where it matters.
+
+**Correctness / robustness:**
+- Unhandled null / missing world / unloaded chunk / destroyed block on Bukkit lookups.
+- Swallowed exceptions; fail-open where it should fail-closed (and vice-versa).
+- `require()` invariants missing on domain constructors; negative/zero/boundary inputs.
+- Resource leaks: listeners/schedulers not cancelled; maps/sets never pruned (unbounded growth).
+
+**Architecture:**
+- Layer-boundary violations: domain importing application/infrastructure; application importing infrastructure.
+
+**Codacy (low priority — note, don't dwell):** methods over CCN 5 / NLOC 20 / 4 params.
+
+## DO NOT report (known + rejected — wastes cycles)
+
+- **TOCTOU / data races on main-thread-only code.** Bukkit is single-threaded; both
+  schedulers use `runTaskTimer` (NOT async) and all trades run on the main thread.
+  Only flag a race if the code path is genuinely off-thread (`runTaskAsynchronously`,
+  a raw `Thread`, a coroutine dispatcher).
+- The **tax-sink `system` account** is intentional and documented — not a missing-account bug.
+- detekt `@Suppress` being ignored by Codacy is known behavior, not a finding.
+- **M-19 stale stock** on hopper-only moves / unloaded chunks is a documented, accepted
+  limitation — do not report it.
+- Deprecation warnings on Bukkit APIs (`FixedMetadataValue`, `lastPlayed`, sign `line()`).
+
+## Output (per finding)
+
+`ID | severity | confidence | file:line | category | one-line description | suggested fix`
+
+- **severity:** Critical | Major | Minor | Nit
+- **confidence:** high | med | low
+- Critical = money/dupe/auth bypass exploitable in normal play. Major = real bug, narrower.
+
+## Deliverable
+
+Write ONE consolidated report to `docs/audits/EM-FINAL-AUDIT.md` with:
+1. **Summary** — counts by severity, and the top Criticals/Majors with file:line.
+2. **Per-unit sections** (1–10), each a findings table. State "no findings" units explicitly.
+3. A **triage-ready** list of high-confidence Critical/Major only, at the top.
+
+Then commit the report (`docs(audit): EM final hardening audit findings`) and push the
+branch to the **`fork`** remote only. Do not modify any source file.
