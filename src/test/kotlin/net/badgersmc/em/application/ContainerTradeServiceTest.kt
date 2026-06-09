@@ -28,6 +28,9 @@ import java.util.logging.Logger
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
+// Comprehensive trade-path coverage (buy/sell, frozen, stock, rollback, dupe guards) —
+// kept in one class so the shared mock harness isn't duplicated across files.
+@Suppress("LargeClass")
 class ContainerTradeServiceTest {
 
     @AfterEach
@@ -399,6 +402,55 @@ class ContainerTradeServiceTest {
 
         // Verify rollback: item returned to player
         verify { playerInv.addItem(any()) }
+    }
+
+    // ===== SELL: partial-inventory dupe guard (F-004) =====
+
+    @Test
+    fun `executeSell pulls back partial items on full inventory so they are not duped`() {
+        val shop = testShop(sellAmount = 10, costAmount = 5)
+
+        val stallRepo = mockk<StallRepository>(relaxed = true)
+        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+
+        val economy = mockk<EconomyProvider>(relaxed = true)
+        every { economy.balance(playerUuid) } returns 1000L
+        every { economy.withdraw(playerUuid, any()) } returns true
+        every { economy.deposit(any(), any()) } returns true
+
+        // sellStack with a real amount so the reversal math (received = 10 - 4) runs.
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        every { sellStack.amount } returns 10
+        every { sellStack.clone() } returns sellStack
+
+        // Buyer only accepts 6 of 10 — 4 bounce back as leftover.
+        val leftover = mockk<ItemStack>(relaxed = true)
+        every { leftover.amount } returns 4
+        val playerInv = mockk<PlayerInventory>(relaxed = true)
+        every { playerInv.addItem(any()) } returns hashMapOf(0 to leftover)
+
+        val player = mockk<Player>(relaxed = true)
+        every { player.inventory } returns playerInv
+
+        mockkStatic(Bukkit::class)
+        every { Bukkit.getPlayer(playerUuid) } returns player
+
+        val containerInv = mockk<Inventory>(relaxed = true)
+        every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+        val container = mockk<Container>(relaxed = true)
+        every { container.inventory } returns containerInv
+
+        val service = buildService(
+            stallRepo = stallRepo, economy = economy,
+            mockItemStack = sellStack, mockContainer = container,
+        )
+
+        val result = service.executeSell(shop, playerUuid)
+
+        assertTrue(result is ContainerTradeResult.CompensationFailed, "Expected reversal, got $result")
+        // The 6 items that landed in the buyer's inventory must be removed before the full
+        // stack is restored to the container — otherwise they're duplicated (free-item exploit).
+        verify { playerInv.removeItem(any()) }
     }
 
     // ===== BUY: Withdraw fails after item moved =====

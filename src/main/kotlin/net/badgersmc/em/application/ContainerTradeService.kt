@@ -175,6 +175,12 @@ open class ContainerTradeService(
         ctx.containerInv.removeItem(sellStack.clone())
         val remainder = ctx.player.inventory.addItem(sellStack.clone())
         if (remainder.isNotEmpty()) {
+            // Partial fit: the buyer's inventory accepted SOME of the stack. Pull back exactly
+            // what landed (received = requested - bounced) before restoring the full stack to the
+            // container — otherwise rollbackFullTransaction re-adds the whole stack while the buyer
+            // keeps the partial items, duplicating them (free-item exploit for sellAmount > 1).
+            val received = sellStack.amount - remainder.values.sumOf { it.amount }
+            if (received > 0) ctx.player.inventory.removeItem(sellStack.clone().apply { amount = received })
             rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack)
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }

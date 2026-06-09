@@ -15,6 +15,10 @@ data class Auction(
     val highBid: Bid?,
     val antiSnipeWindow: Duration
 ) {
+    init {
+        require(startingBid > 0) { "startingBid must be positive, was $startingBid" }
+    }
+
     fun placeBid(bidder: UUID, amount: Long, at: Instant): Auction {
         check(state == AuctionState.OPEN) { "Auction is not open" }
         require(amount >= startingBid) { "Bid must meet starting bid of $startingBid" }
