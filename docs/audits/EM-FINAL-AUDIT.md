@@ -11,8 +11,8 @@
 | Severity | Count |
 |----------|-------|
 | Critical | 3 |
-| Major | 7 |
-| Minor | 6 |
+| Major | 6 |
+| Minor | 7 |
 | Nit | 4 |
 
 ### Triage-ready: High-confidence Critical / Major
@@ -38,6 +38,7 @@
 | F-017 | Nit | `application/ItemStackSerializer.kt:15` | Fallback to `BukkitObjectInputStream` is Paper-deprecated — will break on 1.21+ |
 | F-018 | Nit | `domain/shop/Shop.kt:71` | `init` validates `stockCount >= 0` but DB default is 0 — negative stock from manual DB edit bypasses domain |
 | F-019 | Nit | `infrastructure/worldguard/WorldGuardRegionProvisioner.kt:52` | `regionManager.save()` failure only warns — region flags applied in-memory but not persisted |
+| F-020 | Minor | `infrastructure/persistence/ShopRepositorySql.kt:64` | `backfillSellMaterials` silently skips rows with corrupt `sell_item` — backfill left incomplete |
 
 ---
 

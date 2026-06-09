@@ -275,7 +275,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             // mapNotNull + runCatching so one corrupt trusted UUID can't throw and poison the
             // whole row load (which would drop every valid row after it in all()/findByOwner).
             trustedStr.split(",").filter { it.isNotBlank() }
-                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }.toSet()
+                .mapNotNull { runCatching { UUID.fromString(it.trim()) }.getOrNull() }.toSet()
         }
         val guildId = rs.getString("guild_id")?.takeIf { it.isNotBlank() }?.let { UUID.fromString(it) }
         val creatorId = rs.getString("creator_id")?.takeIf { it.isNotBlank() }?.let { UUID.fromString(it) }

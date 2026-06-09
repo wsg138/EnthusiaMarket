@@ -448,9 +448,11 @@ class ContainerTradeServiceTest {
         val result = service.executeSell(shop, playerUuid)
 
         assertTrue(result is ContainerTradeResult.CompensationFailed, "Expected reversal, got $result")
-        // The 6 items that landed in the buyer's inventory must be removed before the full
-        // stack is restored to the container — otherwise they're duplicated (free-item exploit).
-        verify { playerInv.removeItem(any()) }
+        // The items that landed in the buyer's inventory must be removed before the full stack
+        // is restored to the container — otherwise they're duplicated (free-item exploit). Assert
+        // the EXACT amount (received = 10 requested − 4 bounced = 6); a wrong quantity must fail.
+        verify { sellStack.amount = 6 }
+        verify { playerInv.removeItem(sellStack) }
     }
 
     // ===== BUY: Withdraw fails after item moved =====
