@@ -3,6 +3,7 @@ package net.badgersmc.em.application
 import io.mockk.confirmVerified
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.Auction
@@ -488,5 +489,77 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         verify {
             svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) && it.state == StallState.OWNED })
         }
+    }
+
+    // ===== startMassAuction (orchestration — the previously-untested conductor) =====
+
+    private fun unownedStall(id: String) = sampleStall.copy(
+        id = StallId(id), regionId = id, state = StallState.UNOWNED, owner = OwnerRef.solo(playerUuid),
+    )
+
+    @Test
+    fun `startMassAuction creates an auction for every UNOWNED stall and transitions each to AUCTIONING`() {
+        val stalls = listOf(unownedStall("s1"), unownedStall("s2"), unownedStall("s3"))
+        val svc = buildService()
+        every { svc.stallRepo.byState(StallState.UNOWNED) } returns stalls
+        every { svc.auctionRepo.findOpenByStall(any()) } returns null
+
+        val result = svc.service.startMassAuction(100L, null)
+
+        val report = assertIs<MassAuctionResult.Report>(result)
+        assertEquals(3, report.created, "every UNOWNED stall should get an auction")
+        assertEquals(0, report.skipped)
+        assertEquals(0, report.errors)
+        assertEquals(3, report.auctionIds.size)
+        verify(exactly = 3) { svc.auctionRepo.create(any()) }
+        verify(exactly = 3) { svc.stallRepo.save(match { it.state == StallState.AUCTIONING }) }
+    }
+
+    @Test
+    fun `startMassAuction skips a stall that already has an open auction (no double-auction)`() {
+        val s1 = unownedStall("s1")
+        val s2 = unownedStall("s2")
+        val svc = buildService()
+        every { svc.stallRepo.byState(StallState.UNOWNED) } returns listOf(s1, s2)
+        every { svc.auctionRepo.findOpenByStall(s1.id) } returns sampleAuction // already live
+        every { svc.auctionRepo.findOpenByStall(s2.id) } returns null
+
+        val result = svc.service.startMassAuction(100L, null)
+
+        val report = assertIs<MassAuctionResult.Report>(result)
+        assertEquals(1, report.created)
+        assertEquals(1, report.skipped)
+        assertEquals(0, report.errors)
+        verify(exactly = 1) { svc.auctionRepo.create(any()) }
+    }
+
+    @Test
+    fun `startMassAuction compensates by CLOSING the auction when the stall transition fails`() {
+        val svc = buildService()
+        every { svc.stallRepo.byState(StallState.UNOWNED) } returns listOf(unownedStall("s1"))
+        every { svc.auctionRepo.findOpenByStall(any()) } returns null
+        // The auction is created, then the stall transition blows up.
+        every { svc.stallRepo.save(any()) } throws RuntimeException("db down")
+        val saved = slot<Auction>()
+        every { svc.auctionRepo.save(capture(saved)) } returns Unit
+
+        val result = svc.service.startMassAuction(100L, null)
+
+        val report = assertIs<MassAuctionResult.Report>(result)
+        assertEquals(0, report.created)
+        assertEquals(1, report.errors)
+        // Integrity invariant: a just-created auction must NOT be left OPEN pointing at a
+        // non-AUCTIONING stall — it has to be compensated (closed).
+        verify { svc.auctionRepo.save(any()) }
+        assertEquals(AuctionState.CLOSED, saved.captured.state, "orphaned auction must be closed")
+    }
+
+    @Test
+    fun `startMassAuction rejects a starting bid below the configured minimum and creates nothing`() {
+        val svc = buildService() // config minStartingBid = 1
+        val result = svc.service.startMassAuction(0L, null)
+
+        assertIs<MassAuctionResult.Invalid>(result)
+        verify(exactly = 0) { svc.auctionRepo.create(any()) }
     }
 }
