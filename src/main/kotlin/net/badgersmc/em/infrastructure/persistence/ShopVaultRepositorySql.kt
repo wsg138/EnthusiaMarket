@@ -9,16 +9,31 @@ import javax.sql.DataSource
 @Repository
 class ShopVaultRepositorySql(private val ds: DataSource) : ShopVaultRepository {
 
+    // Portable UPDATE-then-INSERT (M-3): SQLite's native upsert syntax breaks
+    // MariaDB, which the config also offers. If the INSERT loses a first-deposit
+    // race, the unique key throws — fold the amount into the row that won.
     override fun deposit(owner: UUID, itemBytes: String, amount: Int) {
         require(amount > 0) { "Deposit amount must be positive, got $amount" }
         ds.connection.use { c ->
-            c.prepareStatement(
-                """INSERT INTO shop_vault (owner, item, amount) VALUES (?, ?, ?)
-                   ON CONFLICT(owner, item) DO UPDATE SET amount = amount + excluded.amount"""
-            ).use { ps ->
-                ps.setString(1, owner.toString()); ps.setString(2, itemBytes); ps.setInt(3, amount)
-                ps.executeUpdate()
+            if (addToExisting(c, owner.toString(), itemBytes, amount) > 0) return
+            try {
+                insertRow(c, owner.toString(), itemBytes, amount)
+            } catch (e: java.sql.SQLException) {
+                if (addToExisting(c, owner.toString(), itemBytes, amount) == 0) throw e
             }
+        }
+    }
+
+    private fun addToExisting(c: java.sql.Connection, owner: String, itemBytes: String, amount: Int): Int =
+        c.prepareStatement("UPDATE shop_vault SET amount = amount + ? WHERE owner = ? AND item = ?").use { ps ->
+            ps.setInt(1, amount); ps.setString(2, owner); ps.setString(3, itemBytes)
+            ps.executeUpdate()
+        }
+
+    private fun insertRow(c: java.sql.Connection, owner: String, itemBytes: String, amount: Int) {
+        c.prepareStatement("INSERT INTO shop_vault (owner, item, amount) VALUES (?, ?, ?)").use { ps ->
+            ps.setString(1, owner); ps.setString(2, itemBytes); ps.setInt(3, amount)
+            ps.executeUpdate()
         }
     }
 

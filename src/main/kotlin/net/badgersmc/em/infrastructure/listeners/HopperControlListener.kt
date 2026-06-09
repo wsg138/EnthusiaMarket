@@ -3,30 +3,22 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
-import org.bukkit.Bukkit
 import org.bukkit.block.Container
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.inventory.InventoryMoveItemEvent
 import org.bukkit.inventory.Inventory
-import org.bukkit.plugin.java.JavaPlugin
 
 /**
  * Controls hopper access to shop-linked containers (REQ-019).
  * Respects per-shop hopperAllowIn and hopperAllowOut settings.
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 class HopperControlListener(
     private val shopRepository: ShopRepository
 ) : Listener {
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin ?: return
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     fun onHopperMove(event: InventoryMoveItemEvent) {

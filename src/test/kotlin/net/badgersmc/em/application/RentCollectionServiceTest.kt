@@ -90,6 +90,7 @@ class RentCollectionServiceTest {
     private data class ServiceWithMocks(
         val service: RentCollectionService,
         val stallRepo: StallRepository,
+        val shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
         val economy: EconomyProvider,
         val config: EnthusiaMarketConfig,
         val guildProvider: GuildProvider
@@ -110,13 +111,39 @@ class RentCollectionServiceTest {
 
         val cfg = config(gracePeriod = gracePeriod)
 
+        val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        every { shopRepo.findByStall(any()) } returns emptyList()
+
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, mockk(relaxed = true), economy, guildProvider, cfg, mockk(relaxed = true)),
+            service = RentCollectionService(stallRepo, mockk(relaxed = true), shopRepo, economy, guildProvider, cfg, mockk(relaxed = true)),
             stallRepo = stallRepo,
+            shopRepo = shopRepo,
             economy = economy,
             config = cfg,
             guildProvider = guildProvider
         )
+    }
+
+    // --- M-4 (audit 2026-06-09): eviction must wipe bound shops ---
+
+    private fun shop(id: Long, stallId: String) = net.badgersmc.em.domain.shop.Shop(
+        id = id, stallId = stallId, owner = playerUuid,
+        signWorld = "world", signX = 0, signY = 64, signZ = 0,
+        containerWorld = "world", containerX = 0, containerY = 63, containerZ = 0,
+        sellItem = "item", sellAmount = 1, costItem = "item", costAmount = 1,
+    )
+
+    @Test
+    fun `tick eviction wipes shops bound to the stall`() {
+        val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = false, gracePeriod = "P3D")
+        every { svc.shopRepo.findByStall("stall_02") } returns
+            listOf(shop(11, "stall_02"), shop(12, "stall_02"))
+
+        val report = svc.service.tick()
+
+        assertEquals(1, report.evictions)
+        verify { svc.shopRepo.delete(11) }
+        verify { svc.shopRepo.delete(12) }
     }
 
     // --- tick: collects rent from OWNED stall successfully ---

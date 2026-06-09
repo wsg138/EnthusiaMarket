@@ -35,6 +35,7 @@ data class RentReport(
 class RentCollectionService(
     private val stallRepository: StallRepository,
     private val offers: SellOfferRepository,
+    private val shops: net.badgersmc.em.domain.shop.ShopRepository,
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
@@ -163,8 +164,22 @@ class RentCollectionService(
         return ProcessResult.Evicted
     }
 
-    /** Best-effort post-eviction cleanup: drop lingering offer, clear WG, restore geometry. */
+    /** Best-effort post-eviction cleanup: wipe bound shops, drop lingering offer, clear WG, restore geometry. */
     private fun cleanupAfterEviction(stall: Stall) {
+        // M-4 (audit 2026-06-09) — wipe shops bound to the stall, parity with
+        // sellback. Otherwise the next buyer inherits the evicted owner's live
+        // shops: trade proceeds reroute to the new stall owner and (with
+        // schematics disabled) the old stock stays sellable.
+        for (shop in shops.findByStall(stall.id.value)) {
+            try {
+                shops.delete(shop.id)
+            } catch (e: Exception) {
+                log.warning(
+                    "RentCollectionService: failed to delete shop ${shop.id} bound to evicted " +
+                        "stall ${stall.id.value}; continuing. cause=${e.message}"
+                )
+            }
+        }
         // M3 — drop any lingering sell offer on the now-UNOWNED stall so a follow-up
         // click doesn't trip the offer-mutex check (best-effort, logged, never re-thrown).
         if (offers.findByStall(stall.id) != null) {

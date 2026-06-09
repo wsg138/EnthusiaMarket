@@ -9,8 +9,6 @@ import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
-import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.block.Container
 import org.bukkit.block.Sign
@@ -22,13 +20,12 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.Event
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.ItemStack
-import org.bukkit.plugin.java.JavaPlugin
-import java.util.logging.Logger
 
 /**
  * Listens for player left-click+sneak on wall signs attached to containers
  * inside owned stalls, opening the CreateShopMenu (REQ-012).
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 open class ShopCreateListener(
     private val stallRepository: StallRepository,
@@ -38,17 +35,6 @@ open class ShopCreateListener(
     private val logger: java.util.logging.Logger,
     private val guildProvider: GuildProvider? = null
 ) : Listener {
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
-        if (plugin == null) {
-            Logger.getLogger(ShopCreateListener::class.java.name)
-                .warning("EnthusiaMarket plugin not found — ShopCreateListener will not be registered")
-            return
-        }
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler
     fun onSignInteract(event: PlayerInteractEvent) {

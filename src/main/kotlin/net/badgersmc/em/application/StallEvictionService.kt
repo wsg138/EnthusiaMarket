@@ -13,15 +13,17 @@ import java.util.logging.Logger
 
 /**
  * Admin force-unclaim of a stall (the `/em evict` command). Resets an OWNED or
- * GRACE stall to UNOWNED, strips WorldGuard owner/members, restores the pre-claim
- * geometry (REQ-271, when schematics are enabled), and fires StallStateChangedEvent.
- * No refund — this is an operator action, mirroring the rent-default eviction in
- * RentCollectionService. Bound shops are intentionally NOT wiped (matches rent
- * eviction; use /em sellback for the shop-wiping owner flow).
+ * GRACE stall to UNOWNED, wipes bound shops, strips WorldGuard owner/members,
+ * restores the pre-claim geometry (REQ-271, when schematics are enabled), and
+ * fires StallStateChangedEvent. No refund — this is an operator action,
+ * mirroring the rent-default eviction in RentCollectionService. Shops are wiped
+ * (M-4, audit 2026-06-09) so the next buyer never inherits the evicted owner's
+ * live shops.
  */
 @Service
 class StallEvictionService(
     private val stalls: StallRepository,
+    private val shops: net.badgersmc.em.domain.shop.ShopRepository,
     private val regionMembers: RegionMemberSync,
     private val config: EnthusiaMarketConfig,
     private val schematics: SchematicService = SchematicService.Disabled,
@@ -53,6 +55,18 @@ class StallEvictionService(
                 nextRentAt = null,
             )
         )
+        // M-4 — wipe shops bound to the stall (parity with sellback) so the
+        // next buyer never inherits the evicted owner's live shops.
+        for (shop in shops.findByStall(stall.id.value)) {
+            try {
+                shops.delete(shop.id)
+            } catch (e: Exception) {
+                log.warning(
+                    "Evict: failed to delete shop ${shop.id} bound to stall " +
+                        "${stall.id.value}; continuing. cause=${e.message}"
+                )
+            }
+        }
         try {
             regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
         } catch (e: Exception) {

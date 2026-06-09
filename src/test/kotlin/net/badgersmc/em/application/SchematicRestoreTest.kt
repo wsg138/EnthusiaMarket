@@ -1,4 +1,4 @@
-package net.badgersmc.em.application
+﻿package net.badgersmc.em.application
 
 import io.mockk.every
 import io.mockk.mockk
@@ -22,7 +22,7 @@ import java.util.UUID
 import kotlin.test.Test
 
 /**
- * TDD-271 — schematic restore on unclaim (REQ-271, REQ-272, REQ-273).
+ * TDD-271 â€” schematic restore on unclaim (REQ-271, REQ-272, REQ-273).
  *
  * When a stall transitions back to UNOWNED via rent eviction or voluntary
  * sellback, the stored snapshot must be pasted back over the region to
@@ -64,7 +64,7 @@ class SchematicRestoreTest {
         val schematics = mockk<SchematicService>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, mockk<SellOfferRepository>(relaxed = true), economy, mockk<GuildProvider>(relaxed = true), config(), mockk(relaxed = true), schematics,
+            stallRepo, mockk<SellOfferRepository>(relaxed = true), mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true), economy, mockk<GuildProvider>(relaxed = true), config(), mockk(relaxed = true), schematics,
         )
 
         val report = service.tick(now)
@@ -83,7 +83,7 @@ class SchematicRestoreTest {
         val schematics = mockk<SchematicService>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, mockk<SellOfferRepository>(relaxed = true), economy, mockk<GuildProvider>(relaxed = true), config(enabled = false), mockk(relaxed = true), schematics,
+            stallRepo, mockk<SellOfferRepository>(relaxed = true), mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true), economy, mockk<GuildProvider>(relaxed = true), config(enabled = false), mockk(relaxed = true), schematics,
         )
 
         service.tick(now)

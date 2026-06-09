@@ -7,6 +7,8 @@ import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang
 import net.badgersmc.em.infrastructure.listeners.SignPlaceListener
+import net.badgersmc.em.infrastructure.scheduler.AuctionScheduler
+import net.badgersmc.em.infrastructure.scheduler.RentScheduler
 import net.badgersmc.nexus.core.NexusContext
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.i18n.Locale
@@ -128,8 +130,11 @@ open class EnthusiaMarket : JavaPlugin() {
 
         // Phase 6: Discover every @Listener-annotated bean in the scan
         // package, resolve it from DI, and register it with Bukkit.
-        // Fail-closed: any listener that can't be resolved/registered
-        // will disable the plugin rather than leave sign flows dead.
+        // NOTE: registerNexusListeners is fail-OPEN per listener — a bean
+        // whose dependencies can't resolve is logged as a WARNING and
+        // skipped, not rethrown. The outer catch only guards scan-level
+        // failures. Watch the boot log's "Registered N @Listener beans"
+        // count when adding listeners.
         try {
             net.badgersmc.nexus.paper.listeners.registerNexusListeners(
                 basePackage = "net.badgersmc.em",
@@ -140,6 +145,14 @@ open class EnthusiaMarket : JavaPlugin() {
         } catch (e: Exception) {
             throw RuntimeException("Failed to register listeners — disabling plugin. ${e.message}", e)
         }
+
+        // Phase 6.5: Eagerly construct the schedulers. Nexus DI is lazy —
+        // nothing else depends on these beans, so without an explicit
+        // getBean their @PostConstruct start() never runs and rent
+        // collection + auction settlement silently never happen
+        // (audit 2026-06-09, W-2). Guarded by ListenerWiringTest.
+        ctx.getBean<RentScheduler>()
+        ctx.getBean<AuctionScheduler>()
 
         // PlaceholderAPI expansions (no-ops if PAPI absent).
         net.badgersmc.nexus.papi.registerNexusExpansions(

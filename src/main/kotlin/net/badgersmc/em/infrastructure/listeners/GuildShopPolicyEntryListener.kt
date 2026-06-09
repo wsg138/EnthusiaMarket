@@ -16,6 +16,7 @@ import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import java.util.UUID
 
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 class GuildShopPolicyEntryListener(
     private val regions: RegionProvider,

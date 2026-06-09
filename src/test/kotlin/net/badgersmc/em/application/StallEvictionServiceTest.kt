@@ -28,12 +28,16 @@ class StallEvictionServiceTest {
         members = setOf(UUID.randomUUID()), nextRentAt = Instant.now(),
     )
 
-    private fun service(repo: StallRepository, regions: RegionMemberSync): StallEvictionService {
+    private fun service(
+        repo: StallRepository,
+        regions: RegionMemberSync,
+        shops: net.badgersmc.em.domain.shop.ShopRepository = mockk(relaxed = true),
+    ): StallEvictionService {
         val config = mockk<EnthusiaMarketConfig>()
         val schem = mockk<EnthusiaMarketConfig.Schematics>()
         every { schem.enabled } returns false
         every { config.schematics } returns schem
-        return StallEvictionService(repo, regions, config)
+        return StallEvictionService(repo, shops, regions, config)
     }
 
     @Test fun `evict resets an owned stall to UNOWNED and clears WG`() {
@@ -51,6 +55,25 @@ class StallEvictionServiceTest {
         assertEquals(0L, saved.captured.winningBid)
         assertEquals(emptySet(), saved.captured.members)
         verify { regions.clearOwnersAndMembers("world", "stall1") }
+    }
+
+    /** M-4 (audit 2026-06-09): the next owner must not inherit the evicted owner's live shops. */
+    @Test fun `evict wipes shops bound to the stall`() {
+        val repo = mockk<StallRepository>(relaxed = true)
+        every { repo.findById(StallId("stall1")) } returns ownedStall()
+        val shops = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        val boundShop = net.badgersmc.em.domain.shop.Shop(
+            id = 7, stallId = "stall1", owner = UUID.randomUUID(),
+            signWorld = "world", signX = 0, signY = 64, signZ = 0,
+            containerWorld = "world", containerX = 0, containerY = 63, containerZ = 0,
+            sellItem = "item", sellAmount = 1, costItem = "item", costAmount = 1,
+        )
+        every { shops.findByStall("stall1") } returns listOf(boundShop)
+
+        val result = service(repo, mockk(relaxed = true), shops).evict(StallId("stall1"))
+
+        assertIs<StallEvictionService.Result.Evicted>(result)
+        verify { shops.delete(7) }
     }
 
     @Test fun `evict returns NotFound for a missing stall`() {

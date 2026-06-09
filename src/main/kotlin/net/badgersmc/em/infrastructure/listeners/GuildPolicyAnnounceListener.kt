@@ -11,6 +11,7 @@ import org.bukkit.Bukkit
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 class GuildPolicyAnnounceListener(
     private val guildProvider: GuildProvider,

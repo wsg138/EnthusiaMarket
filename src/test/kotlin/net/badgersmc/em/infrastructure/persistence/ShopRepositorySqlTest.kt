@@ -58,6 +58,30 @@ class ShopRepositorySqlTest {
         assertEquals(shop.sellItem, found.sellItem)
     }
 
+    /** N-1 (audit 2026-06-09): a corrupt guild_id/creator_id must not poison bulk row loads. */
+    @Test fun `corrupt guild_id falls back to null instead of failing the whole query`() {
+        val owner = UUID.randomUUID()
+        fun shopAt(x: Int) = Shop(
+            stallId = "stall_01", owner = owner,
+            signWorld = "world", signX = x, signY = 64, signZ = 0,
+            containerWorld = "world", containerX = x, containerY = 63, containerZ = 0,
+            sellItem = "item", sellAmount = 1, costItem = "cost", costAmount = 5,
+        )
+        val corrupted = repo.upsert(shopAt(1))
+        repo.upsert(shopAt(2))
+        ds.connection.use { c ->
+            c.prepareStatement("UPDATE shop_items SET guild_id = 'not-a-uuid', creator_id = 'junk' WHERE id = ?").use {
+                it.setLong(1, corrupted.id); it.executeUpdate()
+            }
+        }
+
+        val found = repo.findByOwner(owner)
+
+        assertEquals(2, found.size)
+        assertNull(found.single { it.id == corrupted.id }.guildId)
+        assertNull(found.single { it.id == corrupted.id }.creatorId)
+    }
+
     @Test fun `findBySign locates by sign coordinates`() {
         val shop = Shop(
             stallId = "stall_02",

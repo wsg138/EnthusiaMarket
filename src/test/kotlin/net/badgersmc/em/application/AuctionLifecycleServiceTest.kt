@@ -463,6 +463,66 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         }
     }
 
+    // ===== M-2 (audit 2026-06-09) — insolvent winner must not wedge settlement =====
+
+    @Test
+    fun `settleExpired with insolvent winner closes auction and reverts system stall instead of retrying forever`() {
+        val winner = otherPlayer
+        val expired = sampleAuction.copy(
+            highBid = Bid(winner, 500L, now),
+            endAt = now.minusSeconds(60),
+        )
+        val systemStall = sampleStall.copy(
+            state = StallState.AUCTIONING,
+            owner = OwnerRef.unowned(),
+        )
+        val svc = buildService(
+            stall = systemStall,
+            expiredAuctions = listOf(expired),
+            economyWithdrawOk = false, // winner can't pay
+        )
+
+        val report = svc.service.settleExpired()
+
+        // Treated like the limit-reject path: settled, NOT an error that
+        // leaves the auction OPEN and re-charges every scheduler tick.
+        assertEquals(0, report.errors)
+        assertEquals(1, report.settled)
+        // Nobody is paid and the winner never receives the stall.
+        verify(exactly = 0) { svc.economy.deposit(any(), any()) }
+        verify(exactly = 0) { svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) }) }
+        // System-auctioned stall returns to the buyable pool.
+        verify {
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED && it.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            })
+        }
+        // Auction is closed so it stops appearing in findExpired().
+        verify { svc.auctionRepo.save(match { it.state == AuctionState.CLOSED }) }
+    }
+
+    @Test
+    fun `settleExpired with insolvent winner on owner-created auction closes auction without touching the stall`() {
+        val winner = otherPlayer
+        val expired = sampleAuction.copy(
+            highBid = Bid(winner, 500L, now),
+            endAt = now.minusSeconds(60),
+        )
+        val ownedStall = sampleStall.copy(state = StallState.OWNED) // SOLO owner keeps the stall
+        val svc = buildService(
+            stall = ownedStall,
+            expiredAuctions = listOf(expired),
+            economyWithdrawOk = false,
+        )
+
+        val report = svc.service.settleExpired()
+
+        assertEquals(0, report.errors)
+        assertEquals(1, report.settled)
+        verify(exactly = 0) { svc.stallRepo.save(any()) }
+        verify { svc.auctionRepo.save(match { it.state == AuctionState.CLOSED }) }
+    }
+
     @Test
     fun `settleExpired proceeds with normal settlement when limit decision is Allowed`() {
         // Counterpart to the rejection case — sanity-checks that the limit

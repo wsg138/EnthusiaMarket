@@ -570,3 +570,13 @@ References: REQ-024 through REQ-027
 - [x] ItemShops parity SP6 — misc/integration (transaction log + /shop history, owner notifications, PAPI placeholders, sign-click info card)
 - [x] ItemShops parity SP3 — barter / profits vault (TRADE sign direction, ShopVault, per-owner item vault, /shopvault)
 - [x] ItemShops parity SP4 — limits + market regions (no-group=unlimited fix, buyout gate, real stall.kind, /em limit, bypass node)
+
+## Audit 2026-06-09 — runtime wiring fixes (see docs/audits/EM-AUDIT-2026-06-09-runtime-wiring.md)
+
+- [x] W-1 `INFRA` — annotate all Bukkit listeners with nexus `@Listener` (9 were never registered under lazy DI); guarded by `architecture/ListenerWiringTest`
+- [x] W-2 `INFRA` — eagerly `getBean` RentScheduler + AuctionScheduler in onEnable (rent collection and auction settlement never ran)
+- [x] W-3 `INFRA` — delete dead legacy sign-trade path (REQ-005/006 superseded): SignInteractListener, ShopTradeService, ItemProvider, ShopSign, SignRepository(+Sql)
+- [x] M-2 `TDD` — insolvent auction winner: close + revert instead of throwing (was: infinite re-settle every scheduler tick)
+- [x] M-3 `TDD` — portable UPDATE-then-INSERT upserts in ShopVaultRepositorySql + GuildTradePolicyRepositorySql (SQLite-only syntax broke the mariadb config); guarded by `architecture/SqlPortabilityTest`
+- [x] M-4 `TDD` — eviction (rent default + /em evict) wipes bound shops, parity with sellback
+- [x] N-1 `TDD` — lenient guild_id/creator_id parsing in ShopRepositorySql.mapRow
