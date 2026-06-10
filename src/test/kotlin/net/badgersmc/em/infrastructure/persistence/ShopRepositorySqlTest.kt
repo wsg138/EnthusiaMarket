@@ -450,4 +450,24 @@ class ShopRepositorySqlTest {
         val found = repo.findBySellMaterial("DIAMOND")
         assertEquals(1, found.size)
     }
+
+    /**
+     * Regression: V012's `CHECK (direction IN ('BUY','SELL'))` predated the TRADE
+     * direction, so placing a [TRADE] sign crashed with SQLITE_CONSTRAINT_CHECK.
+     * V020 widens the constraint. This persists every SignDirection to prove the
+     * CHECK no longer rejects TRADE.
+     */
+    @Test fun `persists every SignDirection including TRADE`() {
+        for (dir in SignDirection.entries) {
+            val shop = Shop(
+                stallId = "stall_dir", owner = UUID.randomUUID(),
+                signWorld = "world", signX = dir.ordinal, signY = 64, signZ = 0,
+                containerWorld = "world", containerX = dir.ordinal, containerY = 63, containerZ = 0,
+                sellItem = "item", sellAmount = 1, costItem = "cost", costAmount = 5,
+                direction = dir,
+            )
+            val created = repo.upsert(shop)
+            assertEquals(dir, repo.findById(created.id)?.direction)
+        }
+    }
 }
