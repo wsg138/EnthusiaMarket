@@ -24,14 +24,33 @@ jobs:
       # Nexus is now resolved from JitPack — no clone/publish step needed.
       # See build.gradle.kts for the com.github.BadgersMC.Nexus coordinates.
 
-      - name: Build RoseChat (fork) shadowJar
+      # ---------------------------------------------------------------------
+      # RoseChat <-> LumaGuilds is a circular compile dependency:
+      #   - RoseChat master has the LumaGuilds channel hook  (needs LumaGuilds jar)
+      #   - LumaGuilds needs the RoseChat jar to compile its chat listeners
+      # Both resolve the other via compileOnly files('libs/...') and libs/ is
+      # gitignored, so a single clone of either can't compile. We break the cycle
+      # with a two-pass bootstrap:
+      #   Pass 1: build RoseChat at the last PRE-HOOK commit. That hook-free build
+      #           still exposes every API LumaGuilds uses (RoseChatAPI, Channel,
+      #           RosePlayer), so it's enough to compile LumaGuilds.
+      #   Pass 2: build RoseChat master against the LumaGuilds jar from pass 1.
+      #           This validates the hook actually compiles (so we don't silently
+      #           ship a hook-less RoseChat — the exact regression that broke
+      #           guild/ally chat). EnthusiaMarket itself only needs the
+      #           LumaGuilds jar, but pass 2 keeps the full graph honest.
+      # If RoseChat history changes, update ROSECHAT_PREHOOK_REF below.
+      # ---------------------------------------------------------------------
+      - name: Build RoseChat (pre-hook) for LumaGuilds bootstrap
+        env:
+          ROSECHAT_PREHOOK_REF: 3fe078a   # last RoseChat commit before the LumaGuilds hook
         run: |
-          git clone --depth 1 --branch master https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat"
-          cd "$RUNNER_TEMP/rosechat"
+          git clone https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-prehook"
+          cd "$RUNNER_TEMP/rosechat-prehook"
+          git checkout "$ROSECHAT_PREHOOK_REF"
           chmod +x gradlew
           ./gradlew shadowJar --no-daemon
-          # Drop the RC-2 shadowJar somewhere stable for LumaGuilds to pick up
-          ROSE_JAR=$(ls "$RUNNER_TEMP/rosechat/build/libs/"RoseChat-RC-2*.jar | grep -v '\-sources\|-javadoc' | head -1)
+          ROSE_JAR=$(ls "$RUNNER_TEMP/rosechat-prehook/build/libs/"RoseChat-RC-2*.jar | grep -v '\-sources\|-javadoc' | head -1)
           mkdir -p "$RUNNER_TEMP/rosechat-out"
           cp "$ROSE_JAR" "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar"
 
@@ -44,8 +63,20 @@ jobs:
           cd "$RUNNER_TEMP/lumaguilds"
           chmod +x gradlew
           ./gradlew shadowJar --no-daemon
-          JAR=$(ls "$RUNNER_TEMP/lumaguilds/build/libs/"LumaGuilds-*.jar | head -1)
+          JAR=$(ls "$RUNNER_TEMP/lumaguilds/build/libs/"LumaGuilds-*.jar | grep -v '\-sources\|-javadoc' | head -1)
           echo "jar=$JAR" >> "$GITHUB_OUTPUT"
+          # Stage under the exact name RoseChat's build.gradle expects in libs/
+          mkdir -p "$RUNNER_TEMP/lumaguilds-out"
+          cp "$JAR" "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar"
+
+      - name: Build RoseChat (master, with hook) — validates the cycle closes
+        run: |
+          git clone --depth 1 --branch master https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-master"
+          mkdir -p "$RUNNER_TEMP/rosechat-master/libs"
+          cp "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar" "$RUNNER_TEMP/rosechat-master/libs/LumaGuilds-2.1.0.jar"
+          cd "$RUNNER_TEMP/rosechat-master"
+          chmod +x gradlew
+          ./gradlew shadowJar --no-daemon
 
       - name: Test and shadowJar
         env:
