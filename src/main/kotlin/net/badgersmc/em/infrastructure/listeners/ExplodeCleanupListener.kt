@@ -3,33 +3,22 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.ShopDeletedEvent
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
 import org.bukkit.block.Container
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.entity.EntityExplodeEvent
-import org.bukkit.plugin.java.JavaPlugin
 import java.util.logging.Logger
 
 /**
  * Cleans up shop records when explosions destroy linked containers (REQ-016).
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 class ExplodeCleanupListener(
     private val shopRepository: ShopRepository,
     private val logger: Logger
 ) : Listener {
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin
-        if (plugin == null) {
-            logger.warning("EnthusiaMarket plugin not found — ExplodeCleanupListener will not be registered")
-            return
-        }
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler(ignoreCancelled = true)
     fun onExplode(event: EntityExplodeEvent) {

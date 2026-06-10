@@ -6,7 +6,6 @@ import net.badgersmc.em.events.PostShopTransactionEvent
 import net.badgersmc.em.events.ShopStockDepletedEvent
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
 import org.bukkit.block.Block
 import org.bukkit.block.Container
@@ -18,23 +17,17 @@ import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.event.inventory.InventoryDragEvent
 import org.bukkit.inventory.DoubleChestInventory
 import org.bukkit.inventory.Inventory
-import org.bukkit.plugin.java.JavaPlugin
 
 /**
  * Monitors container inventory changes and refreshes linked shop sign text (REQ-017).
  * Uses MONITOR priority so it runs after all other handlers.
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 class ContainerStockListener(
     private val shopRepository: ShopRepository,
     private val lang: LangService
 ) : Listener {
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin ?: return
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onClick(event: InventoryClickEvent) {

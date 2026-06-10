@@ -9,7 +9,6 @@ import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.MenuFactory
 import net.badgersmc.em.interaction.gui.PurchaseMenu
 import net.badgersmc.nexus.annotations.Component
-import net.badgersmc.nexus.annotations.PostConstruct
 import org.bukkit.Bukkit
 import org.bukkit.block.Sign
 import org.bukkit.entity.Player
@@ -18,11 +17,11 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
-import org.bukkit.plugin.java.JavaPlugin
 
 /**
  * Listens for right-click on registered shop signs and opens the PurchaseMenu (REQ-013).
  */
+@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 open class ShopInteractListener(
     private val shopRepository: ShopRepository,
@@ -31,12 +30,6 @@ open class ShopInteractListener(
     private val lang: LangService,
     private val logger: java.util.logging.Logger,
 ) : Listener {
-
-    @PostConstruct
-    fun register() {
-        val plugin = Bukkit.getPluginManager().getPlugin("EnthusiaMarket") as? JavaPlugin ?: return
-        Bukkit.getPluginManager().registerEvents(this, plugin)
-    }
 
     @EventHandler
     fun onSignRightClick(event: PlayerInteractEvent) {

@@ -41,20 +41,36 @@ class GuildTradePolicyRepositorySql(private val ds: DataSource) : GuildTradePoli
         return out
     }
 
+    // Portable UPDATE-then-INSERT (M-3): SQLite's native upsert syntax breaks
+    // MariaDB, which the config also offers. If the INSERT loses a first-writer
+    // race to a concurrent upsert, the unique key throws — fold into the row that won.
     override fun upsert(policy: GuildTradePolicy) {
         ds.connection.use { conn ->
-            conn.prepareStatement(
-                """
-                INSERT INTO guild_trade_policies (owner_guild_id, target_guild_id, kind, rate_pct)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(owner_guild_id, target_guild_id)
-                DO UPDATE SET kind = excluded.kind, rate_pct = excluded.rate_pct
-                """.trimIndent()
-            ).use { ps ->
-                ps.setString(1, policy.ownerGuildId); ps.setString(2, policy.targetGuildId)
-                ps.setString(3, policy.kind.name); ps.setInt(4, policy.ratePct)
-                ps.executeUpdate()
+            if (updateRow(conn, policy) > 0) return
+            try {
+                insertRow(conn, policy)
+            } catch (e: java.sql.SQLException) {
+                if (updateRow(conn, policy) == 0) throw e
             }
+        }
+    }
+
+    private fun updateRow(conn: java.sql.Connection, policy: GuildTradePolicy): Int =
+        conn.prepareStatement(
+            "UPDATE guild_trade_policies SET kind = ?, rate_pct = ? WHERE owner_guild_id = ? AND target_guild_id = ?"
+        ).use { ps ->
+            ps.setString(1, policy.kind.name); ps.setInt(2, policy.ratePct)
+            ps.setString(3, policy.ownerGuildId); ps.setString(4, policy.targetGuildId)
+            ps.executeUpdate()
+        }
+
+    private fun insertRow(conn: java.sql.Connection, policy: GuildTradePolicy) {
+        conn.prepareStatement(
+            "INSERT INTO guild_trade_policies (owner_guild_id, target_guild_id, kind, rate_pct) VALUES (?, ?, ?, ?)"
+        ).use { ps ->
+            ps.setString(1, policy.ownerGuildId); ps.setString(2, policy.targetGuildId)
+            ps.setString(3, policy.kind.name); ps.setInt(4, policy.ratePct)
+            ps.executeUpdate()
         }
     }
 

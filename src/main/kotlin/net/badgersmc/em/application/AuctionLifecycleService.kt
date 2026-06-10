@@ -379,19 +379,23 @@ class AuctionLifecycleService(
                 "Auction ${auction.id} winner ${bid.bidder} over limit " +
                     "($decision); reverting without payment."
             )
-            if (stall.state == StallState.AUCTIONING &&
-                stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
-            ) {
-                stallRepository.save(stall.copy(state = StallState.UNOWNED))
-                fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
-            }
-            auctionRepository.save(auction.close())
+            closeWithoutAward(auction, stall)
             return
         }
 
-        // 0. Withdraw from winner FIRST (before any state changes)
+        // 0. Withdraw from winner FIRST (before any state changes).
+        // M-2 (audit 2026-06-09): a failed withdraw must NOT throw — that left
+        // the auction OPEN-and-expired, so the scheduler re-attempted (and
+        // logged an error) every tick forever while the stall sat wedged in
+        // AUCTIONING. An insolvent winner forfeits: same outcome as the
+        // limit-reject path above.
         if (!economy.withdraw(bid.bidder, bid.amount)) {
-            throw IllegalStateException("Failed to withdraw winning bid from ${bid.bidder}")
+            logger.warning(
+                "Auction ${auction.id} winner ${bid.bidder} could not pay ${bid.amount}; " +
+                    "closing without award."
+            )
+            closeWithoutAward(auction, stall)
+            return
         }
 
         // 0.5 REQ-270/273/274 — snapshot the stall geometry BEFORE finalising
@@ -497,6 +501,36 @@ class AuctionLifecycleService(
                 "Auction ${auction.id}: seller payment failed. " +
                     "Winner charged ${bid.amount}, seller proceeds $sellerProceeds pending."
             )
+        }
+    }
+
+    /**
+     * Close [auction] without awarding [stall] to anyone. A stall that the
+     * system mass-auctioned (AUCTIONING + no owner) is reverted to UNOWNED so
+     * it returns to the buyable pool; an owner-created auction leaves the
+     * stall untouched.
+     *
+     * The auction is closed FIRST (matching the C3 settle ordering): if the
+     * stall revert ran first and threw, the auction would stay OPEN-and-expired
+     * and re-settle every scheduler tick — the exact wedge M-2 fixes. The
+     * revert is best-effort; a stuck-AUCTIONING stall is operator-fixable,
+     * an infinitely re-settling auction is not.
+     */
+    private fun closeWithoutAward(auction: Auction, stall: Stall) {
+        auctionRepository.save(auction.close())
+        if (stall.state == StallState.AUCTIONING &&
+            stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+        ) {
+            try {
+                stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+            } catch (e: Exception) {
+                logger.severe(
+                    "closeWithoutAward: auction ${auction.id} closed but stall ${stall.id.value} " +
+                        "could not be reverted to UNOWNED — fix manually or re-run the mass auction. " +
+                        "cause=${e.message}"
+                )
+            }
         }
     }
 
