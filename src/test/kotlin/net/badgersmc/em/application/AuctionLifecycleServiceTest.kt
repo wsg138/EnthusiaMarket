@@ -502,6 +502,35 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
     }
 
     @Test
+    fun `settleExpired with insolvent winner still closes the auction when the stall revert throws`() {
+        // CodeRabbit on #57: if the stall revert ran BEFORE the auction close
+        // and threw, the auction stayed OPEN-and-expired — re-settling every
+        // scheduler tick, the exact wedge M-2 fixes. Close must happen first;
+        // a failed revert is best-effort.
+        val winner = otherPlayer
+        val expired = sampleAuction.copy(
+            highBid = Bid(winner, 500L, now),
+            endAt = now.minusSeconds(60),
+        )
+        val systemStall = sampleStall.copy(
+            state = StallState.AUCTIONING,
+            owner = OwnerRef.unowned(),
+        )
+        val svc = buildService(
+            stall = systemStall,
+            expiredAuctions = listOf(expired),
+            economyWithdrawOk = false,
+        )
+        every { svc.stallRepo.save(any()) } throws RuntimeException("db down")
+
+        val report = svc.service.settleExpired()
+
+        assertEquals(0, report.errors)
+        assertEquals(1, report.settled)
+        verify { svc.auctionRepo.save(match { it.state == AuctionState.CLOSED }) }
+    }
+
+    @Test
     fun `settleExpired with insolvent winner on owner-created auction closes auction without touching the stall`() {
         val winner = otherPlayer
         val expired = sampleAuction.copy(

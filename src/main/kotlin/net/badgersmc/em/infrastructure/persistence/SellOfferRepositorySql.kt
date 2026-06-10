@@ -35,20 +35,40 @@ class SellOfferRepositorySql(private val ds: DataSource) : SellOfferRepository {
         }
     }
 
+    // Portable UPDATE-then-INSERT on the stall_id primary key (M-3): SQLite's
+    // native upsert syntax breaks MariaDB, which the config also offers. If the
+    // INSERT loses a first-writer race, the key throws — retry as an UPDATE.
     override fun save(offer: SellOffer) {
-        // PRIMARY KEY on stall_id makes this an upsert via INSERT OR REPLACE.
         ds.connection.use { conn ->
-            conn.prepareStatement(
-                """INSERT OR REPLACE INTO sell_offers
-                   (stall_id, seller_uuid, price, created_at)
-                   VALUES (?, ?, ?, ?)"""
-            ).use { ps ->
-                ps.setString(1, offer.stallId.value)
-                ps.setString(2, offer.sellerUuid.toString())
-                ps.setLong(3, offer.price)
-                ps.setLong(4, offer.createdAt.toEpochMilli())
-                ps.executeUpdate()
+            if (updateRow(conn, offer) > 0) return
+            try {
+                insertRow(conn, offer)
+            } catch (e: java.sql.SQLException) {
+                if (updateRow(conn, offer) == 0) throw e
             }
+        }
+    }
+
+    private fun updateRow(conn: java.sql.Connection, offer: SellOffer): Int =
+        conn.prepareStatement(
+            "UPDATE sell_offers SET seller_uuid = ?, price = ?, created_at = ? WHERE stall_id = ?"
+        ).use { ps ->
+            ps.setString(1, offer.sellerUuid.toString())
+            ps.setLong(2, offer.price)
+            ps.setLong(3, offer.createdAt.toEpochMilli())
+            ps.setString(4, offer.stallId.value)
+            ps.executeUpdate()
+        }
+
+    private fun insertRow(conn: java.sql.Connection, offer: SellOffer) {
+        conn.prepareStatement(
+            "INSERT INTO sell_offers (stall_id, seller_uuid, price, created_at) VALUES (?, ?, ?, ?)"
+        ).use { ps ->
+            ps.setString(1, offer.stallId.value)
+            ps.setString(2, offer.sellerUuid.toString())
+            ps.setLong(3, offer.price)
+            ps.setLong(4, offer.createdAt.toEpochMilli())
+            ps.executeUpdate()
         }
     }
 

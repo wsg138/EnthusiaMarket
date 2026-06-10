@@ -46,12 +46,16 @@ class ListenerWiringTest {
 
     @Test
     fun `onEnable eagerly constructs the rent and auction schedulers`() {
-        val mainFile = Konsist.scopeFromProduction()
-            .files
+        // Scoped to the onEnable body (CodeRabbit on #57) so a mention in a
+        // comment elsewhere in the file can't satisfy the check.
+        val onEnable = Konsist.scopeFromProduction()
+            .classes()
             .single { it.name == "EnthusiaMarket" && it.packagee?.name == "net.badgersmc.em" }
+            .functions()
+            .single { it.name == "onEnable" }
         assertTrueKt(
-            mainFile.text.contains("getBean<RentScheduler>") &&
-                mainFile.text.contains("getBean<AuctionScheduler>"),
+            onEnable.text.contains("getBean<RentScheduler>") &&
+                onEnable.text.contains("getBean<AuctionScheduler>"),
             "onEnable must getBean() RentScheduler and AuctionScheduler — nothing else constructs them, so rent collection and auction settlement never run",
         )
     }

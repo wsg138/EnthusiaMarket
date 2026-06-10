@@ -509,15 +509,29 @@ class AuctionLifecycleService(
      * system mass-auctioned (AUCTIONING + no owner) is reverted to UNOWNED so
      * it returns to the buyable pool; an owner-created auction leaves the
      * stall untouched.
+     *
+     * The auction is closed FIRST (matching the C3 settle ordering): if the
+     * stall revert ran first and threw, the auction would stay OPEN-and-expired
+     * and re-settle every scheduler tick — the exact wedge M-2 fixes. The
+     * revert is best-effort; a stuck-AUCTIONING stall is operator-fixable,
+     * an infinitely re-settling auction is not.
      */
     private fun closeWithoutAward(auction: Auction, stall: Stall) {
+        auctionRepository.save(auction.close())
         if (stall.state == StallState.AUCTIONING &&
             stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
         ) {
-            stallRepository.save(stall.copy(state = StallState.UNOWNED))
-            fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+            try {
+                stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+            } catch (e: Exception) {
+                logger.severe(
+                    "closeWithoutAward: auction ${auction.id} closed but stall ${stall.id.value} " +
+                        "could not be reverted to UNOWNED — fix manually or re-run the mass auction. " +
+                        "cause=${e.message}"
+                )
+            }
         }
-        auctionRepository.save(auction.close())
     }
 
     /**

@@ -15,11 +15,12 @@ class SqlPortabilityTest {
 
     @Test
     fun `persistence repositories use no SQLite-only upsert syntax`() {
+        val sqliteOnly = listOf("ON CONFLICT", "INSERT OR REPLACE", "INSERT OR IGNORE")
         Konsist.scopeFromProduction()
             .files
             .filter { it.packagee?.name == "net.badgersmc.em.infrastructure.persistence" }
-            .assertTrue(additionalMessage = "ON CONFLICT is SQLite-only; the mariadb config option breaks on it — use a portable upsert") {
-                !it.text.contains("ON CONFLICT")
+            .assertTrue(additionalMessage = "$sqliteOnly are SQLite-only; the mariadb config option breaks on them — use a portable upsert") { file ->
+                sqliteOnly.none { file.text.contains(it) }
             }
     }
 }
