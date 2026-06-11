@@ -177,6 +177,7 @@ shop:
   protect:
     use_edit_menu: "<yellow>[Shop] Use the edit menu to delete this shop (coming in TDD-57)"
     cannot_break_sign: "<red>You cannot break this shop sign"
+    sign_broken_deleted: "<yellow>[Shop] Sign broken — this shop has been deleted."
     container_has_shops: "<red>This container has active shops. Only the owner can break it."
     deleted: "<green>Deleted <count> shop(s) linked to this container"
     delete_error: "<red>An error occurred while deleting shops. Please contact an admin."

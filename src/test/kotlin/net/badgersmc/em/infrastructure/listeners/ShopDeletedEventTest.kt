@@ -2,7 +2,6 @@ package net.badgersmc.em.infrastructure.listeners
 
 import io.mockk.every
 import io.mockk.mockk
-import net.badgersmc.em.application.BreakDeleteMode
 import net.badgersmc.em.application.AdminBreakMode
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.Shop
@@ -74,7 +73,7 @@ class ShopDeletedEventTest {
 
         val block = mockContainerBlock()
         val breakEvent = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<BreakDeleteMode>(relaxed = true), mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
 
         // ── When: the container is broken ──
         listener.onBlockBreak(breakEvent)

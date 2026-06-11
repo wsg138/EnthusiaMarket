@@ -1,6 +1,5 @@
 package net.badgersmc.em.infrastructure.listeners
 
-import net.badgersmc.em.application.BreakDeleteMode
 import net.badgersmc.em.application.AdminBreakMode
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.Shop
@@ -27,7 +26,6 @@ import java.util.logging.Logger
 @Component
 class BlockProtectionListener(
     private val shopRepository: ShopRepository,
-    private val breakDelete: BreakDeleteMode,
     private val adminBreak: AdminBreakMode,
     private val management: ShopManagementService,
     private val logger: Logger,
@@ -42,17 +40,21 @@ class BlockProtectionListener(
             val shop = findShopBySign(block)
             if (shop != null) {
                 val player = event.player
-                if (shop.owner == player.uniqueId && breakDelete.isActive(player.uniqueId)) {
-                    management.delete(player.uniqueId, shop.id)
-                    player.sendMessage(lang.msg("shop.delete.done"))
-                    return // allow break; shop already deleted
+                when {
+                    // Owner breaks their own sign -> delete the shop and let the break proceed,
+                    // so a broken sign never leaves an orphan row blocking the spot (REQ-015).
+                    shop.owner == player.uniqueId -> {
+                        management.delete(player.uniqueId, shop.id)
+                        player.sendMessage(lang.msg("shop.protect.sign_broken_deleted"))
+                    }
+                    // Admin in break-others mode -> admin delete and allow the break.
+                    player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId) -> {
+                        management.adminDelete(shop.id)
+                        player.sendMessage(lang.msg("shop.admin.breakothers.deleted"))
+                    }
+                    // Anyone else -> protect the sign from being broken.
+                    else -> cancelSignBreak(event, shop, event.player)
                 }
-                if (player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId)) {
-                    management.adminDelete(shop.id)
-                    player.sendMessage(lang.msg("shop.admin.breakothers.deleted"))
-                    return // allow break; shop already deleted
-                }
-                cancelSignBreak(event, shop, event.player)
             }
             return
         }
