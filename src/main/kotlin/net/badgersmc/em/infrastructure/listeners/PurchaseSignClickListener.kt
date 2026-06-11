@@ -74,7 +74,13 @@ open class PurchaseSignClickListener(
         }
 
         when (stall.state) {
-            StallState.UNOWNED -> handleBuy(player.uniqueId, sign.stallId, sign.price, player)
+            StallState.UNOWNED -> {
+                if (!player.hasPermission("enthusiamarket.stall.buyout")) {
+                    player.sendMessage(lang.msg("purchase_sign.msg.buy_no_permission"))
+                    return
+                }
+                handleBuy(player.uniqueId, sign.stallId, sign.price, player)
+            }
             StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING ->
                 player.sendMessage(
                     lang.msg("purchase_sign.msg.auction_live", "stall" to sign.stallId.value)

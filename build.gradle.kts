@@ -178,6 +178,7 @@ configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
         node("enthusiamarket.stall.rent", default = Default.TRUE, description = "Rent a stall")
         node("enthusiamarket.stall.bid", default = Default.TRUE, description = "Bid on a stall auction")
         node("enthusiamarket.stall.buy", default = Default.TRUE, description = "Buy a stall via sell offer")
+        node("enthusiamarket.stall.buyout", default = Default.TRUE, description = "Buy an unowned stall via its purchase sign")
         node("enthusiamarket.stall.offer", default = Default.TRUE, description = "Create/cancel a sell offer")
         node("enthusiamarket.stall.sellback", default = Default.TRUE, description = "Voluntarily relinquish a stall")
         node("enthusiamarket.stall.members", default = Default.TRUE, description = "Manage stall members")
