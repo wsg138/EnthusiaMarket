@@ -4,66 +4,64 @@ import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.annotations.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
-import net.lumalyte.lg.application.services.BankService
-import net.lumalyte.lg.application.services.GuildService
-import net.lumalyte.lg.application.services.MemberService
-import net.lumalyte.lg.application.services.RankService
-import net.lumalyte.lg.domain.entities.Guild
+import net.lumalyte.lg.api.GuildLookup
+import net.lumalyte.lg.api.GuildSummary
 import net.lumalyte.lg.domain.entities.RankPermission
-import org.koin.core.context.GlobalContext
+import org.bukkit.Bukkit
 import java.util.UUID
 
 /**
- * Real [GuildProvider] backed by the LumaGuilds API.
+ * Real [GuildProvider] backed by LumaGuilds' [GuildLookup] API.
  *
- * Resolves LumaGuilds services lazily via Koin's [GlobalContext].
+ * LumaGuilds registers [GuildLookup] in Bukkit's ServicesManager at enable, so we
+ * load it via [org.bukkit.plugin.ServicesManager] rather than reaching into
+ * LumaGuilds' Koin container — a cross-classloader Koin `get<T>()` LinkageErrors
+ * on `kotlin.reflect.KClass`. The lookup is resolved lazily (LumaGuilds loads
+ * BEFORE EnthusiaMarket, so it is registered by the time any command runs) and is
+ * null only if LumaGuilds is absent; every method degrades to a safe default then.
  */
 @Component
 class LumaGuildsGuildProvider : GuildProvider {
 
-    private val resolvedGuildService: GuildService by lazy {
-        GlobalContext.get().get()
-    }
-    private val resolvedMemberService: MemberService by lazy {
-        GlobalContext.get().get()
-    }
-    private val resolvedRankService: RankService by lazy {
-        GlobalContext.get().get()
-    }
-    private val resolvedBankService: BankService by lazy {
-        GlobalContext.get().get()
+    private val logger = java.util.logging.Logger.getLogger(LumaGuildsGuildProvider::class.java.name)
+
+    private val lookup: GuildLookup? by lazy {
+        Bukkit.getServicesManager().load(GuildLookup::class.java)
     }
 
     private val dissolveHandlers = mutableListOf<(String) -> Unit>()
 
     override fun guildOf(player: UUID): GuildProvider.GuildRef? {
-        val guildIds = resolvedMemberService.getPlayerGuilds(player)
-        val firstId = guildIds.firstOrNull() ?: return null
-        val guild = resolvedGuildService.getGuild(firstId) ?: return null
+        val lg = lookup ?: return null
+        val firstId = lg.getPlayerGuildIds(player).firstOrNull() ?: return null
+        val guild = lg.getGuild(firstId) ?: return null
         return toGuildRef(guild)
     }
 
     override fun guildById(id: String): GuildProvider.GuildRef? {
-        val uuid = try {
-            UUID.fromString(id)
-        } catch (_: IllegalArgumentException) {
-            return null
-        }
-        val guild = resolvedGuildService.getGuild(uuid) ?: return null
+        val uuid = parseUuid(id) ?: return null
+        val guild = lookup?.getGuild(uuid) ?: return null
         return toGuildRef(guild)
     }
 
     override fun listGuilds(): List<GuildProvider.GuildRef> =
-        resolvedGuildService.getAllGuilds().map { toGuildRef(it) }
+        lookup?.getAllGuilds()?.map { toGuildRef(it) } ?: emptyList()
 
-    /** Map a LumaGuilds guild to [GuildProvider.GuildRef], normalising tag/emoji to MiniMessage. */
-    private fun toGuildRef(guild: Guild): GuildProvider.GuildRef =
+    /** Map a LumaGuilds [GuildSummary] to [GuildProvider.GuildRef], normalising tag/emoji to MiniMessage. */
+    private fun toGuildRef(guild: GuildSummary): GuildProvider.GuildRef =
         GuildProvider.GuildRef(
             guild.id.toString(),
             guild.name,
             normalizeToMiniMessage(guild.tag),
             normalizeToMiniMessage(guild.emoji),
         )
+
+    private fun parseUuid(value: String): UUID? =
+        try {
+            UUID.fromString(value)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
 
     /**
      * Normalise a stored guild tag/emoji to MiniMessage so EM's sign renderer
@@ -97,70 +95,45 @@ class LumaGuildsGuildProvider : GuildProvider {
 
 
     override fun isMember(player: UUID, guildId: String): Boolean {
-        val uuid = try {
-            UUID.fromString(guildId)
-        } catch (_: IllegalArgumentException) {
-            return false
-        }
-        return resolvedMemberService.getMember(player, uuid) != null
+        val uuid = parseUuid(guildId) ?: return false
+        return lookup?.isMember(player, uuid) ?: false
     }
 
     override fun hasShopPermission(player: UUID, guildId: String, permission: GuildProvider.GuildPermission): Boolean {
-        val guildUuid = try {
-            UUID.fromString(guildId)
-        } catch (_: IllegalArgumentException) {
-            return false
-        }
+        val guildUuid = parseUuid(guildId) ?: return false
         val lgPermission = permission.toRankPermission() ?: return false
         return try {
-            resolvedMemberService.hasPermission(player, guildUuid, lgPermission)
-        } catch (_: Exception) {
+            lookup?.hasShopPermission(player, guildUuid, lgPermission.name) ?: false
+        } catch (e: Exception) {
+            // Fail closed, but leave a trace — a thrown check here is unexpected
+            // (the GuildLookup impl already fails closed internally).
+            logger.log(java.util.logging.Level.WARNING, "hasShopPermission failed for player=$player guild=$guildId; denying", e)
             false
         }
     }
 
     @Deprecated("Use hasShopPermission with GuildPermission", replaceWith = ReplaceWith("hasShopPermission(player, guildId, permission)"))
     override fun hasPermission(player: UUID, guildId: String, node: String): Boolean {
-        val guildUuid = try {
-            UUID.fromString(guildId)
-        } catch (_: IllegalArgumentException) {
-            return false
-        }
-        val playerRankId = resolvedMemberService.getPlayerRankId(player, guildUuid) ?: return false
-        val ranks = resolvedRankService.listRanks(guildUuid)
-        val playerRank = ranks.find { it.id == playerRankId } ?: return false
-        val targetRank = ranks.find { it.name.equals(node, ignoreCase = true) } ?: return false
-        // Lower priority number = higher rank (0 = Owner)
-        return playerRank.priority <= targetRank.priority
+        val guildUuid = parseUuid(guildId) ?: return false
+        return lookup?.hasRankAtLeast(player, guildUuid, node) ?: false
     }
 
     override fun bankBalance(guildId: String): Long {
-        val uuid = try {
-            UUID.fromString(guildId)
-        } catch (_: IllegalArgumentException) {
-            return 0L
-        }
-        return resolvedBankService.getBalance(uuid).toLong()
+        val uuid = parseUuid(guildId) ?: return 0L
+        return lookup?.getBankBalance(uuid) ?: 0L
     }
 
     override fun bankWithdraw(guildId: String, amount: Long): Boolean {
-        if (amount <= 0 || amount > Int.MAX_VALUE) return false
-        val uuid = try {
-            UUID.fromString(guildId)
-        } catch (_: IllegalArgumentException) {
-            return false
-        }
-        return resolvedBankService.withdraw(uuid, SYSTEM_ACTOR_UUID, amount.toInt(), "System withdrawal") != null
+        if (amount <= 0) return false
+        val uuid = parseUuid(guildId) ?: return false
+        // GuildLookup rejects amounts beyond Int range itself.
+        return lookup?.bankWithdraw(uuid, SYSTEM_ACTOR_UUID, amount, "System withdrawal") ?: false
     }
 
     override fun bankDeposit(guildId: String, amount: Long): Boolean {
-        if (amount <= 0 || amount > Int.MAX_VALUE) return false
-        val uuid = try {
-            UUID.fromString(guildId)
-        } catch (_: IllegalArgumentException) {
-            return false
-        }
-        return resolvedBankService.deposit(uuid, SYSTEM_ACTOR_UUID, amount.toInt(), "System deposit") != null
+        if (amount <= 0) return false
+        val uuid = parseUuid(guildId) ?: return false
+        return lookup?.bankDeposit(uuid, SYSTEM_ACTOR_UUID, amount, "System deposit") ?: false
     }
 
     override fun onDissolved(handler: (String) -> Unit) {
