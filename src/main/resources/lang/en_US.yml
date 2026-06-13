@@ -81,6 +81,7 @@ purchase_sign:
     stall_missing: "<prefix><red>Stall not found:</red> <stall>"
     auction_live: "<prefix><yellow>Auction is live on</yellow> <aqua><stall></aqua> <gray>— use /em bid"
     already_owned: "<prefix><gray>This stall is already owned"
+    buy_no_permission: "<prefix><red>Stall buying isn't available yet"
     rejected: "<prefix><red>Purchase rejected: <reason>"
     broken: "<prefix><yellow>Purchase sign removed from</yellow> <aqua><stall>"
     confirm_extend: "<prefix><yellow>Right-click again within <seconds>s to extend rent on</yellow> <aqua><stall>"
