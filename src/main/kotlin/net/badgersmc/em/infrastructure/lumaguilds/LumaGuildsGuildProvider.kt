@@ -23,6 +23,8 @@ import java.util.UUID
 @Component
 class LumaGuildsGuildProvider : GuildProvider {
 
+    private val logger = java.util.logging.Logger.getLogger(LumaGuildsGuildProvider::class.java.name)
+
     private val lookup: GuildLookup? by lazy {
         Bukkit.getServicesManager().load(GuildLookup::class.java)
     }
@@ -102,7 +104,10 @@ class LumaGuildsGuildProvider : GuildProvider {
         val lgPermission = permission.toRankPermission() ?: return false
         return try {
             lookup?.hasShopPermission(player, guildUuid, lgPermission.name) ?: false
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Fail closed, but leave a trace — a thrown check here is unexpected
+            // (the GuildLookup impl already fails closed internally).
+            logger.log(java.util.logging.Level.WARNING, "hasShopPermission failed for player=$player guild=$guildId; denying", e)
             false
         }
     }
@@ -119,15 +124,16 @@ class LumaGuildsGuildProvider : GuildProvider {
     }
 
     override fun bankWithdraw(guildId: String, amount: Long): Boolean {
-        if (amount <= 0 || amount > Int.MAX_VALUE) return false
+        if (amount <= 0) return false
         val uuid = parseUuid(guildId) ?: return false
-        return lookup?.bankWithdraw(uuid, SYSTEM_ACTOR_UUID, amount.toInt(), "System withdrawal") ?: false
+        // GuildLookup rejects amounts beyond Int range itself.
+        return lookup?.bankWithdraw(uuid, SYSTEM_ACTOR_UUID, amount, "System withdrawal") ?: false
     }
 
     override fun bankDeposit(guildId: String, amount: Long): Boolean {
-        if (amount <= 0 || amount > Int.MAX_VALUE) return false
+        if (amount <= 0) return false
         val uuid = parseUuid(guildId) ?: return false
-        return lookup?.bankDeposit(uuid, SYSTEM_ACTOR_UUID, amount.toInt(), "System deposit") ?: false
+        return lookup?.bankDeposit(uuid, SYSTEM_ACTOR_UUID, amount, "System deposit") ?: false
     }
 
     override fun onDissolved(handler: (String) -> Unit) {
