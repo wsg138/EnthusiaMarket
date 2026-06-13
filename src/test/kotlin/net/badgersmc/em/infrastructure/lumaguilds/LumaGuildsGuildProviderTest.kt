@@ -2,18 +2,13 @@ package net.badgersmc.em.infrastructure.lumaguilds
 
 import io.mockk.every
 import io.mockk.mockk
-import net.lumalyte.lg.application.services.BankService
-import net.lumalyte.lg.application.services.GuildService
-import net.lumalyte.lg.application.services.MemberService
-import net.lumalyte.lg.application.services.RankService
-import net.lumalyte.lg.domain.entities.Guild
-import net.lumalyte.lg.domain.entities.Member
-import net.lumalyte.lg.domain.entities.Rank
-import org.koin.core.context.GlobalContext
-import org.koin.core.context.startKoin
-import org.koin.core.context.stopKoin
-import org.koin.dsl.module
-import java.time.Instant
+import net.lumalyte.lg.api.GuildLookup
+import net.lumalyte.lg.api.GuildSummary
+import org.bukkit.plugin.ServicePriority
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.mockbukkit.mockbukkit.MockBukkit
+import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,61 +16,37 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
 
 class LumaGuildsGuildProviderTest {
 
     companion object {
         private const val INVALID_UUID = "not-a-uuid"
-        private const val OFFICER_RANK = "Officer"
-        private const val MEMBER_RANK = "Member"
     }
 
     private val guildId = UUID.randomUUID()
     private val playerId = UUID.randomUUID()
-    private val guildService = mockk<GuildService>()
-    private val memberService = mockk<MemberService>()
-    private val rankService = mockk<RankService>()
-    private val bankService = mockk<BankService>()
+    private val lookup = mockk<GuildLookup>(relaxed = true)
     private val provider = LumaGuildsGuildProvider()
+    private lateinit var server: ServerMock
 
     @BeforeEach
     fun setUp() {
-        startKoinWithMocks()
+        server = MockBukkit.mock()
+        val plugin = MockBukkit.createMockPlugin("LumaGuilds")
+        server.servicesManager.register(GuildLookup::class.java, lookup, plugin, ServicePriority.Normal)
     }
 
     @AfterEach
     fun tearDown() {
-        stopKoinContext()
-    }
-
-    private fun startKoinWithMocks() {
-        stopKoin()
-        startKoin {
-            modules(module {
-                single { guildService }
-                single { memberService }
-                single { rankService }
-                single { bankService }
-            })
-        }
-    }
-
-    private fun stopKoinContext() {
-        stopKoin()
+        MockBukkit.unmock()
     }
 
     // --- guildOf ---
 
     @Test
     fun `guildOf returns GuildRef for player's first guild`() {
-        every { memberService.getPlayerGuilds(playerId) } returns setOf(guildId)
-        every { guildService.getGuild(guildId) } returns Guild(
-            id = guildId,
-            name = "TestGuild",
-            createdAt = Instant.now(),
-        )
+        every { lookup.getPlayerGuildIds(playerId) } returns setOf(guildId)
+        every { lookup.getGuild(guildId) } returns GuildSummary(guildId, "TestGuild", null, null)
 
         val result = provider.guildOf(playerId)
 
@@ -86,16 +57,14 @@ class LumaGuildsGuildProviderTest {
 
     @Test
     fun `guildOf returns null when player has no guilds`() {
-        every { memberService.getPlayerGuilds(playerId) } returns emptySet()
-
+        every { lookup.getPlayerGuildIds(playerId) } returns emptySet()
         assertNull(provider.guildOf(playerId))
     }
 
     @Test
     fun `guildOf returns null when guild lookup fails`() {
-        every { memberService.getPlayerGuilds(playerId) } returns setOf(guildId)
-        every { guildService.getGuild(guildId) } returns null
-
+        every { lookup.getPlayerGuildIds(playerId) } returns setOf(guildId)
+        every { lookup.getGuild(guildId) } returns null
         assertNull(provider.guildOf(playerId))
     }
 
@@ -103,17 +72,12 @@ class LumaGuildsGuildProviderTest {
 
     @Test
     fun `guildById returns GuildRef for valid UUID string`() {
-        val id = guildId.toString()
-        every { guildService.getGuild(guildId) } returns Guild(
-            id = guildId,
-            name = "MyGuild",
-            createdAt = Instant.now(),
-        )
+        every { lookup.getGuild(guildId) } returns GuildSummary(guildId, "MyGuild", null, null)
 
-        val result = provider.guildById(id)
+        val result = provider.guildById(guildId.toString())
 
         assertNotNull(result)
-        assertEquals(id, result.id)
+        assertEquals(guildId.toString(), result.id)
         assertEquals("MyGuild", result.name)
     }
 
@@ -124,26 +88,31 @@ class LumaGuildsGuildProviderTest {
 
     @Test
     fun `guildById returns null when guild not found`() {
-        every { guildService.getGuild(guildId) } returns null
+        every { lookup.getGuild(guildId) } returns null
         assertNull(provider.guildById(guildId.toString()))
+    }
+
+    // --- tag/emoji normalisation flows through GuildSummary ---
+
+    @Test
+    fun `guildById normalises legacy tag to MiniMessage`() {
+        every { lookup.getGuild(guildId) } returns GuildSummary(guildId, "G", "&aHi", null)
+        val result = provider.guildById(guildId.toString())
+        assertNotNull(result)
+        assertTrue(result.tag.contains("<green>") || result.tag.contains("green"), "legacy &a should become MiniMessage: ${result.tag}")
     }
 
     // --- isMember ---
 
     @Test
     fun `isMember returns true when member exists`() {
-        every { memberService.getMember(playerId, guildId) } returns Member(
-            playerId = playerId,
-            guildId = guildId,
-            rankId = UUID.randomUUID(),
-            joinedAt = Instant.now(),
-        )
+        every { lookup.isMember(playerId, guildId) } returns true
         assertTrue(provider.isMember(playerId, guildId.toString()))
     }
 
     @Test
     fun `isMember returns false when member does not exist`() {
-        every { memberService.getMember(playerId, guildId) } returns null
+        every { lookup.isMember(playerId, guildId) } returns false
         assertFalse(provider.isMember(playerId, guildId.toString()))
     }
 
@@ -152,85 +121,47 @@ class LumaGuildsGuildProviderTest {
         assertFalse(provider.isMember(playerId, INVALID_UUID))
     }
 
-    // --- hasPermission ---
+    // --- hasShopPermission ---
 
     @Test
-    fun `hasPermission returns true when player rank priority is higher`() {
-        val playerRankId = UUID.randomUUID()
-        val officerRankId = UUID.randomUUID()
-        every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
-        every { rankService.listRanks(guildId) } returns setOf(
-            Rank(id = playerRankId, guildId = guildId, name = "Owner", priority = 0),
-            Rank(id = officerRankId, guildId = guildId, name = OFFICER_RANK, priority = 2),
+    fun `hasShopPermission maps GuildPermission to RankPermission name`() {
+        every { lookup.hasShopPermission(playerId, guildId, "EDIT_SHOP_STOCK") } returns true
+        assertTrue(
+            provider.hasShopPermission(
+                playerId, guildId.toString(), net.badgersmc.em.domain.ports.GuildProvider.GuildPermission.MANAGE_SHOPS,
+            ),
         )
-
-        assertTrue(provider.hasPermission(playerId, guildId.toString(), OFFICER_RANK))
     }
 
     @Test
-    fun `hasPermission returns true when player rank equals target rank`() {
-        val playerRankId = UUID.randomUUID()
-        every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
-        every { rankService.listRanks(guildId) } returns setOf(
-            Rank(id = playerRankId, guildId = guildId, name = MEMBER_RANK, priority = 5),
+    fun `hasShopPermission returns false for invalid guild ID`() {
+        assertFalse(
+            provider.hasShopPermission(
+                playerId, INVALID_UUID, net.badgersmc.em.domain.ports.GuildProvider.GuildPermission.MANAGE_SHOPS,
+            ),
         )
+    }
 
-        assertTrue(provider.hasPermission(playerId, guildId.toString(), MEMBER_RANK))
+    // --- deprecated rank-based hasPermission delegates to hasRankAtLeast ---
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `hasPermission delegates to hasRankAtLeast`() {
+        every { lookup.hasRankAtLeast(playerId, guildId, "Officer") } returns true
+        assertTrue(provider.hasPermission(playerId, guildId.toString(), "Officer"))
     }
 
     @Test
-    fun `hasPermission returns false when player rank priority is lower`() {
-        val playerRankId = UUID.randomUUID()
-        val officerRankId = UUID.randomUUID()
-        every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
-        every { rankService.listRanks(guildId) } returns setOf(
-            Rank(id = officerRankId, guildId = guildId, name = OFFICER_RANK, priority = 2),
-            Rank(id = playerRankId, guildId = guildId, name = MEMBER_RANK, priority = 5),
-        )
-
-        assertFalse(provider.hasPermission(playerId, guildId.toString(), OFFICER_RANK))
-    }
-
-    @Test
-    fun `hasPermission returns false when player has no rank`() {
-        every { memberService.getPlayerRankId(playerId, guildId) } returns null
-        assertFalse(provider.hasPermission(playerId, guildId.toString(), OFFICER_RANK))
-    }
-
-    @Test
+    @Suppress("DEPRECATION")
     fun `hasPermission returns false for invalid guild ID`() {
-        assertFalse(provider.hasPermission(playerId, INVALID_UUID, OFFICER_RANK))
+        assertFalse(provider.hasPermission(playerId, INVALID_UUID, "Officer"))
     }
 
-    @Test
-    fun `hasPermission returns false when target rank not found`() {
-        val playerRankId = UUID.randomUUID()
-        every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
-        every { rankService.listRanks(guildId) } returns setOf(
-            Rank(id = playerRankId, guildId = guildId, name = MEMBER_RANK, priority = 5),
-        )
-
-        assertFalse(provider.hasPermission(playerId, guildId.toString(), "NonExistentRank"))
-    }
+    // --- bank ---
 
     @Test
-    fun `hasPermission matches rank name case insensitively`() {
-        val playerRankId = UUID.randomUUID()
-        val officerRankId = UUID.randomUUID()
-        every { memberService.getPlayerRankId(playerId, guildId) } returns playerRankId
-        every { rankService.listRanks(guildId) } returns setOf(
-            Rank(id = playerRankId, guildId = guildId, name = "Owner", priority = 0),
-            Rank(id = officerRankId, guildId = guildId, name = "officer", priority = 2),
-        )
-
-        assertTrue(provider.hasPermission(playerId, guildId.toString(), "OFFICER"))
-    }
-
-    // --- bankBalance ---
-
-    @Test
-    fun `bankBalance delegates to bank service`() {
-        every { bankService.getBalance(guildId) } returns 5000
+    fun `bankBalance delegates to lookup`() {
+        every { lookup.getBankBalance(guildId) } returns 5000L
         assertEquals(5000L, provider.bankBalance(guildId.toString()))
     }
 
@@ -239,17 +170,15 @@ class LumaGuildsGuildProviderTest {
         assertEquals(0L, provider.bankBalance(INVALID_UUID))
     }
 
-    // --- bankWithdraw ---
-
     @Test
     fun `bankWithdraw returns true on success`() {
-        every { bankService.withdraw(guildId, any(), 1000, any()) } returns mockk()
+        every { lookup.bankWithdraw(guildId, any(), 1000, any()) } returns true
         assertTrue(provider.bankWithdraw(guildId.toString(), 1000L))
     }
 
     @Test
     fun `bankWithdraw returns false on failure`() {
-        every { bankService.withdraw(guildId, any(), 1000, any()) } returns null
+        every { lookup.bankWithdraw(guildId, any(), 1000, any()) } returns false
         assertFalse(provider.bankWithdraw(guildId.toString(), 1000L))
     }
 
@@ -258,17 +187,15 @@ class LumaGuildsGuildProviderTest {
         assertFalse(provider.bankWithdraw(INVALID_UUID, 1000L))
     }
 
-    // --- bankDeposit ---
-
     @Test
     fun `bankDeposit returns true on success`() {
-        every { bankService.deposit(guildId, any(), 500, any()) } returns mockk()
+        every { lookup.bankDeposit(guildId, any(), 500, any()) } returns true
         assertTrue(provider.bankDeposit(guildId.toString(), 500L))
     }
 
     @Test
     fun `bankDeposit returns false on failure`() {
-        every { bankService.deposit(guildId, any(), 500, any()) } returns null
+        every { lookup.bankDeposit(guildId, any(), 500, any()) } returns false
         assertFalse(provider.bankDeposit(guildId.toString(), 500L))
     }
 
