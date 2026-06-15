@@ -104,6 +104,24 @@ open class EnthusiaMarket : JavaPlugin() {
         MigrationRunner(ds, resourcePrefix = "migrations", classLoader = this::class.java.classLoader).runAll()
         ctx.registerBean("dataSource", DataSource::class, ds as DataSource)
 
+        // Shop repository + in-memory container index (REQ-281/282, PERF-4). The hopper-control
+        // hot path (InventoryMoveItemEvent) must resolve shop status without a DB query, so we wrap
+        // the SQL repo in IndexedShopRepository and register THAT as the sole ShopRepository bean.
+        // ShopRepositorySql is no longer @Repository (would be a second bean under the interface →
+        // ambiguous DI), so it is built here explicitly. Must run before registerPaperCommands /
+        // registerNexusListeners, which trigger construction of every ShopRepository consumer.
+        val shopLocationIndex = net.badgersmc.em.application.InMemoryShopLocationIndex()
+        val shopSqlRepo = net.badgersmc.em.infrastructure.persistence.ShopRepositorySql(ds)
+        shopLocationIndex.rebuild(shopSqlRepo.all()) // REQ-282: rebuild from persistence on enable
+        val shopRepository: ShopRepository =
+            net.badgersmc.em.application.IndexedShopRepository(shopSqlRepo, shopLocationIndex)
+        ctx.registerBean(
+            "shopLocationIndex",
+            net.badgersmc.em.domain.shop.ShopLocationIndex::class,
+            shopLocationIndex,
+        )
+        ctx.registerBean("shopRepository", ShopRepository::class, shopRepository)
+
         // NexusScheduler — replaces ad-hoc Bukkit.getScheduler() calls; auto-cancels on disable.
         val sched = NexusScheduler(this)
         ctx.registerBean("nexusScheduler", NexusScheduler::class, sched)

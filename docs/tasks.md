@@ -650,7 +650,7 @@ set only at insert (no relocate path), so create + delete fully cover location c
   impl imports: net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopRepository ; net.badgersmc.em.domain.shop.ShopLocationIndex ; java.util.UUID
   ```
 
-- [ ] **PERF-3** — hopper control resolves via index, zero DB queries on server thread
+- [x] **PERF-3** — hopper control resolves via index, zero DB queries on server thread (MERGED INTO PERF-4 2026-06-15: listener needs no code change — PERF-2's decorator already makes findByContainer index-backed, so no TDD red is possible; the hopper guard test ships as PERF-4's regression proof)
   References: REQ-281, src/main/kotlin/net/badgersmc/em/infrastructure/listeners/HopperControlListener.kt
   Tag: TDD
   Description: With the decorator serving `findByContainer` from memory, `HopperControlListener` likely
@@ -664,14 +664,29 @@ set only at insert (no relocate path), so create + delete fully cover location c
 
 ### INFRA tasks
 
-- [ ] **PERF-4** — DI wiring: build, rebuild-on-enable, inject
+- [x] **PERF-4** — DI wiring: build, rebuild-on-enable, inject (+ PERF-3 guard test) [code done; runtime DI-boot verification pending — see PERF-VERIFY]
   References: REQ-281, REQ-282, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt, implementation.md §3.9
   Tag: INFRA
-  Description: Register `ShopLocationIndex` / `IndexedShopRepository` in the nexus DI graph, rebuild the
-  index from persistent storage in `onEnable` (eager, like W-2 schedulers), and inject the decorated repo
-  wherever shops are read/mutated and into `HopperControlListener`. Confirm existing arch and
-  listener-wiring tests stay green.
-  Evidence: ``
+  Description: Drop `@Repository` from `ShopRepositorySql` (a second bean under the `ShopRepository`
+  interface makes nexus DI ambiguous), build `ShopRepositorySql → InMemoryShopLocationIndex →
+  IndexedShopRepository` in `onEnable` after the DataSource is registered and before
+  registerPaperCommands/registerNexusListeners construct consumers, rebuild the index from
+  `shopSqlRepo.all()` (REQ-282), and register the decorator as the sole `ShopRepository` bean (+ the
+  index under `ShopLocationIndex`). All ~25 consumers inject the interface, so they transparently get
+  the decorator; `HopperControlListener` then resolves from the index (REQ-281). Ships the PERF-3
+  guard test. Live verification required (no test boots the DI graph).
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt:103-122 (wiring inserted right after ctx.registerBean dataSource, before registerPaperCommands at ~125; fully-qualified refs so no new imports)
+  src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopRepositorySql.kt:12 (@Repository removed; constructed manually now)
+  src/main/kotlin/net/badgersmc/em/application/IndexedShopRepository.kt (PERF-2 decorator wired as the bean)
+  src/main/kotlin/net/badgersmc/em/application/InMemoryShopLocationIndex.kt (PERF-1 index, rebuilt on enable)
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt (registered under this type)
+  nexus DI mechanics (nexus-core v2.1.1 sources): ComponentRegistry.typeIndex indexes a bean under its type + implemented interfaces; BeanFactory.getBean(type) throws "Multiple beans found of type" when >1 match — so ShopRepositorySql must not stay @Repository while the decorator is registered under ShopRepository. registerBean runs post-create, before first getBean (lazy factories), so the decorator is the only ShopRepository definition.
+  src/test/kotlin/architecture/ListenerWiringTest.kt (Konsist static analysis only — does not boot NexusContext, so removing @Repository does not break it)
+  src/main/kotlin/net/badgersmc/em/infrastructure/listeners/HopperControlListener.kt (unchanged; receives the decorator via DI)
+  guard-test imports: io.mockk.mockk ; io.mockk.every ; io.mockk.verify ; net.badgersmc.em.application.IndexedShopRepository ; net.badgersmc.em.application.InMemoryShopLocationIndex ; net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopRepository ; org.bukkit.Location ; org.bukkit.block.Block ; org.bukkit.block.Container ; org.bukkit.event.inventory.InventoryMoveItemEvent ; org.bukkit.inventory.Inventory ; org.bukkit.inventory.ItemStack ; java.util.UUID ; kotlin.test.Test ; kotlin.test.assertTrue
+  ```
 
 ### DOC tasks
 
