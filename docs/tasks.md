@@ -624,17 +624,31 @@ set only at insert (no relocate path), so create + delete fully cover location c
   impl imports: net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopLocationIndex (port created this task)
   ```
 
-- [ ] **PERF-2** — index stays consistent with persisted shop mutations
+- [x] **PERF-2** — index stays consistent with persisted shop mutations
   References: REQ-282, src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopRepositorySql.kt, implementation.md §2
   Tag: TDD
-  Description: Implement `IndexedShopRepository` decorating the SQL repo (decision locked above): it
-  delegates every mutation (upsert/insert/update, delete, deleteByContainer, deleteByOwner,
-  setGuildOwnership, removeGuildOwnership), updates the `ShopLocationIndex` after each, and serves
-  `findByContainer` from the index. Refresh the cached entry on upsert so changed hopperAllowIn/Out
-  flags are visible; `updateStock` need not move index keys. Double chests index both halves'
-  coordinates. Failing test first with a fake delegate: after each mutating op the index matches the
-  persisted set; `findByContainer` returns from the index without delegating to SQL.
-  Evidence: ``
+  Description: Implement `IndexedShopRepository` (application layer) decorating any `ShopRepository`
+  delegate (decision locked above): delegate every mutation (upsert/insert/update, delete,
+  deleteByContainer, deleteByOwner, setGuildOwnership, removeGuildOwnership), update the
+  `ShopLocationIndex` after each, and serve `findByContainer` from the index. Upsert replaces the
+  prior entry for the same id so changed hopperAllowIn/Out flags are visible (no duplicate);
+  `delete(id)` resolves coords via delegate `findById` (write path, not the hot path). `updateStock`
+  need not move index keys. (Double-chest half-resolution is PERF-3's listener concern, not the
+  repo's.) Failing test first with a mockk delegate: after each mutating op the index matches the
+  persisted set; `findByContainer` returns from the index with `verify(exactly = 0)` on the
+  delegate's `findByContainer`.
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt (interface the decorator implements + delegates to; upsert returns persisted Shop, delete(id), deleteByContainer, deleteByOwner, set/removeGuildOwnership, updateStock)
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt (PERF-1 port: shopsAt/put/remove/rebuild)
+  src/main/kotlin/net/badgersmc/em/application/InMemoryShopLocationIndex.kt (PERF-1 adapter used as the real index collaborator in the test)
+  src/main/kotlin/net/badgersmc/em/application/ShopManagementService.kt:36-103 (mutation surface: upsert on edit, delete(id), deleteByOwner)
+  src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopRepositorySql.kt:16-37,92-110 (delegate semantics: upsert→insert returns Shop with generated id; findByContainer query being replaced on hot path)
+  src/test/kotlin/net/badgersmc/em/application/ShopManagementServiceTest.kt:1-55 (mockk pattern: mockk(relaxed=true), every{}returns/answers, verify(exactly=0))
+  build.gradle.kts:119 (io.mockk:mockk:1.13.11 testImplementation)
+  test imports: io.mockk.mockk ; io.mockk.every ; io.mockk.verify ; net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopRepository ; java.util.UUID ; kotlin.test.Test ; kotlin.test.assertEquals ; kotlin.test.assertTrue ; kotlin.test.assertFalse
+  impl imports: net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopRepository ; net.badgersmc.em.domain.shop.ShopLocationIndex ; java.util.UUID
+  ```
 
 - [ ] **PERF-3** — hopper control resolves via index, zero DB queries on server thread
   References: REQ-281, src/main/kotlin/net/badgersmc/em/infrastructure/listeners/HopperControlListener.kt
