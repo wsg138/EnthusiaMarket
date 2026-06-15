@@ -580,3 +580,92 @@ References: REQ-024 through REQ-027
 - [x] M-3 `TDD` — portable UPDATE-then-INSERT upserts in ShopVaultRepositorySql + GuildTradePolicyRepositorySql (SQLite-only syntax broke the mariadb config); guarded by `architecture/SqlPortabilityTest`
 - [x] M-4 `TDD` — eviction (rent default + /em evict) wipes bound shops, parity with sellback
 - [x] N-1 `TDD` — lenient guild_id/creator_id parsing in ShopRepositorySql.mapRow
+
+---
+
+## Perf 2026-06-14 — hopper control hot-path DB I/O (spark: 5.85% server thread)
+
+Root cause: `HopperControlListener.onHopperMove` (fires per hopper transfer tick) calls
+`ShopRepository.findByContainer` → synchronous SQLite query on the server thread, up to twice
+per event, with no in-memory short-circuit. `idx_shop_container` already exists, so the cost is
+call frequency, not query plan (`prepareStatement` alone = 2.16%). Fix: an authoritative
+in-memory shop-container index; the hot path never touches the DB. Spark report
+https://spark.lucko.me/3RFbDGJIef.
+
+**Sync mechanism — DECIDED 2026-06-14: decorator, not events.** All ~25 `ShopRepository`
+consumers (application services, listeners, commands, Bedrock forms, GUI menus) inject the
+`ShopRepository` *interface*; DI resolves it via `getBean<ShopRepository>()`. An
+`IndexedShopRepository` decorator therefore covers every mutation path transparently with zero
+call-site edits, and is the single choke point that cannot be bypassed. Event-driven sync was
+rejected: `ShopCreatedEvent` fires only in `SignPlaceListener:216` (NOT in `CreateShopMenu:82`
+or `BedrockCreateShopForm:59`), and `ShopDeletedEvent` misses `DeleteShopsMenu:38` /
+`ShopEditMenu:131` — those gaps would leave locked shops hopper-exploitable. Container coords are
+set only at insert (no relocate path), so create + delete fully cover location changes.
+
+### TDD tasks
+
+- [x] **PERF-1** — `ShopLocationIndex` domain port + in-memory adapter
+  References: REQ-282, implementation.md §2 (layer rules), §3.4 (ports), src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt
+  Tag: TDD
+  Description: Add domain port `domain/shop/ShopLocationIndex` exposing `shopsAt(world, x, y, z): List<Shop>`
+  (empty when none), `put(shop)`, `remove(shop)`, `rebuild(shops: Collection<Shop>)`. Add an in-memory
+  adapter (application layer, stdlib only) keyed by a packed (world, x, y, z) coordinate. Failing test
+  first: `shopsAt` empty before population; returns indexed shops after `put`/`rebuild`; reflects
+  `remove`. Port carries no Bukkit/framework imports (arch denylist).
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt (port lives in domain/shop; new ShopLocationIndex port sits beside it)
+  src/main/kotlin/net/badgersmc/em/domain/shop/Shop.kt:31-50 (Shop data class — container key fields containerWorld/containerX/containerY/containerZ; hopperAllowIn/hopperAllowOut default true)
+  docs/implementation.md §2 (layer rules: domain depends on nothing outside domain + Kotlin stdlib; application depends on domain only) + denylist (org.bukkit/io.papermc/koin/hikari forbidden in domain)
+  docs/implementation.md §3.4 (port interfaces live in domain)
+  src/test/kotlin/net/badgersmc/em/domain/stall/StallTest.kt:1-24 (test conventions: kotlin.test @Test, assertEquals/assertTrue/assertFalse)
+  src/test/kotlin/net/badgersmc/em/application/ContainerTradeServiceTest.kt:51-64 (testShop(...) builder pattern to reuse for fixtures)
+  test imports: net.badgersmc.em.domain.shop.Shop ; java.util.UUID ; kotlin.test.Test ; kotlin.test.assertEquals ; kotlin.test.assertTrue
+  impl imports: net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopLocationIndex (port created this task)
+  ```
+
+- [ ] **PERF-2** — index stays consistent with persisted shop mutations
+  References: REQ-282, src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopRepositorySql.kt, implementation.md §2
+  Tag: TDD
+  Description: Implement `IndexedShopRepository` decorating the SQL repo (decision locked above): it
+  delegates every mutation (upsert/insert/update, delete, deleteByContainer, deleteByOwner,
+  setGuildOwnership, removeGuildOwnership), updates the `ShopLocationIndex` after each, and serves
+  `findByContainer` from the index. Refresh the cached entry on upsert so changed hopperAllowIn/Out
+  flags are visible; `updateStock` need not move index keys. Double chests index both halves'
+  coordinates. Failing test first with a fake delegate: after each mutating op the index matches the
+  persisted set; `findByContainer` returns from the index without delegating to SQL.
+  Evidence: ``
+
+- [ ] **PERF-3** — hopper control resolves via index, zero DB queries on server thread
+  References: REQ-281, src/main/kotlin/net/badgersmc/em/infrastructure/listeners/HopperControlListener.kt
+  Tag: TDD
+  Description: With the decorator serving `findByContainer` from memory, `HopperControlListener` likely
+  needs no code change — it keeps its `ShopRepository` dependency and receives the decorator via DI.
+  Failing test first: inject an `IndexedShopRepository` built over a SQL-delegate spy whose
+  `findByContainer`/`queryMany` fail the test if invoked, populate the index, drive the hopper decision,
+  and assert correct cancel decisions for hopperAllowIn/hopperAllowOut and pass-through for non-shop
+  containers — proving REQ-281's "no DB query on the server thread". If the listener is left untouched,
+  this task reduces to the guarding test only.
+  Evidence: ``
+
+### INFRA tasks
+
+- [ ] **PERF-4** — DI wiring: build, rebuild-on-enable, inject
+  References: REQ-281, REQ-282, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt, implementation.md §3.9
+  Tag: INFRA
+  Description: Register `ShopLocationIndex` / `IndexedShopRepository` in the nexus DI graph, rebuild the
+  index from persistent storage in `onEnable` (eager, like W-2 schedulers), and inject the decorated repo
+  wherever shops are read/mutated and into `HopperControlListener`. Confirm existing arch and
+  listener-wiring tests stay green.
+  Evidence: ``
+
+### DOC tasks
+
+- [ ] **PERF-5** — document the index component + data flow
+  References: REQ-281, REQ-282, implementation.md §3, docs/db-schema.md
+  Tag: DOC
+  Description: Add a component-design entry for `ShopLocationIndex` (layer, port, adapter, evidence
+  sources) and a data-flow subsection for the hopper hot path in `implementation.md`; note in
+  `db-schema.md` that `idx_shop_container` now backs admin/maintenance reads rather than the hopper hot
+  path.
+  Evidence: ``

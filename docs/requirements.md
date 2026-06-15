@@ -159,6 +159,14 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 **Ubiquitous.** THE SYSTEM SHALL execute all Bukkit world, inventory, and entity mutations on the main server thread.
 
+### REQ-281 — Hopper control without per-event database I/O
+
+**Event-driven.** WHEN an InventoryMoveItemEvent fires THE SYSTEM SHALL resolve the shop status and hopper permissions of the source and destination containers from an in-memory index without querying the database on the server thread.
+
+### REQ-282 — Shop container index reflects persisted state
+
+**Ubiquitous.** THE SYSTEM SHALL maintain an in-memory shop container index that reflects every persisted shop container location, rebuilt from persistent storage on plugin enable and updated whenever a shop is created, updated, or deleted.
+
 ---
 
 ## ARM-inspired feature set (Phase 5)
