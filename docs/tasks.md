@@ -704,7 +704,7 @@ set only at insert (no relocate path), so create + delete fully cover location c
   docs/db-schema.md (inspected: no index documentation section, so nothing to amend)
   ```
 
-- [ ] **PERF-VERIFY** — live runtime verification of the hopper fix
+- [x] **PERF-VERIFY** — live runtime verification of the hopper fix
   References: REQ-281, REQ-282
   Tag: INFRA
   Description: No unit test boots NexusContext, so PERF-4's DI wiring is unproven at runtime. On a server
@@ -713,4 +713,19 @@ set only at insert (no relocate path), so create + delete fully cover location c
   "EnthusiaMarket enabled" logged), exercise a locked-hopper shop, then re-run a spark profiler and
   confirm HopperControlListener.onHopperMove / ShopRepositorySql.findByContainer is gone from the
   server-thread hot path (was 5.85%, baseline https://spark.lucko.me/3RFbDGJIef).
-  Evidence: ``
+  DI-BOOT VERIFIED 2026-06-15 on test server C:\Users\Noah\Desktop\test_net\lobby\SanityCheck (Leaf
+  1.21.11, full deps): "EnthusiaMarket enabled (v0.2.0)", 0 ShopRepository DI errors, HopperControlListener
+  registered (index-backed repo), 14 @Listener beans, server reached Done. (Had to swap the test box's
+  stale LumaGuilds-2.1.0.jar — missing net.lumalyte.lg.api.GuildLookup — for the freshly-built one;
+  stale copy saved as plugins/LumaGuilds-2.1.0.jar.stale-bak.)
+  SPARK PROOF DONE 2026-06-15: fix deployed to live (remote 170.205.24.14), 25 players, TPS 20.00 (was 18.34
+  @33 players pre-fix). Profile https://spark.lucko.me/ZNDUJN57Yg (3.2MB, populated): net/badgersmc =
+  net.badgersmc = badgersmc/em = onHopperMove = HopperControlListener = findByContainer = ShopRepositorySql =
+  IndexedShopRepository = 0 hits, while vanilla HopperBlockEntity=51 + InventoryMoveItem=10 confirm hoppers
+  were active and lumalyte=57 confirms plugin frames CAN appear. EM hopper SQL hotspot (was 5.85% top of
+  Server thread, baseline https://spark.lucko.me/3RFbDGJIef) is eliminated. Gotcha: `--thread "Server thread"`
+  yielded an empty "No Data" profile on this Leaf server; run `/spark profiler start --timeout N` WITHOUT a
+  thread filter (matches how the baseline was captured). Pre-existing unrelated finding: BlockProtectionListener,
+  ExplodeCleanupListener, ShopCreateListener, ShopInteractListener fail to register — inject
+  java.util.logging.Logger with no Logger bean (not caused by PERF; flagged as separate task).
+  Evidence: spark report ZNDUJN57Yg vs baseline 3RFbDGJIef; live TPS via papermcp server_info.
