@@ -690,11 +690,27 @@ set only at insert (no relocate path), so create + delete fully cover location c
 
 ### DOC tasks
 
-- [ ] **PERF-5** — document the index component + data flow
+- [x] **PERF-5** — document the index component + data flow
   References: REQ-281, REQ-282, implementation.md §3, docs/db-schema.md
   Tag: DOC
   Description: Add a component-design entry for `ShopLocationIndex` (layer, port, adapter, evidence
-  sources) and a data-flow subsection for the hopper hot path in `implementation.md`; note in
-  `db-schema.md` that `idx_shop_container` now backs admin/maintenance reads rather than the hopper hot
-  path.
+  sources) and a data-flow subsection for the hopper hot path in `implementation.md`. (db-schema.md does
+  not document indexes, so no edit there — idx_shop_container now backs admin/maintenance reads, not the
+  hopper hot path; recorded here instead.)
+  Evidence:
+  ```
+  docs/implementation.md §3.9 (decorator wiring note), §3.10 (ShopLocationIndex + IndexedShopRepository component), §4.6 (hopper hot-path data flow) — added this task
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt ; src/main/kotlin/net/badgersmc/em/application/IndexedShopRepository.kt (cited as evidence sources in §3.10)
+  docs/db-schema.md (inspected: no index documentation section, so nothing to amend)
+  ```
+
+- [ ] **PERF-VERIFY** — live runtime verification of the hopper fix
+  References: REQ-281, REQ-282
+  Tag: INFRA
+  Description: No unit test boots NexusContext, so PERF-4's DI wiring is unproven at runtime. On a server
+  (test server, or the live server during a low-population window — NOT a hot-swap on 33 live players):
+  build the shadowJar, deploy, confirm clean enable (no "Multiple beans"/"No bean" for ShopRepository,
+  "EnthusiaMarket enabled" logged), exercise a locked-hopper shop, then re-run a spark profiler and
+  confirm HopperControlListener.onHopperMove / ShopRepositorySql.findByContainer is gone from the
+  server-thread hot path (was 5.85%, baseline https://spark.lucko.me/3RFbDGJIef).
   Evidence: ``
