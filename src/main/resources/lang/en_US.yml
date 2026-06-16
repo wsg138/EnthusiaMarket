@@ -60,7 +60,7 @@ purchase_sign:
     line3: "<yellow>Bid: <bid>"
     line4: "<gray>/em bid"
   owned:
-    line1: "<dark_gray>[<gold>EM</gold>]"
+    line1: "<dark_gray>[<gold>EM</gold>] <aqua><stall>"
     line2: "<yellow><owner>"
     line3: "<gray>Rent: <time>"
     line4: "<aqua>Right-click"

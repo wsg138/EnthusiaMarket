@@ -70,7 +70,7 @@ class PurchaseSignRenderer(
         val ownerName = owners.displayNameFor(stall.owner)
         val nextRent = stall.nextRentAt ?: fallbackNextRent(stall)
         return listOf(
-            lang.msg("purchase_sign.owned.line1"),
+            lang.msg("purchase_sign.owned.line1", "stall" to stall.id.value),
             lang.msg("purchase_sign.owned.line2", "owner" to ownerName),
             formatOwnedLine3(nextRent),
             lang.msg("purchase_sign.owned.line4"),

@@ -626,7 +626,7 @@ Player-reported stall issues. Triage: #1 unlimited stalls = config default; #2 $
   path. Interval configurable; skip if no owned stalls. Confirm build green.
   Evidence: ``
 
-- [ ] **ST-5** — show stall identifier on purchase + info (REQ-288)
+- [x] **ST-5** — show stall identifier on purchase + info (REQ-288)
   References: REQ-288, src/main/kotlin/net/badgersmc/em/application/StallBuyoutService.kt, src/main/kotlin/net/badgersmc/em/application/PurchaseSignRenderer.kt, src/main/kotlin/net/badgersmc/em/infrastructure/i18n (lang keys)
   Tag: TDD
   Description: Surface `stall.id.value` in the purchase-confirmation message and the purchase-sign owned lines
