@@ -191,6 +191,23 @@ class LimitResolutionServiceTest {
         )
     }
 
+    @Test fun `no-group player falls back to configured defaultStallLimit (REQ-284)`() {
+        val config = EnthusiaMarketConfig().apply { defaultStallLimit = 1 }
+        val perms = mockk<PermissionChecker> { every { has(any(), any()) } returns false }
+        val service = LimitResolutionService(config, perms)
+        val p = UUID.randomUUID()
+
+        assertEquals(1, service.effectiveLimits(p).total)
+        assertEquals(
+            LimitResolutionService.ClaimDecision.Allowed,
+            service.canClaim(p, "default", currentTotal = 0, currentForKind = 0),
+        )
+        assertEquals(
+            LimitResolutionService.ClaimDecision.Rejected.TotalCapReached(1),
+            service.canClaim(p, "default", currentTotal = 1, currentForKind = 0),
+        )
+    }
+
     @Test fun `fully unlimited player is still allowed`() {
         val config = configWithGroups(
             "patron" to group(total = -1, regionkinds = mapOf("premium" to -1))

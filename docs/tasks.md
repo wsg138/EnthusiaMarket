@@ -580,3 +580,63 @@ References: REQ-024 through REQ-027
 - [x] M-3 `TDD` — portable UPDATE-then-INSERT upserts in ShopVaultRepositorySql + GuildTradePolicyRepositorySql (SQLite-only syntax broke the mariadb config); guarded by `architecture/SqlPortabilityTest`
 - [x] M-4 `TDD` — eviction (rent default + /em evict) wipes bound shops, parity with sellback
 - [x] N-1 `TDD` — lenient guild_id/creator_id parsing in ShopRepositorySql.mapRow
+
+---
+
+## Stall fixes 2026-06-15 (player report) — REQ-284..288 + flat-rent config
+
+Player-reported stall issues. Triage: #1 unlimited stalls = config default; #2 $1 rent = formula-on-cheap-stalls (switching to flat); #3 pistons = missing WG flag (bug); #4 timer = static sign + cheap rent; #5 infinite extend = no cap; #6 no numbers = UX.
+
+- [x] **ST-1** — default stall limit when player has no limit group (REQ-284)
+  References: REQ-284, src/main/kotlin/net/badgersmc/em/application/LimitResolutionService.kt:50-68, src/main/kotlin/net/badgersmc/em/config/EnthusiaMarketConfig.kt
+  Tag: TDD
+  Description: Add config `limits` default (e.g. `EnthusiaMarketConfig` field `defaultStallLimit: Int = -1`).
+  In `LimitResolutionService.effectiveLimits`, when no group matches, return `EffectiveLimits(total =
+  config.defaultStallLimit, ...)` instead of UNLIMITED. -1 preserves today's behavior; live config sets 1.
+  Failing test first: no-group player with defaultStallLimit=1 → canClaim rejects the 2nd stall; -1 → unlimited.
+  Evidence:
+  ```
+  EnthusiaMarketConfig.kt:94-100 (added defaultStallLimit: Int = -1)
+  LimitResolutionService.kt:65-68 (no-group branch returns config.defaultStallLimit, not UNLIMITED)
+  LimitResolutionServiceTest.kt (new test red→green; 11 existing no-group=unlimited tests still pass with -1 default — no new imports)
+  full suite: 469 tests, 0 failures
+  ```
+
+- [ ] **ST-2** — deny pistons in stall regions (REQ-285)
+  References: REQ-285, src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt:52-69
+  Tag: INFRA
+  Description: In `applyFlags`, set `region.setFlag(Flags.PISTONS, StateFlag.State.DENY)`. Provide a re-provision
+  path so existing stalls get the flag (check for an existing `/em rg resync`/reprovision admin command; reuse it).
+  Confirm build green. (Existing stalls need a one-time reprovision after deploy.)
+  Evidence: ``
+
+- [ ] **ST-3** — cap rent pre-payment (REQ-286)
+  References: REQ-286, src/main/kotlin/net/badgersmc/em/application/StallRentExtensionService.kt:44-112, EnthusiaMarketConfig
+  Tag: TDD
+  Description: Add config `rent.maxPrepaidPeriods: Int` (e.g. 7; <=0 = unlimited). In `extend`, before charging,
+  reject when `nextRentAt` is already >= now + maxPrepaidPeriods*interval with `Result.Rejected`. Failing test
+  first: extend rejected once cap reached; allowed below cap; unlimited when config <=0.
+  Evidence: ``
+
+- [ ] **ST-4** — periodic purchase-sign re-render (REQ-287)
+  References: REQ-287, src/main/kotlin/net/badgersmc/em/application/PurchaseSignRenderer.kt, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt, existing PurchaseSignRefreshListener
+  Tag: INFRA
+  Description: Schedule a repeating task (NexusScheduler/Bukkit) that re-renders purchase signs for OWNED/GRACE
+  stalls on a fixed interval (e.g. every 60s) so the countdown visibly updates. Reuse the existing sign-render
+  path. Interval configurable; skip if no owned stalls. Confirm build green.
+  Evidence: ``
+
+- [ ] **ST-5** — show stall identifier on purchase + info (REQ-288)
+  References: REQ-288, src/main/kotlin/net/badgersmc/em/application/StallBuyoutService.kt, src/main/kotlin/net/badgersmc/em/application/PurchaseSignRenderer.kt, src/main/kotlin/net/badgersmc/em/infrastructure/i18n (lang keys)
+  Tag: TDD
+  Description: Surface `stall.id.value` in the purchase-confirmation message and the purchase-sign owned lines
+  (and `/em stall info` if not already). Pure formatting where testable; lang-key additions for messages.
+  Failing test first on whatever pure formatter is introduced (e.g. a stall-label helper), else minimal.
+  Evidence: ``
+
+- [ ] **ST-6** — flat rent config (#2, REQ-003) — LIVE CONFIG, not code
+  References: REQ-003, plugins/EnthusiaMarket/enthusiamarket.yaml (remote)
+  Tag: INFRA
+  Description: Set live config `rent.mode: flat`, `rent.flatAmount: 100` (flat $100/period; code already supports
+  flat mode via RentTerms.flat). Apply on the remote server config + reload. No code change.
+  Evidence: ``

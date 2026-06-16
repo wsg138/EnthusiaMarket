@@ -62,8 +62,10 @@ class LimitResolutionService(
                 regionkinds.merge(kind, cap, ::mergeBest)
             }
         }
-        // No configured group applies to this player → no cap (limits only bind explicitly-grouped players).
-        if (!matched) return EffectiveLimits(total = UNLIMITED, regionkinds = emptyMap())
+        // No configured group applies to this player → fall back to the configured default stall
+        // limit (REQ-284). defaultStallLimit == -1 (UNLIMITED) preserves the legacy "ungrouped =
+        // unlimited" behaviour; a finite value caps every ungrouped player.
+        if (!matched) return EffectiveLimits(total = config.defaultStallLimit, regionkinds = emptyMap())
         return EffectiveLimits(total, regionkinds.toMap())
     }
 
