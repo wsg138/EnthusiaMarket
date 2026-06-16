@@ -121,11 +121,22 @@ open class EnthusiaMarket : JavaPlugin() {
         // plain Int bean so ImportStallsService can be DI-constructed.
         ctx.registerBean("stallPriority", Int::class, cfg.market.stallPriority)
 
-        // Phase 5: Register Paper commands (triggers bean creation via DI)
+        // Phase 5: Register Paper commands (triggers bean creation via DI).
+        // itemMaterials suggestion provider backs `/shop search` tab-completion (REQ-283):
+        // computed once here, prefix-filtered per keystroke by the pure MaterialSuggestions helper.
+        val itemMaterialNames = org.bukkit.Material.entries.filter { it.isItem }.map { it.name }
         ctx.registerPaperCommands(
             basePackage = "net.badgersmc.em",
             classLoader = this::class.java.classLoader,
-            plugin = this
+            plugin = this,
+            suggestionProviders = mapOf(
+                "itemMaterials" to com.mojang.brigadier.suggestion.SuggestionProvider { _, builder ->
+                    net.badgersmc.em.application.MaterialSuggestions
+                        .matching(itemMaterialNames, builder.remaining)
+                        .forEach(builder::suggest)
+                    builder.buildFuture()
+                },
+            ),
         )
 
         // Phase 6: Discover every @Listener-annotated bean in the scan

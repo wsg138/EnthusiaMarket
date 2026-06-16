@@ -606,7 +606,7 @@ filtered by `isItem`) and provider wiring live in infrastructure (Bukkit-coupled
   impl imports: (none — stdlib only)
   ```
 
-- [ ] **TC-2** — wire @Suggests provider for /shop search
+- [x] **TC-2** — wire @Suggests provider for /shop search
   References: REQ-283, src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt
   Tag: INFRA
   Description: Annotate the `query` param of `ShopCommands.search` with
@@ -615,4 +615,12 @@ filtered by `isItem`) and provider wiring live in infrastructure (Bukkit-coupled
   pass `suggestionProviders = mapOf("itemMaterials" to SuggestionProvider { ctx, builder ->
   MaterialSuggestions.matching(names, builder.remaining).forEach(builder::suggest); builder.buildFuture() })`
   to `ctx.registerPaperCommands(...)`. Confirm the build + existing command tests stay green.
-  Evidence: ``
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt:149 (search query param annotated @Suggests("itemMaterials"))
+  src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt:124-140 (itemMaterialNames built from Material.entries.filter{isItem}; suggestionProviders passed to registerPaperCommands)
+  src/main/kotlin/net/badgersmc/em/application/MaterialSuggestions.kt (TC-1 pure filter the provider delegates to)
+  nexus-paper v2.1.1 sources: net/badgersmc/nexus/paper/commands/annotations/Suggests.kt (named provider binding); net/badgersmc/nexus/paper/PaperNexusExtensions.kt:32-42 (registerPaperCommands suggestionProviders: Map<String, SuggestionProvider<CommandSourceStack>>); PaperCommandRegistry.kt:84-91 (builder.suggests(provider))
+  references used (fully-qualified, no new import lines): com.mojang.brigadier.suggestion.SuggestionProvider ; io.papermc.paper.command.brigadier.CommandSourceStack ; org.bukkit.Material ; net.badgersmc.nexus.paper.commands.annotations.Suggests ; net.badgersmc.em.application.MaterialSuggestions
+  verified: ./gradlew compileKotlin → BUILD SUCCESSFUL
+  ```
