@@ -60,6 +60,7 @@ class AdminCommands(
     private val ownership: StallOwnershipCounter,
     private val policyService: GuildTradePolicyService,
     private val guildProvider: GuildProvider,
+    private val rentResync: net.badgersmc.em.application.RentTermsResyncService,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -99,6 +100,15 @@ class AdminCommands(
                 KEY_REGION_PREFIX to config.market.regionPrefix
             )
         )
+    }
+
+    @Subcommand("rent resync")
+    @Permission("enthusiamarket.admin.reload")
+    fun rentResync(@Context sender: CommandSender) {
+        // Push the current config default rent terms onto every existing stall. Needed after a
+        // rent-config change (e.g. formula → flat) because terms are snapshotted per-stall at import.
+        val n = rentResync.resync()
+        sender.sendMessage(lang.msg("admin.rent.resync.result", "count" to n))
     }
 
     @Suppress("TooGenericExceptionCaught")

@@ -13,6 +13,9 @@ common:
 admin:
   import:
     result: "<prefix>import: created=<green><created></green> skipped=<yellow><skipped></yellow> provisioned=<green><provisioned></green> <gray>(world=<world>, prefix=<region_prefix>)"
+  rent:
+    resync:
+      result: "<prefix>rent resync: <green><count></green> <gray>stall(s) updated to the current default rent terms"
   reload:
     success: "<prefix>config reloaded <gray>(world=<world>, prefix=<region_prefix>)"
     failure: "<prefix><red>reload failed: <reason>"

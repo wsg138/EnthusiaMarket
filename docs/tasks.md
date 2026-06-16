@@ -634,9 +634,22 @@ Player-reported stall issues. Triage: #1 unlimited stalls = config default; #2 $
   Failing test first on whatever pure formatter is introduced (e.g. a stall-label helper), else minimal.
   Evidence: ``
 
-- [ ] **ST-6** — flat rent config (#2, REQ-003) — LIVE CONFIG, not code
+- [x] **ST-7** — `/em rent resync` so config rent reaches existing stalls (REQ-003)
+  References: REQ-003, REQ-022, ImportStallsService.kt:28-41 (terms snapshotted per-stall, import skips existing), RentCollectionService.kt:105
+  Tag: TDD
+  Description: Rent terms are stored per-stall at import, so flipping config to flat does NOT reach existing
+  stalls (the actual complaint). Added RentTermsResyncService.resync() + `/em rent resync` admin command.
+  TDD on the service. Deploy seq: set config flat → `/em rent resync`.
+  Evidence:
+  ```
+  RentTermsResyncService.kt + RentTermsResyncServiceTest.kt (red→green: 2 changed, 1 skipped)
+  AdminCommands.kt (+rentResync, @Subcommand("rent resync")); lang admin.rent.resync.result; AdminCommandsTest ctor calls +1 mock
+  full suite 468 tests, 0 failures
+  ```
+
+- [ ] **ST-6** — flat rent config (#2, REQ-003) — LIVE CONFIG, not code (needs ST-7 `/em rent resync` to reach existing stalls)
   References: REQ-003, plugins/EnthusiaMarket/enthusiamarket.yaml (remote)
   Tag: INFRA
-  Description: Set live config `rent.mode: flat`, `rent.flatAmount: 100` (flat $100/period; code already supports
-  flat mode via RentTerms.flat). Apply on the remote server config + reload. No code change.
+  Description: Set live config `rent.mode: flat`, `rent.flatAmount: 100`. THEN run `/em rent resync` (ST-7) so
+  existing stalls adopt the new terms — config alone only affects newly-imported stalls. Deploy-time step.
   Evidence: ``
