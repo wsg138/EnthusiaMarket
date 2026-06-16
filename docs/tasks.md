@@ -583,6 +583,47 @@ References: REQ-024 through REQ-027
 
 ---
 
+## Feature 2026-06-15 — /shop search item tab-completion (REQ-283)
+
+`/shop search <item>` takes a raw String with no suggestions. Add Brigadier tab-completion of item
+material names via nexus-paper's `@Suggests` + a named `SuggestionProvider`. Layer split: the
+prefix-match is pure (stdlib, application, TDD-able); the item-material name source (`Material.entries`
+filtered by `isItem`) and provider wiring live in infrastructure (Bukkit-coupled).
+
+- [x] **TC-1** — pure case-insensitive prefix filter for suggestions
+  References: REQ-283, implementation.md §2 (application may use domain + stdlib only — no org.bukkit)
+  Tag: TDD
+  Description: Add `application/MaterialSuggestions` with a pure `matching(candidates: List<String>,
+  typed: String): List<String>` — returns candidates whose name starts with `typed` case-insensitively,
+  preserving input order, full list when `typed` is blank. No Bukkit import (arch denylist). Failing
+  test first: prefix match, case-insensitivity, blank-returns-all, no-match-returns-empty.
+  Evidence:
+  ```
+  docs/implementation.md §2 (application layer: domain + Kotlin stdlib only; MaterialSuggestions operates on List<String>, no org.bukkit)
+  src/test/kotlin/net/badgersmc/em/domain/stall/StallTest.kt:1-13 (kotlin.test conventions: @Test, assertEquals)
+  Kotlin stdlib: String.startsWith(prefix, ignoreCase), List.filter
+  test imports: net.badgersmc.em.application.MaterialSuggestions ; kotlin.test.Test ; kotlin.test.assertEquals
+  impl imports: (none — stdlib only)
+  ```
+
+- [x] **TC-2** — wire @Suggests provider for /shop search
+  References: REQ-283, src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt
+  Tag: INFRA
+  Description: Annotate the `query` param of `ShopCommands.search` with
+  `@net.badgersmc.nexus.paper.commands.annotations.Suggests("itemMaterials")`. In `onEnable`, build the
+  item-material name list once (`org.bukkit.Material.entries.filter { it.isItem }.map { it.name }`) and
+  pass `suggestionProviders = mapOf("itemMaterials" to SuggestionProvider { ctx, builder ->
+  MaterialSuggestions.matching(names, builder.remaining).forEach(builder::suggest); builder.buildFuture() })`
+  to `ctx.registerPaperCommands(...)`. Confirm the build + existing command tests stay green.
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt:149 (search query param annotated @Suggests("itemMaterials"))
+  src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt:124-140 (itemMaterialNames built from Material.entries.filter{isItem}; suggestionProviders passed to registerPaperCommands)
+  src/main/kotlin/net/badgersmc/em/application/MaterialSuggestions.kt (TC-1 pure filter the provider delegates to)
+  nexus-paper v2.1.1 sources: net/badgersmc/nexus/paper/commands/annotations/Suggests.kt (named provider binding); net/badgersmc/nexus/paper/PaperNexusExtensions.kt:32-42 (registerPaperCommands suggestionProviders: Map<String, SuggestionProvider<CommandSourceStack>>); PaperCommandRegistry.kt:84-91 (builder.suggests(provider))
+  references used (fully-qualified, no new import lines): com.mojang.brigadier.suggestion.SuggestionProvider ; io.papermc.paper.command.brigadier.CommandSourceStack ; org.bukkit.Material ; net.badgersmc.nexus.paper.commands.annotations.Suggests ; net.badgersmc.em.application.MaterialSuggestions
+  verified: ./gradlew compileKotlin → BUILD SUCCESSFUL
+  ```
 ## Perf 2026-06-14 — hopper control hot-path DB I/O (spark: 5.85% server thread)
 
 Root cause: `HopperControlListener.onHopperMove` (fires per hopper transfer tick) calls

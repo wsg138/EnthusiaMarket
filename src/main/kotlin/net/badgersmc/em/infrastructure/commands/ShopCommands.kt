@@ -146,7 +146,9 @@ class ShopCommands(
     @Permission("enthusiamarket.shop.use")
     fun search(
         @Context sender: CommandSender,
-        @net.badgersmc.nexus.commands.annotations.Arg("query") query: String? = null,
+        @net.badgersmc.nexus.commands.annotations.Arg("query")
+        @net.badgersmc.nexus.paper.commands.annotations.Suggests("itemMaterials")
+        query: String? = null,
         @net.badgersmc.nexus.commands.annotations.Arg("mode") modeArg: String = "any",
         @net.badgersmc.nexus.commands.annotations.Arg("page") pageArg: Int = 1,
     ) {

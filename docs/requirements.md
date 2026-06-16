@@ -139,6 +139,12 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 **Event-driven.** WHEN a player executes `/em auctions` THE SYSTEM SHALL open a paginated GUI listing every open auction with its stall id, current high bid, time remaining, and a sort toggle cycling through `HIGHEST_BID`, `LOWEST_BID`, `ENDING_SOON`, and `ENDING_LATEST`, refreshing its contents at least once per second while the menu remains open.
 
+### REQ-283 — Shop search item tab-completion
+
+**Event-driven.** WHEN a player tab-completes the item argument of `/shop search` THE SYSTEM SHALL suggest the names of item materials whose name starts with the typed prefix, case-insensitively.
+
+> **REQ-ID note:** 281 and 282 are reserved by the in-flight `perf/hopper-shop-index` branch (PR #61); this feature skips to 283 to avoid a merge collision.
+
 ---
 
 ## Non-functional
