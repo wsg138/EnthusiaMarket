@@ -138,6 +138,17 @@ Validate sign + actor, perform atomic item ↔ economy swap with rollback on fai
 
 Bootstraps NexusContext with classpath scanning, opens Hikari datasource, runs migrations, registers Paper commands via Nexus's Brigadier system.
 
+After registering the DataSource (and before commands/listeners construct any consumer) it builds the shop repository chain: `ShopRepositorySql` → `InMemoryShopLocationIndex` → `IndexedShopRepository`, rebuilds the index from `shopSqlRepo.all()`, and registers the decorator as the sole `ShopRepository` bean (REQ-281/282, PERF-4). `ShopRepositorySql` is deliberately NOT `@Repository` — nexus indexes a bean under its type + interfaces and `getBean(type)` throws on more than one match, so a scanned SQL repo plus the registered decorator would be ambiguous under `ShopRepository`.
+
+### 3.10 ShopLocationIndex (domain port) + IndexedShopRepository (application)
+
+Authoritative in-memory index of which container coordinates host shops, so the hopper-control hot path resolves shop status without a per-event DB query (REQ-281/282).
+
+- Layer: domain (port `ShopLocationIndex`) + application (`InMemoryShopLocationIndex` adapter, `IndexedShopRepository` decorator)
+- Ports / interfaces: `domain/shop/ShopLocationIndex` (`shopsAt` / `put` / `remove` / `rebuild`)
+- Adapters: `application/InMemoryShopLocationIndex` (coord-keyed map, stdlib only); `application/IndexedShopRepository` decorates any `ShopRepository`, delegates every mutation and reconciles the index, and serves `findByContainer` from the index. Single choke point: all ~25 `ShopRepository` consumers inject the interface, so the decorator covers every mutation path transparently. Sync chosen over `ShopCreated/DeletedEvent` because those events fire on only some create/delete paths.
+- Evidence sources consulted: `src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt`, `src/main/kotlin/net/badgersmc/em/application/IndexedShopRepository.kt`
+
 ## 4. Data flows
 
 ### 4.1 Stall import (REQ-002)
@@ -174,6 +185,14 @@ Bootstraps NexusContext with classpath scanning, opens Hikari datasource, runs m
 1. Player opens stall menu via command or sign click.
 2. Bedrock dispatcher checks `FloodgateApi.isFloodgatePlayer(uuid)`.
 3. If true → render Cumulus form; else → Bukkit inventory GUI.
+
+### 4.6 Hopper control hot path (REQ-281/282)
+
+1. `InventoryMoveItemEvent` fires (once per hopper transfer tick, the highest-frequency event on the server).
+2. `HopperControlListener` resolves source + destination container blocks and calls `shopRepository.findByContainer(...)`.
+3. The injected `IndexedShopRepository` answers from `InMemoryShopLocationIndex.shopsAt(...)` — an O(1) coordinate lookup, no DB query on the server thread.
+4. If a shop is found, the listener cancels the move when `hopperAllowOut` (source) / `hopperAllowIn` (destination) is false; otherwise the event passes through.
+5. The index stays correct because every shop mutation flows through `IndexedShopRepository` (4.3 and the management/guild services), and `onEnable` rebuilds it from persistence.
 
 ## 5. Briefing contract for subagent dispatch
 

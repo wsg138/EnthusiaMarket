@@ -580,3 +580,152 @@ References: REQ-024 through REQ-027
 - [x] M-3 `TDD` — portable UPDATE-then-INSERT upserts in ShopVaultRepositorySql + GuildTradePolicyRepositorySql (SQLite-only syntax broke the mariadb config); guarded by `architecture/SqlPortabilityTest`
 - [x] M-4 `TDD` — eviction (rent default + /em evict) wipes bound shops, parity with sellback
 - [x] N-1 `TDD` — lenient guild_id/creator_id parsing in ShopRepositorySql.mapRow
+
+---
+
+## Perf 2026-06-14 — hopper control hot-path DB I/O (spark: 5.85% server thread)
+
+Root cause: `HopperControlListener.onHopperMove` (fires per hopper transfer tick) calls
+`ShopRepository.findByContainer` → synchronous SQLite query on the server thread, up to twice
+per event, with no in-memory short-circuit. `idx_shop_container` already exists, so the cost is
+call frequency, not query plan (`prepareStatement` alone = 2.16%). Fix: an authoritative
+in-memory shop-container index; the hot path never touches the DB. Spark report
+https://spark.lucko.me/3RFbDGJIef.
+
+**Sync mechanism — DECIDED 2026-06-14: decorator, not events.** All ~25 `ShopRepository`
+consumers (application services, listeners, commands, Bedrock forms, GUI menus) inject the
+`ShopRepository` *interface*; DI resolves it via `getBean<ShopRepository>()`. An
+`IndexedShopRepository` decorator therefore covers every mutation path transparently with zero
+call-site edits, and is the single choke point that cannot be bypassed. Event-driven sync was
+rejected: `ShopCreatedEvent` fires only in `SignPlaceListener:216` (NOT in `CreateShopMenu:82`
+or `BedrockCreateShopForm:59`), and `ShopDeletedEvent` misses `DeleteShopsMenu:38` /
+`ShopEditMenu:131` — those gaps would leave locked shops hopper-exploitable. Container coords are
+set only at insert (no relocate path), so create + delete fully cover location changes.
+
+### TDD tasks
+
+- [x] **PERF-1** — `ShopLocationIndex` domain port + in-memory adapter
+  References: REQ-282, implementation.md §2 (layer rules), §3.4 (ports), src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt
+  Tag: TDD
+  Description: Add domain port `domain/shop/ShopLocationIndex` exposing `shopsAt(world, x, y, z): List<Shop>`
+  (empty when none), `put(shop)`, `remove(shop)`, `rebuild(shops: Collection<Shop>)`. Add an in-memory
+  adapter (application layer, stdlib only) keyed by a packed (world, x, y, z) coordinate. Failing test
+  first: `shopsAt` empty before population; returns indexed shops after `put`/`rebuild`; reflects
+  `remove`. Port carries no Bukkit/framework imports (arch denylist).
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt (port lives in domain/shop; new ShopLocationIndex port sits beside it)
+  src/main/kotlin/net/badgersmc/em/domain/shop/Shop.kt:31-50 (Shop data class — container key fields containerWorld/containerX/containerY/containerZ; hopperAllowIn/hopperAllowOut default true)
+  docs/implementation.md §2 (layer rules: domain depends on nothing outside domain + Kotlin stdlib; application depends on domain only) + denylist (org.bukkit/io.papermc/koin/hikari forbidden in domain)
+  docs/implementation.md §3.4 (port interfaces live in domain)
+  src/test/kotlin/net/badgersmc/em/domain/stall/StallTest.kt:1-24 (test conventions: kotlin.test @Test, assertEquals/assertTrue/assertFalse)
+  src/test/kotlin/net/badgersmc/em/application/ContainerTradeServiceTest.kt:51-64 (testShop(...) builder pattern to reuse for fixtures)
+  test imports: net.badgersmc.em.domain.shop.Shop ; java.util.UUID ; kotlin.test.Test ; kotlin.test.assertEquals ; kotlin.test.assertTrue
+  impl imports: net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopLocationIndex (port created this task)
+  ```
+
+- [x] **PERF-2** — index stays consistent with persisted shop mutations
+  References: REQ-282, src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopRepositorySql.kt, implementation.md §2
+  Tag: TDD
+  Description: Implement `IndexedShopRepository` (application layer) decorating any `ShopRepository`
+  delegate (decision locked above): delegate every mutation (upsert/insert/update, delete,
+  deleteByContainer, deleteByOwner, setGuildOwnership, removeGuildOwnership), update the
+  `ShopLocationIndex` after each, and serve `findByContainer` from the index. Upsert replaces the
+  prior entry for the same id so changed hopperAllowIn/Out flags are visible (no duplicate);
+  `delete(id)` resolves coords via delegate `findById` (write path, not the hot path). `updateStock`
+  need not move index keys. (Double-chest half-resolution is PERF-3's listener concern, not the
+  repo's.) Failing test first with a mockk delegate: after each mutating op the index matches the
+  persisted set; `findByContainer` returns from the index with `verify(exactly = 0)` on the
+  delegate's `findByContainer`.
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt (interface the decorator implements + delegates to; upsert returns persisted Shop, delete(id), deleteByContainer, deleteByOwner, set/removeGuildOwnership, updateStock)
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt (PERF-1 port: shopsAt/put/remove/rebuild)
+  src/main/kotlin/net/badgersmc/em/application/InMemoryShopLocationIndex.kt (PERF-1 adapter used as the real index collaborator in the test)
+  src/main/kotlin/net/badgersmc/em/application/ShopManagementService.kt:36-103 (mutation surface: upsert on edit, delete(id), deleteByOwner)
+  src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopRepositorySql.kt:16-37,92-110 (delegate semantics: upsert→insert returns Shop with generated id; findByContainer query being replaced on hot path)
+  src/test/kotlin/net/badgersmc/em/application/ShopManagementServiceTest.kt:1-55 (mockk pattern: mockk(relaxed=true), every{}returns/answers, verify(exactly=0))
+  build.gradle.kts:119 (io.mockk:mockk:1.13.11 testImplementation)
+  test imports: io.mockk.mockk ; io.mockk.every ; io.mockk.verify ; net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopRepository ; java.util.UUID ; kotlin.test.Test ; kotlin.test.assertEquals ; kotlin.test.assertTrue ; kotlin.test.assertFalse
+  impl imports: net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopRepository ; net.badgersmc.em.domain.shop.ShopLocationIndex ; java.util.UUID
+  ```
+
+- [x] **PERF-3** — hopper control resolves via index, zero DB queries on server thread (MERGED INTO PERF-4 2026-06-15: listener needs no code change — PERF-2's decorator already makes findByContainer index-backed, so no TDD red is possible; the hopper guard test ships as PERF-4's regression proof)
+  References: REQ-281, src/main/kotlin/net/badgersmc/em/infrastructure/listeners/HopperControlListener.kt
+  Tag: TDD
+  Description: With the decorator serving `findByContainer` from memory, `HopperControlListener` likely
+  needs no code change — it keeps its `ShopRepository` dependency and receives the decorator via DI.
+  Failing test first: inject an `IndexedShopRepository` built over a SQL-delegate spy whose
+  `findByContainer`/`queryMany` fail the test if invoked, populate the index, drive the hopper decision,
+  and assert correct cancel decisions for hopperAllowIn/hopperAllowOut and pass-through for non-shop
+  containers — proving REQ-281's "no DB query on the server thread". If the listener is left untouched,
+  this task reduces to the guarding test only.
+  Evidence: ``
+
+### INFRA tasks
+
+- [x] **PERF-4** — DI wiring: build, rebuild-on-enable, inject (+ PERF-3 guard test) [code done; runtime DI-boot verification pending — see PERF-VERIFY]
+  References: REQ-281, REQ-282, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt, implementation.md §3.9
+  Tag: INFRA
+  Description: Drop `@Repository` from `ShopRepositorySql` (a second bean under the `ShopRepository`
+  interface makes nexus DI ambiguous), build `ShopRepositorySql → InMemoryShopLocationIndex →
+  IndexedShopRepository` in `onEnable` after the DataSource is registered and before
+  registerPaperCommands/registerNexusListeners construct consumers, rebuild the index from
+  `shopSqlRepo.all()` (REQ-282), and register the decorator as the sole `ShopRepository` bean (+ the
+  index under `ShopLocationIndex`). All ~25 consumers inject the interface, so they transparently get
+  the decorator; `HopperControlListener` then resolves from the index (REQ-281). Ships the PERF-3
+  guard test. Live verification required (no test boots the DI graph).
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt:103-122 (wiring inserted right after ctx.registerBean dataSource, before registerPaperCommands at ~125; fully-qualified refs so no new imports)
+  src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopRepositorySql.kt:12 (@Repository removed; constructed manually now)
+  src/main/kotlin/net/badgersmc/em/application/IndexedShopRepository.kt (PERF-2 decorator wired as the bean)
+  src/main/kotlin/net/badgersmc/em/application/InMemoryShopLocationIndex.kt (PERF-1 index, rebuilt on enable)
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt (registered under this type)
+  nexus DI mechanics (nexus-core v2.1.1 sources): ComponentRegistry.typeIndex indexes a bean under its type + implemented interfaces; BeanFactory.getBean(type) throws "Multiple beans found of type" when >1 match — so ShopRepositorySql must not stay @Repository while the decorator is registered under ShopRepository. registerBean runs post-create, before first getBean (lazy factories), so the decorator is the only ShopRepository definition.
+  src/test/kotlin/architecture/ListenerWiringTest.kt (Konsist static analysis only — does not boot NexusContext, so removing @Repository does not break it)
+  src/main/kotlin/net/badgersmc/em/infrastructure/listeners/HopperControlListener.kt (unchanged; receives the decorator via DI)
+  guard-test imports: io.mockk.mockk ; io.mockk.every ; io.mockk.verify ; net.badgersmc.em.application.IndexedShopRepository ; net.badgersmc.em.application.InMemoryShopLocationIndex ; net.badgersmc.em.domain.shop.Shop ; net.badgersmc.em.domain.shop.ShopRepository ; org.bukkit.Location ; org.bukkit.block.Block ; org.bukkit.block.Container ; org.bukkit.event.inventory.InventoryMoveItemEvent ; org.bukkit.inventory.Inventory ; org.bukkit.inventory.ItemStack ; java.util.UUID ; kotlin.test.Test ; kotlin.test.assertTrue
+  ```
+
+### DOC tasks
+
+- [x] **PERF-5** — document the index component + data flow
+  References: REQ-281, REQ-282, implementation.md §3, docs/db-schema.md
+  Tag: DOC
+  Description: Add a component-design entry for `ShopLocationIndex` (layer, port, adapter, evidence
+  sources) and a data-flow subsection for the hopper hot path in `implementation.md`. (db-schema.md does
+  not document indexes, so no edit there — idx_shop_container now backs admin/maintenance reads, not the
+  hopper hot path; recorded here instead.)
+  Evidence:
+  ```
+  docs/implementation.md §3.9 (decorator wiring note), §3.10 (ShopLocationIndex + IndexedShopRepository component), §4.6 (hopper hot-path data flow) — added this task
+  src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt ; src/main/kotlin/net/badgersmc/em/application/IndexedShopRepository.kt (cited as evidence sources in §3.10)
+  docs/db-schema.md (inspected: no index documentation section, so nothing to amend)
+  ```
+
+- [x] **PERF-VERIFY** — live runtime verification of the hopper fix
+  References: REQ-281, REQ-282
+  Tag: INFRA
+  Description: No unit test boots NexusContext, so PERF-4's DI wiring is unproven at runtime. On a server
+  (test server, or the live server during a low-population window — NOT a hot-swap on 33 live players):
+  build the shadowJar, deploy, confirm clean enable (no "Multiple beans"/"No bean" for ShopRepository,
+  "EnthusiaMarket enabled" logged), exercise a locked-hopper shop, then re-run a spark profiler and
+  confirm HopperControlListener.onHopperMove / ShopRepositorySql.findByContainer is gone from the
+  server-thread hot path (was 5.85%, baseline https://spark.lucko.me/3RFbDGJIef).
+  DI-BOOT VERIFIED 2026-06-15 on test server C:\Users\Noah\Desktop\test_net\lobby\SanityCheck (Leaf
+  1.21.11, full deps): "EnthusiaMarket enabled (v0.2.0)", 0 ShopRepository DI errors, HopperControlListener
+  registered (index-backed repo), 14 @Listener beans, server reached Done. (Had to swap the test box's
+  stale LumaGuilds-2.1.0.jar — missing net.lumalyte.lg.api.GuildLookup — for the freshly-built one;
+  stale copy saved as plugins/LumaGuilds-2.1.0.jar.stale-bak.)
+  SPARK PROOF DONE 2026-06-15: fix deployed to live (remote 170.205.24.14), 25 players, TPS 20.00 (was 18.34
+  @33 players pre-fix). Profile https://spark.lucko.me/ZNDUJN57Yg (3.2MB, populated): net/badgersmc =
+  net.badgersmc = badgersmc/em = onHopperMove = HopperControlListener = findByContainer = ShopRepositorySql =
+  IndexedShopRepository = 0 hits, while vanilla HopperBlockEntity=51 + InventoryMoveItem=10 confirm hoppers
+  were active and lumalyte=57 confirms plugin frames CAN appear. EM hopper SQL hotspot (was 5.85% top of
+  Server thread, baseline https://spark.lucko.me/3RFbDGJIef) is eliminated. Gotcha: `--thread "Server thread"`
+  yielded an empty "No Data" profile on this Leaf server; run `/spark profiler start --timeout N` WITHOUT a
+  thread filter (matches how the baseline was captured). Pre-existing unrelated finding: BlockProtectionListener,
+  ExplodeCleanupListener, ShopCreateListener, ShopInteractListener fail to register — inject
+  java.util.logging.Logger with no Logger bean (not caused by PERF; flagged as separate task).
+  Evidence: spark report ZNDUJN57Yg vs baseline 3RFbDGJIef; live TPS via papermcp server_info.
