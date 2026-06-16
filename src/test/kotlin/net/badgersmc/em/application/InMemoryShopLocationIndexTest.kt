@@ -71,4 +71,21 @@ class InMemoryShopLocationIndexTest {
         index.put(testShop(id = 2))
         assertEquals(setOf(1L, 2L), index.shopsAt("world", 10, 64, 20).map { it.id }.toSet())
     }
+
+    @Test
+    fun `remove matches by id even when a non-key field has diverged`() {
+        // Reproduces the ghost-entry bug: updateStock changes the persisted stockCount without
+        // re-indexing, so a later delete passes a DB-sourced Shop whose stockCount differs from the
+        // indexed copy. Removal must match on stable id, not full-object equality.
+        val index = InMemoryShopLocationIndex()
+        val indexed = testShop(id = 7)
+        index.put(indexed)
+
+        index.remove(indexed.copy(stockCount = indexed.stockCount + 99))
+
+        assertTrue(
+            index.shopsAt("world", 10, 64, 20).isEmpty(),
+            "remove must delete by id, not full-object equality, or stale ghost entries survive",
+        )
+    }
 }

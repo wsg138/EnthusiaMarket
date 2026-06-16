@@ -29,7 +29,14 @@ class InMemoryShopLocationIndex : ShopLocationIndex {
     override fun remove(shop: Shop) {
         val k = key(shop)
         val list = byCoord[k] ?: return
-        list.remove(shop)
+        // Match by stable id, not full-object equality: a delete may pass a DB-sourced Shop whose
+        // non-key fields (e.g. stockCount, updated via updateStock without re-indexing) differ from
+        // the indexed copy — equality removal would leave a stale ghost entry. id == 0 means unsaved.
+        if (shop.id != 0L) {
+            list.removeAll { it.id == shop.id }
+        } else {
+            list.remove(shop)
+        }
         if (list.isEmpty()) byCoord.remove(k)
     }
 
