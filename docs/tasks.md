@@ -602,7 +602,7 @@ Player-reported stall issues. Triage: #1 unlimited stalls = config default; #2 $
   full suite: 469 tests, 0 failures
   ```
 
-- [ ] **ST-2** — deny pistons in stall regions (REQ-285)
+- [x] **ST-2** — deny pistons in stall regions (REQ-285) [existing stalls: run /em import to re-provision]
   References: REQ-285, src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt:52-69
   Tag: INFRA
   Description: In `applyFlags`, set `region.setFlag(Flags.PISTONS, StateFlag.State.DENY)`. Provide a re-provision

@@ -51,6 +51,11 @@ class WorldGuardRegionProvisioner : RegionProvisioner {
 
     private fun applyFlags(region: ProtectedRegion, priority: Int) {
         region.priority = priority
+        // Deny pistons in the stall (REQ-285). Without this, players push blocks/items across the
+        // region boundary with pistons to bypass build protection (e.g. shove crystals out of a
+        // locked stall). WG's piston flag is region-wide, so owner redstone pistons are disabled too —
+        // an accepted trade-off for closing the cross-border exploit.
+        region.setFlag(Flags.PISTONS, StateFlag.State.DENY)
         // Core build rights, scoped to region members.
         setMemberAllow(region, Flags.BUILD)
         setMemberAllow(region, Flags.CHEST_ACCESS)
