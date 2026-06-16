@@ -49,6 +49,18 @@ class StallRentExtensionService(
         }
         if (!stall.canManage(actor, guildProvider)) return Result.NotAuthorised
 
+        // Pre-payment cap (REQ-286): stop players from extending arbitrarily far ahead. When the
+        // stall's nextRentAt is already >= now + maxPrepaidPeriods*interval, reject before charging.
+        // <= 0 means unlimited (legacy). Guards against the "infinite extend" exploit.
+        val cap = config.rent.maxPrepaidPeriods
+        if (cap > 0) {
+            val current = stall.nextRentAt
+            val ceiling = Instant.now().plus(collectionInterval().multipliedBy(cap.toLong()))
+            if (current != null && !current.isBefore(ceiling)) {
+                return Result.Rejected("Rent is already prepaid the maximum of $cap period(s) ahead")
+            }
+        }
+
         // Floor to at least 1 unit whenever the stall had a real buy
         // price. Default rent.formulaPct (0.01) on a 1000-coin stall
         // computes to 0.0001 → toLong() = 0, which previously let

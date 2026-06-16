@@ -180,4 +180,27 @@ class StallRentExtensionServiceTest {
         // The stall was persisted with a pushed timer.
         verify { svc.stallRepo.save(match { it.state == StallState.OWNED && it.nextRentAt != null }) }
     }
+
+    @Test
+    fun `extend rejected when already prepaid past the cap (REQ-286)`() {
+        // P1D interval, cap 7 → already paid 30 days ahead exceeds the cap.
+        val stall = soloStall.copy(nextRentAt = Instant.now().plus(Duration.ofDays(30)))
+        val svc = buildService(stall)
+        svc.config.rent.maxPrepaidPeriods = 7
+
+        val result = svc.service.extend(stallId, playerUuid)
+
+        assertIs<StallRentExtensionService.Result.Rejected>(result)
+        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
+        verify(exactly = 0) { svc.stallRepo.save(any()) }
+    }
+
+    @Test
+    fun `extend allowed when below the prepay cap`() {
+        val stall = soloStall.copy(nextRentAt = Instant.now().plus(Duration.ofHours(1)))
+        val svc = buildService(stall)
+        svc.config.rent.maxPrepaidPeriods = 7
+
+        assertIs<StallRentExtensionService.Result.Extended>(svc.service.extend(stallId, playerUuid))
+    }
 }

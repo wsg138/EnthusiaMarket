@@ -610,7 +610,7 @@ Player-reported stall issues. Triage: #1 unlimited stalls = config default; #2 $
   Confirm build green. (Existing stalls need a one-time reprovision after deploy.)
   Evidence: ``
 
-- [ ] **ST-3** — cap rent pre-payment (REQ-286)
+- [x] **ST-3** — cap rent pre-payment (REQ-286)
   References: REQ-286, src/main/kotlin/net/badgersmc/em/application/StallRentExtensionService.kt:44-112, EnthusiaMarketConfig
   Tag: TDD
   Description: Add config `rent.maxPrepaidPeriods: Int` (e.g. 7; <=0 = unlimited). In `extend`, before charging,

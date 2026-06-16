@@ -136,6 +136,11 @@ class EnthusiaMarketConfig {
         var collectionInterval: String = "P1D"
         @Comment("ISO-8601 grace period before eviction")
         var gracePeriod: String = "P3D"
+        @Comment(
+            "Max number of rent periods a stall may be pre-paid ahead via extension (REQ-286). " +
+                "0 or less = unlimited (legacy). e.g. 7 caps pre-payment to a week ahead."
+        )
+        var maxPrepaidPeriods: Int = 0
     }
 
     class Auction {
