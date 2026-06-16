@@ -184,6 +184,11 @@ open class EnthusiaMarket : JavaPlugin() {
             particleService.renderTick(cfg.particles.maxPerTick, this)
         }, 0L, 4L)
 
+        // REQ-287: re-render purchase signs in loaded chunks every 60s so the OWNED rent
+        // countdown visibly ticks down instead of freezing between state changes.
+        val signRefresh = ctx.getBean<net.badgersmc.em.infrastructure.listeners.PurchaseSignRefreshListener>()
+        Bukkit.getScheduler().runTaskTimer(this, Runnable { signRefresh.refreshLoaded() }, 1200L, 1200L)
+
         // M-20: one-time backfill of sell_material for shops written before V018.
         // Off the main thread + fail-open so a large table or a DB hiccup can't stall boot.
         val shopRepoForBackfill = ctx.getBean<net.badgersmc.em.domain.shop.ShopRepository>()

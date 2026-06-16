@@ -618,7 +618,7 @@ Player-reported stall issues. Triage: #1 unlimited stalls = config default; #2 $
   first: extend rejected once cap reached; allowed below cap; unlimited when config <=0.
   Evidence: ``
 
-- [ ] **ST-4** — periodic purchase-sign re-render (REQ-287)
+- [x] **ST-4** — periodic purchase-sign re-render (REQ-287)
   References: REQ-287, src/main/kotlin/net/badgersmc/em/application/PurchaseSignRenderer.kt, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt, existing PurchaseSignRefreshListener
   Tag: INFRA
   Description: Schedule a repeating task (NexusScheduler/Bukkit) that re-renders purchase signs for OWNED/GRACE
