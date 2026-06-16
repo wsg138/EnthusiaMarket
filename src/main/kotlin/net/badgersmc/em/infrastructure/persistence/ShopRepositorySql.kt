@@ -2,14 +2,18 @@ package net.badgersmc.em.infrastructure.persistence
 
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
-import net.badgersmc.nexus.annotations.Repository
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.sql.Statement
 import java.util.UUID
 import javax.sql.DataSource
 
-@Repository
+/**
+ * SQL-backed [ShopRepository]. No longer `@Repository`-scanned (PERF-4): it is constructed
+ * manually in [net.badgersmc.em.EnthusiaMarket.onEnable] and wrapped by
+ * [net.badgersmc.em.application.IndexedShopRepository], which is registered as the sole
+ * `ShopRepository` bean. Two beans under one interface would make nexus DI ambiguous.
+ */
 @Suppress("TooManyFunctions")
 class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 
