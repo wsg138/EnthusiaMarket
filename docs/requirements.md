@@ -139,6 +139,10 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 **Event-driven.** WHEN a player executes `/em auctions` THE SYSTEM SHALL open a paginated GUI listing every open auction with its stall id, current high bid, time remaining, and a sort toggle cycling through `HIGHEST_BID`, `LOWEST_BID`, `ENDING_SOON`, and `ENDING_LATEST`, refreshing its contents at least once per second while the menu remains open.
 
+### REQ-283 — Shop search item tab-completion
+
+**Event-driven.** WHEN a player tab-completes the item argument of `/shop search` THE SYSTEM SHALL suggest the names of item materials whose name starts with the typed prefix, case-insensitively.
+
 ### REQ-284 — Default stall ownership limit
 
 **State-driven.** WHILE a player holds no `enthusiamarket.limit.<group>` permission THE SYSTEM SHALL apply the configured default stall limit rather than treating the player as having unlimited stalls.
@@ -180,6 +184,14 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 ### REQ-043 — Server thread safety
 
 **Ubiquitous.** THE SYSTEM SHALL execute all Bukkit world, inventory, and entity mutations on the main server thread.
+
+### REQ-281 — Hopper control without per-event database I/O
+
+**Event-driven.** WHEN an InventoryMoveItemEvent fires THE SYSTEM SHALL resolve the shop status and hopper permissions of the source and destination containers from an in-memory index without querying the database on the server thread.
+
+### REQ-282 — Shop container index reflects persisted state
+
+**Ubiquitous.** THE SYSTEM SHALL maintain an in-memory shop container index that reflects every persisted shop container location, rebuilt from persistent storage on plugin enable and updated whenever a shop is created, updated, or deleted.
 
 ---
 
