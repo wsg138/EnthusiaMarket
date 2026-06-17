@@ -143,7 +143,27 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 **Event-driven.** WHEN a player tab-completes the item argument of `/shop search` THE SYSTEM SHALL suggest the names of item materials whose name starts with the typed prefix, case-insensitively.
 
-> **REQ-ID note:** 281 and 282 are reserved by the in-flight `perf/hopper-shop-index` branch (PR #61); this feature skips to 283 to avoid a merge collision.
+### REQ-284 — Default stall ownership limit
+
+**State-driven.** WHILE a player holds no `enthusiamarket.limit.<group>` permission THE SYSTEM SHALL apply the configured default stall limit rather than treating the player as having unlimited stalls.
+
+### REQ-285 — Stall region piston protection
+
+**Event-driven.** WHEN a stall region is provisioned THE SYSTEM SHALL deny piston block movement in the region so blocks and items cannot be pushed across the stall boundary.
+
+### REQ-286 — Rent pre-payment cap
+
+**Unwanted.** IF a player attempts to extend a stall's rent beyond the configured maximum number of pre-paid periods ahead THEN THE SYSTEM SHALL reject the extension.
+
+### REQ-287 — Live rent countdown on signs
+
+**State-driven.** WHILE a stall is OWNED or in GRACE THE SYSTEM SHALL re-render its purchase sign on a fixed interval so the displayed rent countdown stays current.
+
+### REQ-288 — Stall identifier display
+
+**Event-driven.** WHEN a stall's purchase confirmation or info card is shown THE SYSTEM SHALL display the stall's identifier so players can tell stalls apart.
+
+> **REQ-ID note:** 281/282 reserved by `perf/hopper-shop-index` (PR #61) and 283 by `feat/shop-search-tab-complete` (PR #62); this batch uses 284–288 to avoid merge collisions. Flat-rent ($/period) is a config change to REQ-003, no new REQ.
 
 ---
 

@@ -93,6 +93,12 @@ class EnthusiaMarketConfig {
     )
     var limits: MutableMap<String, LimitGroup> = mutableMapOf()
 
+    @Comment(
+        "Default stall limit applied when a player holds NO enthusiamarket.limit.<group> permission " +
+            "(REQ-284). -1 = unlimited (legacy behaviour). Set to e.g. 1 to cap ungrouped players."
+    )
+    var defaultStallLimit: Int = -1
+
     class LimitGroup {
         @Comment("Maximum total stalls a player in this group may own. -1 = unlimited.")
         var total: Int = -1
@@ -130,6 +136,11 @@ class EnthusiaMarketConfig {
         var collectionInterval: String = "P1D"
         @Comment("ISO-8601 grace period before eviction")
         var gracePeriod: String = "P3D"
+        @Comment(
+            "Max number of rent periods a stall may be pre-paid ahead via extension (REQ-286). " +
+                "0 or less = unlimited (legacy). e.g. 7 caps pre-payment to a week ahead."
+        )
+        var maxPrepaidPeriods: Int = 0
     }
 
     class Auction {

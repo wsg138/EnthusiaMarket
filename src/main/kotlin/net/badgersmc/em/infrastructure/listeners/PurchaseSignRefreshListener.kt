@@ -34,6 +34,20 @@ open class PurchaseSignRefreshListener(
         }
     }
 
+    /**
+     * Re-render every purchase sign whose chunk is currently loaded (REQ-287), so the OWNED rent
+     * countdown ticks down visibly instead of freezing between state changes. Called on a fixed
+     * timer from onEnable. NEVER force-loads a chunk — signs in unloaded chunks are skipped and
+     * refresh naturally on their next state change or when their chunk loads.
+     */
+    fun refreshLoaded() {
+        for (sign in signs.all()) {
+            val world = Bukkit.getWorld(sign.world) ?: continue
+            if (!world.isChunkLoaded(sign.x shr 4, sign.z shr 4)) continue
+            refresh(sign)
+        }
+    }
+
     private fun refresh(sign: PurchaseSign) {
         val world = Bukkit.getWorld(sign.world) ?: return
         val block = world.getBlockAt(sign.x, sign.y, sign.z)
