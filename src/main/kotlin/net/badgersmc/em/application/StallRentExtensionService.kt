@@ -5,6 +5,7 @@ import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.OwnerType
+import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
@@ -49,17 +50,7 @@ class StallRentExtensionService(
         }
         if (!stall.canManage(actor, guildProvider)) return Result.NotAuthorised
 
-        // Pre-payment cap (REQ-286): stop players from extending arbitrarily far ahead. When the
-        // stall's nextRentAt is already >= now + maxPrepaidPeriods*interval, reject before charging.
-        // <= 0 means unlimited (legacy). Guards against the "infinite extend" exploit.
-        val cap = config.rent.maxPrepaidPeriods
-        if (cap > 0) {
-            val current = stall.nextRentAt
-            val ceiling = Instant.now().plus(collectionInterval().multipliedBy(cap.toLong()))
-            if (current != null && !current.isBefore(ceiling)) {
-                return Result.Rejected("Rent is already prepaid the maximum of $cap period(s) ahead")
-            }
-        }
+        prepaidCapRejection(stall)?.let { return it }
 
         // Floor to at least 1 unit whenever the stall had a real buy
         // price. Default rent.formulaPct (0.01) on a 1000-coin stall
@@ -91,15 +82,46 @@ class StallRentExtensionService(
         }
 
         val pushed = pushTimer(stall.nextRentAt)
+        persistExtension(stall, stallId, actor, amount, isGuild, pushed)
+        return Result.Extended(pushed, amount)
+    }
+
+    /**
+     * Pre-payment cap (REQ-286): stop players from extending arbitrarily far ahead. When the
+     * stall's nextRentAt is already >= now + maxPrepaidPeriods*interval, reject before charging.
+     * `<= 0` means unlimited (legacy). Guards against the "infinite extend" exploit.
+     */
+    private fun prepaidCapRejection(stall: Stall): Result.Rejected? {
+        val cap = config.rent.maxPrepaidPeriods
+        if (cap <= 0) return null
+        val current = stall.nextRentAt ?: return null
+        val ceiling = Instant.now().plus(collectionInterval().multipliedBy(cap.toLong()))
+        return if (!current.isBefore(ceiling)) {
+            Result.Rejected("Rent is already prepaid the maximum of $cap period(s) ahead")
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Persist the extended stall. On a persistence failure, refund the actor before re-throwing so
+     * they aren't charged for an extension that never applied. economy.deposit returns false on
+     * failure (and may also throw), so check both; either way the ORIGINAL persistence exception
+     * (root cause) is rethrown.
+     */
+    private fun persistExtension(
+        stall: Stall,
+        stallId: StallId,
+        actor: UUID,
+        amount: Long,
+        isGuild: Boolean,
+        pushed: Instant,
+    ) {
         try {
             val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
             stalls.save(updated)
             fireStateChanged(stallId.value, stall.state, updated.state)
         } catch (e: Exception) {
-            // Refund the actor before re-throwing so a persistence failure doesn't leave them
-            // charged for an extension that never applied. economy.deposit returns false on
-            // failure (and may also throw), so check both; either way the ORIGINAL persistence
-            // exception (root cause) is rethrown.
             val refunded = try {
                 if (isGuild) guildProvider.bankDeposit(stall.owner.id, amount)
                 else economy.deposit(actor, amount)
@@ -120,7 +142,6 @@ class StallRentExtensionService(
             }
             throw e
         }
-        return Result.Extended(pushed, amount)
     }
 
     private fun pushTimer(current: Instant?): Instant {
