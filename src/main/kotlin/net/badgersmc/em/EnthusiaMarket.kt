@@ -70,6 +70,13 @@ open class EnthusiaMarket : JavaPlugin() {
         // RentScheduler, AuctionScheduler) can be constructed.
         ctx.registerBean("bukkitPlugin", org.bukkit.plugin.Plugin::class, this)
 
+        // Several infrastructure beans (MenuFactory, BlockProtectionListener,
+        // ExplodeCleanupListener, ShopCreateListener, ShopInteractListener) inject a
+        // java.util.logging.Logger constructor param. Nexus has no Logger bean unless we
+        // register one, so without this those beans fail DI ("No bean found of type: Logger")
+        // and registerNexusListeners silently skips them. Register the plugin logger explicitly.
+        ctx.registerBean("logger", java.util.logging.Logger::class, logger)
+
         // Phase 3: Read config from Nexus for database + i18n + scheduler bootstrap.
         val cfg = ctx.getBean<EnthusiaMarketConfig>()
 
