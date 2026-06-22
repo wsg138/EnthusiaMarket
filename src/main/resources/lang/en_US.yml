@@ -241,6 +241,14 @@ shop:
     saved: "<green>Shop updated."
   delete:
     done: "<yellow>Shop deleted."
+  store:
+    url: "<green>Our web store: <aqua><click:open_url:'<url>'><url></click>"
+  help:
+    line1: "<gold>━━ Shop Tutorial ━━"
+    line2: "<gray>1. Place a sign on a container (chest, barrel, etc.) inside your stall."
+    line3: "<gray>2. Write [SELL], [BUY], or [TRADE] on the first line."
+    line4: "<gray>3. Line 2: amount to trade. Line 3: price (or cost item for TRADE)."
+    line5: "<gray>4. Use /shop edit to manage your shops, and /shop search to find items."
 
 gui:
   common:

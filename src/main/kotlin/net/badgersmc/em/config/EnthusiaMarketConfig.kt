@@ -34,6 +34,8 @@ class EnthusiaMarketConfig {
     var guildPolicy: GuildPolicy = GuildPolicy()
     @Comment("Periodic shop audit/repair sweeper (IS2-7/8, REQ-294)")
     var shopAudit: ShopAudit = ShopAudit()
+    @Comment("Store URL for /store command (IS2-15, REQ-301)")
+    var store: Store = Store()
 
     class Particles {
         @Comment("Master switch for stall boundary particle outlines.")
@@ -239,5 +241,10 @@ class EnthusiaMarketConfig {
         var maxPerTick: Int = 5
         @Comment("Automatically delete shops whose container block is gone")
         var repairEnabled: Boolean = true
+    }
+
+    class Store {
+        @Comment("Web store URL sent to players by /store")
+        var url: String = "https://example.com/store"
     }
 }
