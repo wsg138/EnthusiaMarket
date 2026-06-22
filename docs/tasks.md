@@ -912,21 +912,32 @@ GUI/commands/scheduler/Plan → infrastructure (INFRA).
   Confirm build green.
   Evidence: 
 
-- [ ] **IS2-7** — pure orphaned-shop predicate (REQ-294)
+- [x] **IS2-7** — pure orphaned-shop predicate (REQ-294)
   References: REQ-294, src/main/kotlin/net/badgersmc/em/application, implementation.md §2
   Tag: TDD
   Description: Add a pure predicate deciding whether a shop is orphaned (container coords resolve to a
   non-container / missing block — abstracted behind a small port so it is testable without Bukkit).
   Failing test first: present container = keep; missing/non-container = remove.
-  Evidence: 
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/application/ShopAuditDecision.kt (pure object; evaluate(worldLoaded, blockIsContainer) → KEEP/REMOVE/SKIP; SKIP on unloaded world)
+  src/test/kotlin/net/badgersmc/em/application/ShopAuditDecisionTest.kt (4 cases: SKIP×2, KEEP, REMOVE)
+  Hermes deepseek-v4-pro → reviewed → BadgersMC/EnthusiaMarket PR #65; detekt 0, suite green
+  ```
 
-- [ ] **IS2-8** — scheduled shop audit/repair service (REQ-294)
+- [x] **IS2-8** — scheduled shop audit/repair service (REQ-294)
   References: REQ-294, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt, NexusScheduler, IS2-7
   Tag: INFRA
   Description: Add a ShopAuditService that, while enabled, scans shops in throttled batches on a config
   interval (interval-minutes, max-per-tick, report-only/repair-enabled) and deletes orphaned shops
   (IS2-7) + refreshes signs. Wire via NexusScheduler in onEnable. Config keys + defaults. Build green.
-  Evidence: 
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/infrastructure/scheduler/ShopAuditScheduler.kt (@Component/@PostConstruct BukkitRunnable; cursor-throttled sweep; deletes orphans via ShopAuditDecision)
+  src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt:186 (eager ctx.getBean<ShopAuditScheduler>() — Nexus DI is lazy)
+  src/main/kotlin/net/badgersmc/em/config/EnthusiaMarketConfig.kt (ShopAudit: enabled/intervalMinutes/maxPerTick/repairEnabled)
+  Hermes deepseek-v4-pro → reviewed (capped per-tick batch to list size) → PR #65; detekt 0, suite green
+  ```
 
 - [ ] **IS2-9** — admin vault inspection (REQ-295)
   References: REQ-295, src/main/kotlin/net/badgersmc/em/interaction/gui/ShopVaultMenu.kt, src/main/kotlin/net/badgersmc/em/application/ShopVaultService.kt, ShopCommands.kt
