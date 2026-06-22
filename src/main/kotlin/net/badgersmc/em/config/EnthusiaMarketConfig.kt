@@ -32,6 +32,8 @@ class EnthusiaMarketConfig {
     var particles: Particles = Particles()
     @Comment("Guild tariff/embargo player notifications")
     var guildPolicy: GuildPolicy = GuildPolicy()
+    @Comment("Periodic shop audit/repair sweeper (IS2-7/8, REQ-294)")
+    var shopAudit: ShopAudit = ShopAudit()
 
     class Particles {
         @Comment("Master switch for stall boundary particle outlines.")
@@ -226,5 +228,16 @@ class EnthusiaMarketConfig {
         var logEconomy: Boolean = false
         @Comment("Log migration execution")
         var logMigrations: Boolean = true
+    }
+
+    class ShopAudit {
+        @Comment("Enable periodic shop audit sweeper")
+        var enabled: Boolean = true
+        @Comment("Minutes between audit sweeps")
+        var intervalMinutes: Int = 10
+        @Comment("Max shops to process per server tick")
+        var maxPerTick: Int = 5
+        @Comment("Automatically delete shops whose container block is gone")
+        var repairEnabled: Boolean = true
     }
 }

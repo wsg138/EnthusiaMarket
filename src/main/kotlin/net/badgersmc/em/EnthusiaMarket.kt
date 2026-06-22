@@ -9,6 +9,7 @@ import net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang
 import net.badgersmc.em.infrastructure.listeners.SignPlaceListener
 import net.badgersmc.em.infrastructure.scheduler.AuctionScheduler
 import net.badgersmc.em.infrastructure.scheduler.RentScheduler
+import net.badgersmc.em.infrastructure.scheduler.ShopAuditScheduler
 import net.badgersmc.nexus.core.NexusContext
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.i18n.Locale
@@ -182,6 +183,7 @@ open class EnthusiaMarket : JavaPlugin() {
         // (audit 2026-06-09, W-2). Guarded by ListenerWiringTest.
         ctx.getBean<RentScheduler>()
         ctx.getBean<AuctionScheduler>()
+        ctx.getBean<ShopAuditScheduler>()
 
         // PlaceholderAPI expansions (no-ops if PAPI absent).
         net.badgersmc.nexus.papi.registerNexusExpansions(
