@@ -271,6 +271,8 @@ gui:
     sell_action_lore_click: "<gray>Click to sell to this shop"
     trade_name: "<light_purple><bold>TRADE</bold>"
     trade_lore_click: "<gray>Click to pay <gold><cost></gold>× and receive the item"
+    shulker_preview_name: "<light_purple>Preview Contents"
+    shulker_preview_lore: "<gray>Click to view shulker box contents"
     search:
       title: "<dark_gray>Shops selling <query>"
       result: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
@@ -328,6 +330,8 @@ gui:
     amount_lore: "<gray>Stored: <aqua><amount>"
   shop_contents:
     title: "<dark_gray>Shop container contents"
+  shulker_preview:
+    title: "<dark_gray>Shulker Box Preview"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"
