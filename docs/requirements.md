@@ -165,6 +165,62 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 > **REQ-ID note:** 281/282 reserved by `perf/hopper-shop-index` (PR #61) and 283 by `feat/shop-search-tab-complete` (PR #62); this batch uses 284–288 to avoid merge collisions. Flat-rent ($/period) is a config change to REQ-003, no new REQ.
 
+### ItemShops parity round 2 (gap audit 2026-06-22)
+
+> Derived from a full audit of `wsg138/ItemShops` v1.7.2 against EM after the original six-subproject parity programme. These close feature + menu gaps ItemShops grew after that snapshot. REQ-289–301.
+
+### REQ-289 — Bulk shop purchase (Buy Max)
+
+**Event-driven.** WHEN a player selects "Buy Max" in a shop purchase menu THE SYSTEM SHALL execute, in one atomic operation, the largest number of whole trades permitted by the container stock, the player's payment balance, and the player's free inventory space.
+
+### REQ-290 — Custom purchase quantity
+
+**Event-driven.** WHEN a player chooses a custom purchase quantity in a shop purchase menu THE SYSTEM SHALL prompt for a positive whole number, clamp it to the maximum executable trades, and execute that many trades.
+
+### REQ-291 — Purchase menu live status
+
+**Event-driven.** WHEN a shop purchase menu is opened or refreshed THE SYSTEM SHALL display the number of trades currently available from stock and the number of trades the viewer can afford.
+
+### REQ-292 — Timed shop freeze auto-expiry
+
+**State-driven.** WHILE a shop's freeze has a defined expiry time that has passed THE SYSTEM SHALL treat the shop as unfrozen and allow trades to resume without manual intervention.
+
+### REQ-293 — Bulk freeze admin tooling
+
+**Event-driven.** WHEN an administrator runs the shop freeze or unfreeze command targeting a player, all shops, or a selection menu THE SYSTEM SHALL freeze or unfreeze the selected shops, optionally for a bounded duration.
+
+### REQ-294 — Periodic shop audit and repair
+
+**State-driven.** WHILE the shop audit service is enabled THE SYSTEM SHALL periodically scan shops in throttled batches and remove any whose linked container no longer exists.
+
+### REQ-295 — Admin vault inspection
+
+**Event-driven.** WHEN an administrator runs the admin vault command for a target player THE SYSTEM SHALL open a paginated read view of that player's barter vault contents.
+
+### REQ-296 — Plan analytics integration
+
+**State-driven.** WHILE the Plan analytics plugin is present THE SYSTEM SHALL expose shop activity metrics to it through a Plan extension.
+
+### REQ-297 — Cancellable pre-trade event with price modification
+
+**Event-driven.** WHEN a shop trade is about to execute THE SYSTEM SHALL fire a cancellable pre-trade event that lets other plugins cancel the trade or modify its price before any items or currency change hands.
+
+### REQ-298 — Shulker box preview menu
+
+**Event-driven.** WHEN a player previews a shop selling a shulker box THE SYSTEM SHALL display the shulker box's contents in a read-only menu.
+
+### REQ-299 — Read-only shop contents view
+
+**Event-driven.** WHEN an authorised viewer opens a shop's contents view THE SYSTEM SHALL display the linked container's current stock in a read-only menu.
+
+### REQ-300 — Vault redeem-all
+
+**Event-driven.** WHEN a player selects "Redeem All" in the shop vault menu THE SYSTEM SHALL withdraw every vault entry that fits into the player's inventory in one action.
+
+### REQ-301 — Help and store commands
+
+**Event-driven.** WHEN a player runs the shop help command or the store command THE SYSTEM SHALL display the shop tutorial or the configured store link respectively.
+
 ---
 
 ## Non-functional

@@ -841,3 +841,141 @@ set only at insert (no relocate path), so create + delete fully cover location c
   ExplodeCleanupListener, ShopCreateListener, ShopInteractListener fail to register — inject
   java.util.logging.Logger with no Logger bean (not caused by PERF; flagged as separate task).
   Evidence: spark report ZNDUJN57Yg vs baseline 3RFbDGJIef; live TPS via papermcp server_info.
+
+---
+
+## ItemShops parity round 2 (gap audit 2026-06-22) — REQ-289..301
+
+Closes feature + menu gaps found auditing `wsg138/ItemShops` v1.7.2 against EM after the
+original 6-SP parity programme. Triage: bulk-buy is the biggest player-visible gap (EM trades
+are 1-per-click — `ContainerTradeService.execute*` take no count param, and EM has no numeric
+chat/anvil input anywhere). Freeze is a bare boolean (no expiry, no admin bulk tooling). No
+periodic audit/repair, no Plan hook, no pre-trade price API, and four read-only/admin menus are
+absent. Layer split per implementation.md §2: pure calc/logic → application (TDD); Bukkit-coupled
+GUI/commands/scheduler/Plan → infrastructure (INFRA).
+
+- [ ] **IS2-1** — pure max-executable-trades calculation (REQ-289, REQ-291)
+  References: REQ-289, REQ-291, implementation.md §2 (application: domain + stdlib only), src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt
+  Tag: TDD
+  Description: Add a pure helper computing the max whole trades for a shop given (container stock,
+  payer balance/inventory, buyer free space, per-trade sell/cost amounts) = min of the three caps,
+  floored at 0. No Bukkit in the pure core (pass counts in). Failing test first: capped by stock,
+  by wallet, by space, and zero when any cap is 0.
+  Evidence: 
+
+- [ ] **IS2-2** — multi-trade execution with atomic rollback (REQ-289, REQ-290)
+  References: REQ-289, REQ-290, REQ-040 (atomic economy), src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt:62-330
+  Tag: TDD
+  Description: Add executeSell/Buy/Trade(shop, uuid, trades: Int) overloads that apply N trades as
+  one atomic op (compute-once or loop-with-rollback), reusing the existing single-trade refund/rollback
+  guarantees. Single-trade path delegates with trades=1. Failing test first: N-trade success moves N x
+  amounts; partial failure rolls back fully (no item/money loss).
+  Evidence: 
+
+- [ ] **IS2-3** — chat amount-capture helper (REQ-290)
+  References: REQ-290, src/main/kotlin/net/badgersmc/em/interaction, implementation.md §2 (infra owns Bukkit)
+  Tag: INFRA
+  Description: Add an ItemShops-style reusable numeric chat prompt (TTL, cancel word, re-prompt on bad
+  input, runs the continuation back on the main thread). Register the listener in onEnable. Used by the
+  PurchaseMenu custom-amount button. Confirm build green.
+  Evidence: 
+
+- [ ] **IS2-4** — PurchaseMenu bulk buttons + live status (REQ-289, REQ-290, REQ-291)
+  References: REQ-289, REQ-290, REQ-291, src/main/kotlin/net/badgersmc/em/interaction/gui/PurchaseMenu.kt
+  Tag: INFRA
+  Description: Replace the single trade button with Buy 1 / Buy Max / Buy Custom (via IS2-3 capture),
+  plus a status item showing "stock trades available" and "you can afford" (IS2-1). Buttons call the
+  IS2-2 multi-trade overloads. Direction-aware (SELL/BUY/TRADE). Confirm build + existing menu tests green.
+  Evidence: 
+
+- [ ] **IS2-5** — timed shop freeze model + migration (REQ-292)
+  References: REQ-292, REQ-023 (shop freezing), src/main/kotlin/net/badgersmc/em/domain/shop/Shop.kt, src/main/resources/migrations
+  Tag: TDD
+  Description: Add frozenUntil: Instant? to Shop (null = indefinite when frozen) + pure isFrozen(now)
+  and clearIfFreezeExpired(now) logic; add a Vxxx__shop_frozen_until.sql migration (nullable col,
+  default null). Failing test first: expired timed freeze reads unfrozen; indefinite stays frozen; clear
+  returns true once past expiry.
+  Evidence: 
+
+- [ ] **IS2-6** — freeze/unfreeze admin commands + FreezeShopsMenu (REQ-293)
+  References: REQ-293, src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt:201-265, src/main/kotlin/net/badgersmc/em/interaction/gui
+  Tag: INFRA
+  Description: Add /shop admin freeze|unfreeze <player|all|menu> [duration] and a paginated
+  FreezeShopsMenu (per-shop toggle for a target, shows "unfreezes in Xm"), wiring the IS2-5 timed model.
+  Confirm build green.
+  Evidence: 
+
+- [ ] **IS2-7** — pure orphaned-shop predicate (REQ-294)
+  References: REQ-294, src/main/kotlin/net/badgersmc/em/application, implementation.md §2
+  Tag: TDD
+  Description: Add a pure predicate deciding whether a shop is orphaned (container coords resolve to a
+  non-container / missing block — abstracted behind a small port so it is testable without Bukkit).
+  Failing test first: present container = keep; missing/non-container = remove.
+  Evidence: 
+
+- [ ] **IS2-8** — scheduled shop audit/repair service (REQ-294)
+  References: REQ-294, src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt, NexusScheduler, IS2-7
+  Tag: INFRA
+  Description: Add a ShopAuditService that, while enabled, scans shops in throttled batches on a config
+  interval (interval-minutes, max-per-tick, report-only/repair-enabled) and deletes orphaned shops
+  (IS2-7) + refreshes signs. Wire via NexusScheduler in onEnable. Config keys + defaults. Build green.
+  Evidence: 
+
+- [ ] **IS2-9** — admin vault inspection (REQ-295)
+  References: REQ-295, src/main/kotlin/net/badgersmc/em/interaction/gui/ShopVaultMenu.kt, src/main/kotlin/net/badgersmc/em/application/ShopVaultService.kt, ShopCommands.kt
+  Tag: INFRA
+  Description: Add /shop admin vault <player> opening a paginated read view (VaultAdminMenu) of the
+  target's barter vault via ShopVaultService. Admin perm gated. Build green.
+  Evidence: 
+
+- [ ] **IS2-10** — Plan analytics integration (REQ-296)
+  References: REQ-296, src/main/kotlin/net/badgersmc/em/infrastructure, src/main/kotlin/net/badgersmc/em/domain/shop/ShopTransactionRepository.kt
+  Tag: INFRA
+  Description: Add an optional Plan (com.djrapitops) extension exposing shop activity metrics (sales,
+  owners, recent trades) sourced from the existing transaction log. Soft-depend; no-op when Plan absent.
+  Build green with Plan as a compileOnly dep.
+  Evidence: 
+
+- [ ] **IS2-11** — cancellable pre-trade event with price modification (REQ-297)
+  References: REQ-297, src/main/kotlin/net/badgersmc/em/events, src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt
+  Tag: TDD
+  Description: Add a cancellable PreShopTransactionEvent (carries price + a setModifiedPrice) fired
+  before any item/currency move; honour cancel (abort) and a valid modified price (use it). Failing
+  test first: cancel aborts with no side effects; modified price is charged; invalid price ignored.
+  Evidence: 
+
+- [ ] **IS2-12** — shulker box preview menu (REQ-298)
+  References: REQ-298, src/main/kotlin/net/badgersmc/em/interaction/gui, src/main/kotlin/net/badgersmc/em/interaction/gui/PurchaseMenu.kt
+  Tag: INFRA
+  Description: Add a read-only ShulkerPreviewMenu showing a shulker's contents; reachable when the sell
+  item is a shulker box (button in PurchaseMenu / info card). Build green.
+  Evidence: 
+
+- [ ] **IS2-13** — read-only shop contents view (REQ-299)
+  References: REQ-299, src/main/kotlin/net/badgersmc/em/interaction/gui
+  Tag: INFRA
+  Description: Add a read-only ShopContentsMenu mirroring the linked container's current stock (54-slot,
+  all clicks cancelled). Reachable by owner/trusted/admin. Build green.
+  Evidence: 
+
+- [ ] **IS2-14** — vault Redeem-All button (REQ-300)
+  References: REQ-300, src/main/kotlin/net/badgersmc/em/interaction/gui/ShopVaultMenu.kt, src/main/kotlin/net/badgersmc/em/application/ShopVaultService.kt
+  Tag: INFRA
+  Description: Add a "Redeem All" control to ShopVaultMenu that withdraws every entry that fits into the
+  player's inventory in one action (re-deposit overflow). Reuse existing withdraw + overflow handling.
+  Build green.
+  Evidence: 
+
+- [ ] **IS2-15** — help and store commands (REQ-301)
+  References: REQ-301, src/main/kotlin/net/badgersmc/em/infrastructure/commands, src/main/resources
+  Tag: INFRA
+  Description: Add /shophelp (config/lang-driven tutorial text) and /store (configurable store/Tebex
+  URL). Both default-true perms. Build green.
+  Evidence: 
+
+- [ ] **IS2-16** — document new components + data flows (REQ-289..301)
+  References: REQ-289, REQ-292, REQ-294, REQ-296, REQ-297, implementation.md §3, §4
+  Tag: DOC
+  Description: Add component-design entries (multi-trade flow, timed-freeze, ShopAuditService, Plan
+  extension, PreShopTransactionEvent) and the new menus to implementation.md, with evidence sources.
+  Evidence: 
