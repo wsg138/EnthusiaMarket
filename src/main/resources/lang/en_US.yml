@@ -323,6 +323,9 @@ gui:
     empty: "<gray>Your barter vault is empty."
     redeem_all_name: "<green><bold>Redeem All"
     redeem_all_lore: "<gray>Click to withdraw everything"
+  vault_admin:
+    title: "<dark_gray><name>'s barter vault"
+    amount_lore: "<gray>Stored: <aqua><amount>"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"
