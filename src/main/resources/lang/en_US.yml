@@ -326,6 +326,8 @@ gui:
   vault_admin:
     title: "<dark_gray><name>'s barter vault"
     amount_lore: "<gray>Stored: <aqua><amount>"
+  shop_contents:
+    title: "<dark_gray>Shop container contents"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"

@@ -298,6 +298,14 @@ class ShopCommands(
         ).open(player)
     }
 
+    @Subcommand("admin contents")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminContents(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shop = lookAtShop(player) ?: run { player.sendMessage(lang.msg("shop.admin.no_target")); return }
+        net.badgersmc.em.interaction.gui.ShopContentsMenu(shop, lang).open(player)
+    }
+
     companion object {
         private const val PAGE_SIZE = 10
     }
