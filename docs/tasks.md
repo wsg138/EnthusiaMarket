@@ -854,14 +854,21 @@ periodic audit/repair, no Plan hook, no pre-trade price API, and four read-only/
 absent. Layer split per implementation.md §2: pure calc/logic → application (TDD); Bukkit-coupled
 GUI/commands/scheduler/Plan → infrastructure (INFRA).
 
-- [ ] **IS2-1** — pure max-executable-trades calculation (REQ-289, REQ-291)
+- [x] **IS2-1** — pure max-executable-trades calculation (REQ-289, REQ-291)
   References: REQ-289, REQ-291, implementation.md §2 (application: domain + stdlib only), src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt
   Tag: TDD
   Description: Add a pure helper computing the max whole trades for a shop given (container stock,
   payer balance/inventory, buyer free space, per-trade sell/cost amounts) = min of the three caps,
   floored at 0. No Bukkit in the pure core (pass counts in). Failing test first: capped by stock,
   by wallet, by space, and zero when any cap is 0.
-  Evidence: 
+  Evidence:
+  ```
+  src/main/kotlin/net/badgersmc/em/application/MaterialSuggestions.kt (pure application-object pattern mirrored — stdlib only, no Bukkit per implementation.md §2 layer rule)
+  src/test/kotlin/net/badgersmc/em/application/MaterialSuggestionsTest.kt:1-33 (kotlin.test conventions: @Test, assertEquals; same-package helper needs no import)
+  src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt (future caller of TradeQuantity.maxTrades for Buy Max + affordability status — IS2-2/IS2-4)
+  new impl: net.badgersmc.em.application.TradeQuantity (object; maxTrades(stockUnits, payerUnits, freeSpaceUnits, sellPerTrade, costPerTrade): Int = max(0, min of the three integer-division caps))
+  test imports: kotlin.test.Test ; kotlin.test.assertEquals
+  ```
 
 - [ ] **IS2-2** — multi-trade execution with atomic rollback (REQ-289, REQ-290)
   References: REQ-289, REQ-290, REQ-040 (atomic economy), src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt:62-330
