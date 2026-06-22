@@ -11,6 +11,7 @@ import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.nexus.i18n.LangService
+import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.paper.gui.LivePollingMenu
 import net.badgersmc.nexus.paper.gui.itemStack
 import net.badgersmc.nexus.scheduler.NexusScheduler
@@ -118,6 +119,9 @@ class AuctionBrowserMenu(
     }
 
     override fun render(gui: ChestGui) {
+        // Anti-dupe: cancel raw item movement (collect-to-cursor / drag). The framework base
+        // creates this gui, so we harden it here; re-applying each refresh is idempotent.
+        gui.blockItemTheft()
         val snapshot = latest.get()
         val now = Instant.now()
         val sorted = snapshot.entries.sortedWith(entryComparator(sortMode))

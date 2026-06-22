@@ -3,6 +3,7 @@ package net.badgersmc.em.interaction.gui
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
+import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ShopVaultService
 import net.badgersmc.nexus.i18n.LangService
@@ -26,7 +27,7 @@ class ShopVaultMenu(
         private val log = Logger.getLogger(ShopVaultMenu::class.java.name)
     }
 
-    @Suppress("CyclomaticComplexMethod")
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     override fun open(player: Player) {
         val all = vaultService.contents(owner.uniqueId)
         val pages = if (all.isEmpty()) 1 else (all.size + PAGE_SIZE - 1) / PAGE_SIZE
@@ -94,6 +95,7 @@ class ShopVaultMenu(
             }, 8, 5)
         }
 
+        gui.blockItemTheft()
         gui.show(player)
     }
 }

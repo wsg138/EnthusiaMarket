@@ -3,6 +3,7 @@ package net.badgersmc.em.interaction.gui
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
+import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
@@ -91,6 +92,7 @@ class SearchResultsMenu(
         }
 
         gui.addPane(pane)
+        gui.blockItemTheft()
         gui.show(player)
     }
 

@@ -3,6 +3,7 @@ package net.badgersmc.em.interaction.gui
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
+import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.OutlinePane
 import com.github.stefvanschie.inventoryframework.pane.PaginatedPane
 import com.github.stefvanschie.inventoryframework.pane.Pane
@@ -34,6 +35,7 @@ class GuildPickerMenu(
         val pages = pickerPages(player, targets, pageCount)
         gui.addPane(pages)
         gui.addPane(navBar(player, gui, pages, pageCount))
+        gui.blockItemTheft()
         gui.show(player)
     }
 

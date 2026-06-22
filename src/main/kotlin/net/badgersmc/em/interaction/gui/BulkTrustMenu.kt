@@ -3,6 +3,7 @@ package net.badgersmc.em.interaction.gui
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
+import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopManagementService
@@ -49,6 +50,7 @@ class BulkTrustMenu(
             player.sendMessage(lang.msg("shop.cmd.trusted_all", "name" to targetName, "count" to n))
         }, 8, 5)
         gui.addPane(pane)
+        gui.blockItemTheft()
         gui.show(player)
     }
 
