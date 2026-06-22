@@ -321,6 +321,8 @@ gui:
     withdrew: "<green>Withdrew <white><amount>x <item></white>."
     full: "<yellow>Inventory full — <white><left></white> left in the vault."
     empty: "<gray>Your barter vault is empty."
+    redeem_all_name: "<green><bold>Redeem All"
+    redeem_all_lore: "<gray>Click to withdraw everything"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"
