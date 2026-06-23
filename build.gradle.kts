@@ -201,6 +201,8 @@ configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
         node("enthusiamarket.auction.list", default = Default.TRUE, description = "List auctions")
         node("enthusiamarket.shop.delete.all", default = Default.OP, description = "Delete all of a player's shops")
         node("enthusiamarket.shop.vault", default = Default.TRUE, description = "Open /shopvault to withdraw barter payments")
+        node("enthusiamarket.shop.store", default = Default.TRUE, description = "Open the store link via /store")
+        node("enthusiamarket.shop.help", default = Default.TRUE, description = "Show the shop tutorial via /shophelp")
         // Bedrock form
         node("enthusiamarket.bedrock.form", default = Default.TRUE, description = "Use Bedrock forms")
         // Admin-scoped stall tooling (entity limits, kind, recount).

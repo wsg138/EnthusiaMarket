@@ -48,7 +48,7 @@ class VaultAdminMenu(
         for ((idx, itemAndAmt) in slice.withIndex()) {
             val (item, total) = itemAndAmt
             val icon = item.clone()
-            val meta = icon.itemMeta
+            val meta = icon.itemMeta ?: continue
             meta.lore(listOf(lang.msg("gui.vault_admin.amount_lore", "amount" to total)))
             icon.itemMeta = meta
             pane.addItem(GuiItem(icon) { it.isCancelled = true }, idx % 9, idx / 9)
