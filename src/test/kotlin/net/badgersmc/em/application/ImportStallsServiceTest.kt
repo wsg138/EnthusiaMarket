@@ -15,6 +15,9 @@ import kotlin.test.assertEquals
 
 class ImportStallsServiceTest {
 
+    private fun provider(rent: RentTerms): DefaultRentTermsProvider =
+        mockk { every { current() } returns rent }
+
     private fun service(
         regions: List<RegionProvider.RegionRef>,
         existing: List<Stall> = emptyList(),
@@ -29,7 +32,7 @@ class ImportStallsServiceTest {
             existing.firstOrNull { it.regionId == region }
         }
         val svc = ImportStallsService(
-            regionProvider, repo, defaultRent = RentTerms.formula(1.0),
+            regionProvider, repo, rentTermsProvider = provider(RentTerms.formula(1.0)),
             provisioner = provisioner, stallPriority = 20,
         )
         return Triple(svc, repo, provisioner)

@@ -9,13 +9,15 @@ import net.badgersmc.nexus.annotations.Service
 class ImportStallsService(
     private val regions: RegionProvider,
     private val stalls: StallRepository,
-    private val defaultRent: RentTerms,
+    private val rentTermsProvider: DefaultRentTermsProvider,
     private val provisioner: RegionProvisioner,
     private val stallPriority: Int,
 ) {
     data class Result(val created: Int, val skipped: Int, val provisioned: Int)
 
+    /** Import stalls using the live config rent terms (fixes #64). */
     fun import(world: String, prefix: String): Result {
+        val currentRent = rentTermsProvider.current()
         var created = 0
         var skipped = 0
         var provisioned = 0
@@ -38,7 +40,7 @@ class ImportStallsService(
                     owner = OwnerRef.unowned(),
                     ownerSince = null,
                     winningBid = 0L,
-                    rentTerms = defaultRent,
+                    rentTerms = currentRent,
                 )
             )
             created++

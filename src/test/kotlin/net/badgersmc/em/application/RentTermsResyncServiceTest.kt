@@ -15,7 +15,8 @@ import kotlin.test.assertEquals
 
 /**
  * ST-7 (REQ-003): `/em rent resync` pushes the current config default rent terms onto every existing
- * stall, since terms are snapshotted per-stall at import. Red until [RentTermsResyncService.resync].
+ * stall, since terms are snapshotted per-stall at import. Uses [DefaultRentTermsProvider] for live
+ * config reads (fixes #64).
  */
 class RentTermsResyncServiceTest {
 
@@ -24,6 +25,9 @@ class RentTermsResyncServiceTest {
         state = StallState.OWNED, owner = OwnerRef.unowned(), ownerSince = null,
         winningBid = 0L, rentTerms = terms,
     )
+
+    private fun provider(rent: RentTerms): DefaultRentTermsProvider =
+        mockk { every { current() } returns rent }
 
     @Test
     fun `resync rewrites stalls whose terms differ and skips matching ones`() {
@@ -37,11 +41,20 @@ class RentTermsResyncServiceTest {
         val saved = mutableListOf<Stall>()
         every { repo.save(capture(saved)) } returns Unit
 
-        val changed = RentTermsResyncService(repo, target).resync()
+        val changed = RentTermsResyncService(repo, provider(target)).resync()
 
         assertEquals(2, changed)
         assertEquals(setOf("a", "c"), saved.map { it.id.value }.toSet())
         assertEquals(listOf(target, target), saved.map { it.rentTerms })
         verify(exactly = 2) { repo.save(any()) }
+    }
+
+    @Test
+    fun `resync logs correctly when stall list is empty`() {
+        val repo = mockk<StallRepository>(relaxUnitFun = true)
+        every { repo.all() } returns emptyList()
+
+        val changed = RentTermsResyncService(repo, provider(RentTerms.flat(100))).resync()
+        assertEquals(0, changed)
     }
 }

@@ -4,7 +4,6 @@ import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
-import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.infrastructure.i18n.EnthusiaMarketLang
 import net.badgersmc.em.infrastructure.listeners.SignPlaceListener
 import net.badgersmc.em.infrastructure.scheduler.AuctionScheduler
@@ -127,14 +126,6 @@ open class EnthusiaMarket : JavaPlugin() {
         val sched = NexusScheduler(this)
         ctx.registerBean("nexusScheduler", NexusScheduler::class, sched)
         scheduler = sched
-
-        // Register defaultRent from config
-        val defaultRent = if (cfg.rent.mode == "flat") {
-            RentTerms.flat(cfg.rent.flatAmount)
-        } else {
-            RentTerms.formula(cfg.rent.formulaPct)
-        }
-        ctx.registerBean("defaultRent", RentTerms::class, defaultRent)
 
         // Provisioning priority for stall regions (REQ Workstream F) — a
         // plain Int bean so ImportStallsService can be DI-constructed.
