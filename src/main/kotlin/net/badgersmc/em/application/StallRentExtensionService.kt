@@ -34,6 +34,9 @@ class StallRentExtensionService(
 
     private val log = Logger.getLogger(StallRentExtensionService::class.java.name)
 
+    /** Overridable clock for test determinism (M-4 audit 2026-06-23). */
+    internal var clock: java.time.Clock = java.time.Clock.systemUTC()
+
     sealed interface Result {
         data class Extended(val newNextRentAt: Instant, val amountPaid: Long) : Result
         data object NotFound : Result
@@ -95,7 +98,7 @@ class StallRentExtensionService(
         val cap = config.rent.maxPrepaidPeriods
         if (cap <= 0) return null
         val current = stall.nextRentAt ?: return null
-        val ceiling = Instant.now().plus(collectionInterval().multipliedBy(cap.toLong()))
+        val ceiling = clock.instant().plus(collectionInterval().multipliedBy(cap.toLong()))
         return if (!current.isBefore(ceiling)) {
             Result.Rejected("Rent is already prepaid the maximum of $cap period(s) ahead")
         } else {
@@ -146,7 +149,7 @@ class StallRentExtensionService(
 
     private fun pushTimer(current: Instant?): Instant {
         val interval = collectionInterval()
-        val now = Instant.now()
+        val now = clock.instant()
         // Push from whichever is later — the existing due date (so
         // pre-paying truly extends) or now (so a long-overdue stall
         // doesn't get back-dated credit).

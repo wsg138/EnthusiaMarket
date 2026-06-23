@@ -335,6 +335,7 @@ gui:
     empty: "<gray>Your barter vault is empty."
     redeem_all_name: "<green><bold>Redeem All"
     redeem_all_lore: "<gray>Click to withdraw everything"
+    redeem_all_partial: "<yellow>Inventory full — some items remain in your vault. Clear space and try again."
   vault_admin:
     title: "<dark_gray><name>'s barter vault"
     amount_lore: "<gray>Stored: <aqua><amount>"

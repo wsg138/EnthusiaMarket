@@ -75,10 +75,15 @@ class ShopVaultMenu(
         redeemAllIcon.itemMeta = redeemAllMeta
         pane.addItem(GuiItem(redeemAllIcon) { event ->
             event.isCancelled = true
+            var inventoryFull = false
             val contents = vaultService.contents(owner.uniqueId)
             for ((item, total) in contents) {
+                if (inventoryFull) break // stop after first full-inventory hit to avoid cascading drops
                 // Redeem the FULL amount of each entry — "Redeem All" must not stop at one stack.
-                redeem(player, item, total)
+                inventoryFull = !redeem(player, item, total)
+            }
+            if (inventoryFull) {
+                player.sendMessage(lang.msg("gui.vault.redeem_all_partial"))
             }
             ShopVaultMenu(owner, vaultService, p, lang).open(player)
         }, 4, 5)
@@ -89,9 +94,11 @@ class ShopVaultMenu(
 
     /**
      * Withdraw [requested] of [item] from the owner's vault into [player]'s inventory,
-     * re-depositing overflow. Returns the number of items actually redeemed.
+     * re-depositing overflow. Returns true if all items fit in the inventory (or were
+     * handled gracefully), false if the inventory is full — the caller should stop
+     * batching further redeems to avoid cascading item drops (M-2 audit 2026-06-23).
      */
-    private fun redeem(player: Player, item: ItemStack, requested: Int): Int {
+    private fun redeem(player: Player, item: ItemStack, requested: Int): Boolean {
         val removed = vaultService.withdraw(owner.uniqueId, item.clone().apply { amount = 1 }, requested)
         if (removed > 0) {
             val give = item.clone().apply { amount = removed }
@@ -112,10 +119,12 @@ class ShopVaultMenu(
                     // void it. Redeem-All loops this path, so a full inventory must never lose items.
                     returnLeftover.values.forEach { drop -> player.world.dropItem(player.location, drop) }
                 }
+                // Items didn't all fit — inventory is full; signal caller to stop batching.
+                return false
             } else {
                 player.sendMessage(lang.msg("gui.vault.withdrew", "amount" to removed, "item" to item.type.name.lowercase()))
             }
         }
-        return removed
+        return true
     }
 }

@@ -95,29 +95,90 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 
     override fun delete(id: Long) {
         ds.connection.use { conn ->
-            conn.prepareStatement("DELETE FROM shop_items WHERE id = ?").use { ps ->
-                ps.setLong(1, id)
-                ps.executeUpdate()
+            val prevAutoCommit = conn.autoCommit
+            conn.autoCommit = false
+            try {
+                conn.prepareStatement("DELETE FROM shop_transactions WHERE shop_id = ?").use { ps ->
+                    ps.setLong(1, id)
+                    ps.executeUpdate()
+                }
+                conn.prepareStatement("DELETE FROM shop_items WHERE id = ?").use { ps ->
+                    ps.setLong(1, id)
+                    ps.executeUpdate()
+                }
+                conn.commit()
+            } catch (e: java.sql.SQLException) {
+                conn.rollback()
+                throw e
+            } finally {
+                conn.autoCommit = prevAutoCommit
             }
         }
     }
 
+    @Suppress("NestedBlockDepth")
     override fun deleteByContainer(world: String, x: Int, y: Int, z: Int) {
         ds.connection.use { conn ->
-            conn.prepareStatement(
-                "DELETE FROM shop_items WHERE container_world = ? AND container_x = ? AND container_y = ? AND container_z = ?"
-            ).use { ps ->
-                ps.setString(1, world); ps.setInt(2, x); ps.setInt(3, y); ps.setInt(4, z)
-                ps.executeUpdate()
+            val prevAutoCommit = conn.autoCommit
+            conn.autoCommit = false
+            try {
+                // Collect shop IDs first so we can clean up their transaction history.
+                val ids = mutableListOf<Long>()
+                conn.prepareStatement(
+                    "SELECT id FROM shop_items WHERE container_world = ? AND container_x = ? AND container_y = ? AND container_z = ?"
+                ).use { ps ->
+                    ps.setString(1, world); ps.setInt(2, x); ps.setInt(3, y); ps.setInt(4, z)
+                    ps.executeQuery().use { rs -> while (rs.next()) ids += rs.getLong(1) }
+                }
+                for (id in ids) {
+                    conn.prepareStatement("DELETE FROM shop_transactions WHERE shop_id = ?").use { ps ->
+                        ps.setLong(1, id); ps.executeUpdate()
+                    }
+                }
+                conn.prepareStatement(
+                    "DELETE FROM shop_items WHERE container_world = ? AND container_x = ? AND container_y = ? AND container_z = ?"
+                ).use { ps ->
+                    ps.setString(1, world); ps.setInt(2, x); ps.setInt(3, y); ps.setInt(4, z)
+                    ps.executeUpdate()
+                }
+                conn.commit()
+            } catch (e: java.sql.SQLException) {
+                conn.rollback()
+                throw e
+            } finally {
+                conn.autoCommit = prevAutoCommit
             }
         }
     }
 
+    @Suppress("NestedBlockDepth")
     override fun deleteByOwner(owner: UUID): Int {
         ds.connection.use { conn ->
-            conn.prepareStatement("DELETE FROM shop_items WHERE owner = ?").use { ps ->
-                ps.setString(1, owner.toString())
-                return ps.executeUpdate()
+            val prevAutoCommit = conn.autoCommit
+            conn.autoCommit = false
+            try {
+                // Collect shop IDs first.
+                val ids = mutableListOf<Long>()
+                conn.prepareStatement("SELECT id FROM shop_items WHERE owner = ?").use { ps ->
+                    ps.setString(1, owner.toString())
+                    ps.executeQuery().use { rs -> while (rs.next()) ids += rs.getLong(1) }
+                }
+                for (id in ids) {
+                    conn.prepareStatement("DELETE FROM shop_transactions WHERE shop_id = ?").use { ps ->
+                        ps.setLong(1, id); ps.executeUpdate()
+                    }
+                }
+                val deleted = conn.prepareStatement("DELETE FROM shop_items WHERE owner = ?").use { ps ->
+                    ps.setString(1, owner.toString())
+                    ps.executeUpdate()
+                }
+                conn.commit()
+                return deleted
+            } catch (e: java.sql.SQLException) {
+                conn.rollback()
+                throw e
+            } finally {
+                conn.autoCommit = prevAutoCommit
             }
         }
     }
