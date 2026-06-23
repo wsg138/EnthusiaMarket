@@ -939,7 +939,7 @@ GUI/commands/scheduler/Plan → infrastructure (INFRA).
   Hermes deepseek-v4-pro → reviewed (capped per-tick batch to list size) → PR #65; detekt 0, suite green
   ```
 
-- [ ] **IS2-9** — admin vault inspection (REQ-295)
+- [x] **IS2-9** — admin vault inspection (REQ-295)
   References: REQ-295, src/main/kotlin/net/badgersmc/em/interaction/gui/ShopVaultMenu.kt, src/main/kotlin/net/badgersmc/em/application/ShopVaultService.kt, ShopCommands.kt
   Tag: INFRA
   Description: Add /shop admin vault <player> opening a paginated read view (VaultAdminMenu) of the
@@ -962,21 +962,21 @@ GUI/commands/scheduler/Plan → infrastructure (INFRA).
   test first: cancel aborts with no side effects; modified price is charged; invalid price ignored.
   Evidence: 
 
-- [ ] **IS2-12** — shulker box preview menu (REQ-298)
+- [x] **IS2-12** — shulker box preview menu (REQ-298)
   References: REQ-298, src/main/kotlin/net/badgersmc/em/interaction/gui, src/main/kotlin/net/badgersmc/em/interaction/gui/PurchaseMenu.kt
   Tag: INFRA
   Description: Add a read-only ShulkerPreviewMenu showing a shulker's contents; reachable when the sell
   item is a shulker box (button in PurchaseMenu / info card). Build green.
   Evidence: 
 
-- [ ] **IS2-13** — read-only shop contents view (REQ-299)
+- [x] **IS2-13** — read-only shop contents view (REQ-299)
   References: REQ-299, src/main/kotlin/net/badgersmc/em/interaction/gui
   Tag: INFRA
   Description: Add a read-only ShopContentsMenu mirroring the linked container's current stock (54-slot,
   all clicks cancelled). Reachable by owner/trusted/admin. Build green.
   Evidence: 
 
-- [ ] **IS2-14** — vault Redeem-All button (REQ-300)
+- [x] **IS2-14** — vault Redeem-All button (REQ-300)
   References: REQ-300, src/main/kotlin/net/badgersmc/em/interaction/gui/ShopVaultMenu.kt, src/main/kotlin/net/badgersmc/em/application/ShopVaultService.kt
   Tag: INFRA
   Description: Add a "Redeem All" control to ShopVaultMenu that withdraws every entry that fits into the
@@ -984,7 +984,7 @@ GUI/commands/scheduler/Plan → infrastructure (INFRA).
   Build green.
   Evidence: 
 
-- [ ] **IS2-15** — help and store commands (REQ-301)
+- [x] **IS2-15** — help and store commands (REQ-301)
   References: REQ-301, src/main/kotlin/net/badgersmc/em/infrastructure/commands, src/main/resources
   Tag: INFRA
   Description: Add /shophelp (config/lang-driven tutorial text) and /store (configurable store/Tebex
