@@ -221,6 +221,8 @@ shop:
     empty: "<gray>No recorded sales yet."
   admin:
     no_target: "<red>You're not looking at a shop sign or container."
+    contents:
+      unavailable: "<yellow>Can't read that shop's container — its chunk isn't loaded or the block is gone."
     info:
       header: "<gold>━━ Shop owned by <yellow><owner></yellow> ━━"
       where: "<gray>Sign <white><world> <x>,<y>,<z></white>  <dark_gray>|  <gray>Chest <white><cworld> <cx>,<cy>,<cz>"

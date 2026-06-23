@@ -77,8 +77,8 @@ class ShopVaultMenu(
             event.isCancelled = true
             val contents = vaultService.contents(owner.uniqueId)
             for ((item, total) in contents) {
-                val requested = item.maxStackSize.coerceAtMost(total)
-                redeem(player, item, requested)
+                // Redeem the FULL amount of each entry — "Redeem All" must not stop at one stack.
+                redeem(player, item, total)
             }
             ShopVaultMenu(owner, vaultService, p, lang).open(player)
         }, 4, 5)
@@ -97,19 +97,20 @@ class ShopVaultMenu(
             val give = item.clone().apply { amount = removed }
             val leftover = player.inventory.addItem(give)
             if (leftover.isNotEmpty()) {
-                val fit = removed - leftover.values.sumOf { it.amount }
-                if (fit > 0) {
-                    player.sendMessage(lang.msg("gui.vault.full", "left" to fit))
-                }
+                // `left` = amount that did NOT fit and goes back to the vault. Always tell the
+                // player, including when the inventory was completely full (nothing fit).
                 val leftoverAmount = leftover.values.sumOf { it.amount }
+                if (leftoverAmount > 0) {
+                    player.sendMessage(lang.msg("gui.vault.full", "left" to leftoverAmount))
+                }
                 try {
                     vaultService.deposit(owner.uniqueId, item.clone().apply { amount = 1 }, leftoverAmount)
                 } catch (e: Exception) {
                     log.warning("Vault re-deposit failed for ${owner.uniqueId} (amount=$leftoverAmount, type=${item.type}): ${e.message}")
                     val returnLeftover = player.inventory.addItem(item.clone().apply { amount = leftoverAmount })
-                    if (returnLeftover.isNotEmpty()) {
-                        log.warning("Player inventory full; ${returnLeftover.values.sumOf { it.amount }}x ${item.type} lost for ${owner.uniqueId}")
-                    }
+                    // Last resort: drop whatever still doesn't fit at the player's feet rather than
+                    // void it. Redeem-All loops this path, so a full inventory must never lose items.
+                    returnLeftover.values.forEach { drop -> player.world.dropItem(player.location, drop) }
                 }
             } else {
                 player.sendMessage(lang.msg("gui.vault.withdrew", "amount" to removed, "item" to item.type.name.lowercase()))

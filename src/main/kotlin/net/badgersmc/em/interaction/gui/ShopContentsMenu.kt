@@ -23,8 +23,13 @@ class ShopContentsMenu(
 ) : Menu {
 
     override fun open(player: Player) {
-        val container = loadedContainer(shop)
-        val contents = container?.inventory?.contents ?: emptyArray()
+        // Distinguish "can't read it" from "empty": a null container means the world/chunk isn't
+        // loaded or the block is gone — tell the admin rather than showing a misleading empty GUI.
+        val container = loadedContainer(shop) ?: run {
+            player.sendMessage(lang.msg("shop.admin.contents.unavailable"))
+            return
+        }
+        val contents = container.inventory.contents
 
         val gui = ChestGui(6, ComponentHolder.of(lang.msg("gui.shop_contents.title")))
         val pane = StaticPane(9, 6)
