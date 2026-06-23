@@ -7,6 +7,7 @@ import net.badgersmc.em.application.LookAtShopResolver
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.application.ShopSearchService
 import net.badgersmc.em.application.ShopSignRenderer
+import net.badgersmc.em.application.ShopVaultService
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
 import net.badgersmc.em.domain.shop.SignDirection
@@ -32,6 +33,7 @@ class ShopCommands(
     private val adminBreak: AdminBreakMode,
     private val signRenderer: ShopSignRenderer,
     private val lang: LangService,
+    private val vaultService: ShopVaultService,
 ) {
     @Subcommand("list")
     @Permission("enthusiamarket.shop.use")
@@ -277,6 +279,31 @@ class ShopCommands(
         }
         adminBreak.enable(player.uniqueId, durationMs)
         player.sendMessage(lang.msg("shop.admin.breakothers.enabled", "minutes" to (durationMs / 60_000)))
+    }
+
+    @Subcommand("admin vault")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminVault(
+        @Context sender: CommandSender,
+        @net.badgersmc.nexus.commands.annotations.Arg("player") name: String,
+    ) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val target = org.bukkit.Bukkit.getOfflinePlayer(name)
+        if (target.name == null && !target.hasPlayedBefore()) {
+            player.sendMessage(lang.msg("shop.cmd.unknown_player", "name" to name)); return
+        }
+        val displayName = target.name ?: name
+        net.badgersmc.em.interaction.gui.VaultAdminMenu(
+            target.uniqueId, displayName, vaultService, lang
+        ).open(player)
+    }
+
+    @Subcommand("admin contents")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminContents(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shop = lookAtShop(player) ?: run { player.sendMessage(lang.msg("shop.admin.no_target")); return }
+        net.badgersmc.em.interaction.gui.ShopContentsMenu(shop, lang).open(player)
     }
 
     companion object {

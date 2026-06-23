@@ -27,7 +27,6 @@ class ShopVaultMenu(
         private val log = Logger.getLogger(ShopVaultMenu::class.java.name)
     }
 
-    @Suppress("CyclomaticComplexMethod", "LongMethod")
     override fun open(player: Player) {
         val all = vaultService.contents(owner.uniqueId)
         val pages = if (all.isEmpty()) 1 else (all.size + PAGE_SIZE - 1) / PAGE_SIZE
@@ -49,39 +48,13 @@ class ShopVaultMenu(
                 event.isCancelled = true
                 val shift = event.isShiftClick
                 val requested = if (shift) total else item.maxStackSize.coerceAtMost(total)
-                val removed = vaultService.withdraw(owner.uniqueId, item.clone().apply { amount = 1 }, requested)
-                if (removed > 0) {
-                    val give = item.clone().apply { amount = removed }
-                    val leftover = player.inventory.addItem(give)
-                    if (leftover.isNotEmpty()) {
-                        // Re-deposit what didn't fit
-                        val fit = removed - leftover.values.sumOf { it.amount }
-                        if (fit > 0) {
-                            player.sendMessage(lang.msg("gui.vault.full", "left" to (total - fit)))
-                        }
-                        val leftoverAmount = leftover.values.sumOf { it.amount }
-                        try {
-                            vaultService.deposit(owner.uniqueId, item.clone().apply { amount = 1 }, leftoverAmount)
-                        } catch (e: Exception) {
-                            // Re-deposit failed — try to return the items to the player inventory
-                            // so they're not lost. If the inventory is still full, log a warning and
-                            // accept the loss (items are in transient memory at this point).
-                            log.warning("Vault re-deposit failed for ${owner.uniqueId} (amount=$leftoverAmount, type=${item.type}): ${e.message}")
-                            val returnLeftover = player.inventory.addItem(item.clone().apply { amount = leftoverAmount })
-                            if (returnLeftover.isNotEmpty()) {
-                                log.warning("Player inventory full; ${returnLeftover.values.sumOf { it.amount }}x ${item.type} lost for ${owner.uniqueId}")
-                            }
-                        }
-                    } else {
-                        player.sendMessage(lang.msg("gui.vault.withdrew", "amount" to removed, "item" to item.type.name.lowercase()))
-                    }
-                }
+                redeem(player, item, requested)
                 // Re-open to refresh
                 ShopVaultMenu(owner, vaultService, p, lang).open(player)
             }, slot % 9, slot / 9)
         }
 
-        // Bottom row: prev / page / next
+        // Bottom row: prev / redeem-all / next
         if (p > 1) {
             pane.addItem(GuiItem(ItemStack(Material.ARROW)) { event ->
                 event.isCancelled = true
@@ -94,8 +67,55 @@ class ShopVaultMenu(
                 ShopVaultMenu(owner, vaultService, p + 1, lang).open(player)
             }, 8, 5)
         }
+        // Redeem All button
+        val redeemAllIcon = ItemStack(Material.EMERALD_BLOCK)
+        val redeemAllMeta = redeemAllIcon.itemMeta
+        redeemAllMeta.displayName(lang.msg("gui.vault.redeem_all_name"))
+        redeemAllMeta.lore(listOf(lang.msg("gui.vault.redeem_all_lore")))
+        redeemAllIcon.itemMeta = redeemAllMeta
+        pane.addItem(GuiItem(redeemAllIcon) { event ->
+            event.isCancelled = true
+            val contents = vaultService.contents(owner.uniqueId)
+            for ((item, total) in contents) {
+                // Redeem the FULL amount of each entry — "Redeem All" must not stop at one stack.
+                redeem(player, item, total)
+            }
+            ShopVaultMenu(owner, vaultService, p, lang).open(player)
+        }, 4, 5)
 
         gui.blockItemTheft()
         gui.show(player)
+    }
+
+    /**
+     * Withdraw [requested] of [item] from the owner's vault into [player]'s inventory,
+     * re-depositing overflow. Returns the number of items actually redeemed.
+     */
+    private fun redeem(player: Player, item: ItemStack, requested: Int): Int {
+        val removed = vaultService.withdraw(owner.uniqueId, item.clone().apply { amount = 1 }, requested)
+        if (removed > 0) {
+            val give = item.clone().apply { amount = removed }
+            val leftover = player.inventory.addItem(give)
+            if (leftover.isNotEmpty()) {
+                // `left` = amount that did NOT fit and goes back to the vault. Always tell the
+                // player, including when the inventory was completely full (nothing fit).
+                val leftoverAmount = leftover.values.sumOf { it.amount }
+                if (leftoverAmount > 0) {
+                    player.sendMessage(lang.msg("gui.vault.full", "left" to leftoverAmount))
+                }
+                try {
+                    vaultService.deposit(owner.uniqueId, item.clone().apply { amount = 1 }, leftoverAmount)
+                } catch (e: Exception) {
+                    log.warning("Vault re-deposit failed for ${owner.uniqueId} (amount=$leftoverAmount, type=${item.type}): ${e.message}")
+                    val returnLeftover = player.inventory.addItem(item.clone().apply { amount = leftoverAmount })
+                    // Last resort: drop whatever still doesn't fit at the player's feet rather than
+                    // void it. Redeem-All loops this path, so a full inventory must never lose items.
+                    returnLeftover.values.forEach { drop -> player.world.dropItem(player.location, drop) }
+                }
+            } else {
+                player.sendMessage(lang.msg("gui.vault.withdrew", "amount" to removed, "item" to item.type.name.lowercase()))
+            }
+        }
+        return removed
     }
 }

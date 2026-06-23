@@ -221,6 +221,8 @@ shop:
     empty: "<gray>No recorded sales yet."
   admin:
     no_target: "<red>You're not looking at a shop sign or container."
+    contents:
+      unavailable: "<yellow>Can't read that shop's container — its chunk isn't loaded or the block is gone."
     info:
       header: "<gold>━━ Shop owned by <yellow><owner></yellow> ━━"
       where: "<gray>Sign <white><world> <x>,<y>,<z></white>  <dark_gray>|  <gray>Chest <white><cworld> <cx>,<cy>,<cz>"
@@ -241,6 +243,14 @@ shop:
     saved: "<green>Shop updated."
   delete:
     done: "<yellow>Shop deleted."
+  store:
+    url: "<green>Our web store: <aqua><click:open_url:'<url>'><url></click>"
+  help:
+    line1: "<gold>━━ Shop Tutorial ━━"
+    line2: "<gray>1. Place a sign on a container (chest, barrel, etc.) inside your stall."
+    line3: "<gray>2. Write [SELL], [BUY], or [TRADE] on the first line."
+    line4: "<gray>3. Line 2: amount to trade. Line 3: price (or cost item for TRADE)."
+    line5: "<gray>4. Use /shop edit to manage your shops, and /shop search to find items."
 
 gui:
   common:
@@ -271,6 +281,8 @@ gui:
     sell_action_lore_click: "<gray>Click to sell to this shop"
     trade_name: "<light_purple><bold>TRADE</bold>"
     trade_lore_click: "<gray>Click to pay <gold><cost></gold>× and receive the item"
+    shulker_preview_name: "<light_purple>Preview Contents"
+    shulker_preview_lore: "<gray>Click to view shulker box contents"
     search:
       title: "<dark_gray>Shops selling <query>"
       result: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
@@ -321,6 +333,15 @@ gui:
     withdrew: "<green>Withdrew <white><amount>x <item></white>."
     full: "<yellow>Inventory full — <white><left></white> left in the vault."
     empty: "<gray>Your barter vault is empty."
+    redeem_all_name: "<green><bold>Redeem All"
+    redeem_all_lore: "<gray>Click to withdraw everything"
+  vault_admin:
+    title: "<dark_gray><name>'s barter vault"
+    amount_lore: "<gray>Stored: <aqua><amount>"
+  shop_contents:
+    title: "<dark_gray>Shop container contents"
+  shulker_preview:
+    title: "<dark_gray>Shulker Box Preview"
   edit:
     title: "<dark_gray>Edit Shop"
     frozen_name: "<red><bold>SHOP FROZEN"

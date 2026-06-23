@@ -7,6 +7,7 @@ import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ContainerTradeResult
 import net.badgersmc.em.application.ContainerTradeService
+import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
@@ -15,6 +16,7 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.BlockStateMeta
 
 /**
  * Trade GUI for a sign shop. Direction-aware (REQ-006):
@@ -96,6 +98,9 @@ class PurchaseMenu(
             }
         }, 4, 2)
 
+        // Shulker box preview button (IS2-12, REQ-298)
+        addShulkerPreview(pane, player)
+
         gui.addPane(pane)
         gui.blockItemTheft()
         gui.show(player)
@@ -108,5 +113,19 @@ class PurchaseMenu(
         if (lore.isNotEmpty()) meta.lore(lore)
         item.itemMeta = meta
         return item
+    }
+
+    /** IS2-12, REQ-298: add a shulker preview button when the shop sells a shulker box. */
+    private fun addShulkerPreview(pane: StaticPane, player: Player) {
+        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return
+        if ((sellStack.itemMeta as? BlockStateMeta)?.blockState !is org.bukkit.block.ShulkerBox) return
+        pane.addItem(GuiItem(decorated(
+            Material.SHULKER_BOX,
+            lang.msg("gui.shop.shulker_preview_name"),
+            listOf(lang.msg("gui.shop.shulker_preview_lore"))
+        )) { event ->
+            event.isCancelled = true
+            ShulkerPreviewMenu(sellStack.clone(), lang).open(player)
+        }, 4, 0)
     }
 }
