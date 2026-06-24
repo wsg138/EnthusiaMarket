@@ -14,8 +14,10 @@ import java.util.logging.Logger
 class MenuFactory(
     private val platformDetectionService: PlatformDetectionService,
     private val config: EnthusiaMarketConfig,
-    private val logger: Logger
 ) {
+
+    private val logger = Logger.getLogger(MenuFactory::class.java.name)
+
     fun shouldUseBedrockMenus(player: Player): Boolean {
         return try {
             if (!config.bedrock.forceForms && !platformDetectionService.isBedrockPlayer(player)) {

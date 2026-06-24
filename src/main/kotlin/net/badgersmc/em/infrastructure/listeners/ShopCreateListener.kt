@@ -32,9 +32,10 @@ open class ShopCreateListener(
     private val shopRepository: ShopRepository,
     private val lang: LangService,
     private val menuFactory: net.badgersmc.em.interaction.MenuFactory,
-    private val logger: java.util.logging.Logger,
     private val guildProvider: GuildProvider? = null
 ) : Listener {
+
+    private val logger = java.util.logging.Logger.getLogger(ShopCreateListener::class.java.name)
 
     @EventHandler
     fun onSignInteract(event: PlayerInteractEvent) {

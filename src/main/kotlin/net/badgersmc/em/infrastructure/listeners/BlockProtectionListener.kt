@@ -28,9 +28,10 @@ class BlockProtectionListener(
     private val shopRepository: ShopRepository,
     private val adminBreak: AdminBreakMode,
     private val management: ShopManagementService,
-    private val logger: Logger,
     private val lang: LangService
 ) : Listener {
+
+    private val logger = Logger.getLogger(BlockProtectionListener::class.java.name)
 
     @EventHandler(ignoreCancelled = true)
     fun onBlockBreak(event: BlockBreakEvent) {

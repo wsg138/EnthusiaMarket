@@ -16,9 +16,10 @@ import java.util.logging.Logger
 @net.badgersmc.nexus.paper.listeners.Listener
 @Component
 class ExplodeCleanupListener(
-    private val shopRepository: ShopRepository,
-    private val logger: Logger
+    private val shopRepository: ShopRepository
 ) : Listener {
+
+    private val logger = Logger.getLogger(ExplodeCleanupListener::class.java.name)
 
     @EventHandler(ignoreCancelled = true)
     fun onExplode(event: EntityExplodeEvent) {

@@ -28,8 +28,9 @@ open class ShopInteractListener(
     private val menuFactory: MenuFactory,
     private val tradeService: ContainerTradeService,
     private val lang: LangService,
-    private val logger: java.util.logging.Logger,
 ) : Listener {
+
+    private val logger = java.util.logging.Logger.getLogger(ShopInteractListener::class.java.name)
 
     @EventHandler
     fun onSignRightClick(event: PlayerInteractEvent) {

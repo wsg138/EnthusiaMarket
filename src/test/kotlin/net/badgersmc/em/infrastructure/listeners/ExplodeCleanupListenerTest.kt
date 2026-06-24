@@ -15,7 +15,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
-import java.util.logging.Logger
 import kotlin.test.Test
 
 class ExplodeCleanupListenerTest {
@@ -35,7 +34,6 @@ class ExplodeCleanupListenerTest {
     @Test
     fun `explosion destroys container with linked shops cleans them up`() {
         val repo = mockk<ShopRepository>(relaxed = true)
-        val logger = mockk<Logger>(relaxed = true)
 
         val container = mockk<Container>(relaxed = true)
         val block = mockk<Block>(relaxed = true)
@@ -63,7 +61,7 @@ class ExplodeCleanupListenerTest {
 
         val entity = mockk<Entity>(relaxed = true)
         val event = EntityExplodeEvent(entity, loc, listOf(block), 1.0f, ExplosionResult.DESTROY)
-        val listener = ExplodeCleanupListener(repo, logger)
+        val listener = ExplodeCleanupListener(repo)
 
         listener.onExplode(event)
 
@@ -74,7 +72,6 @@ class ExplodeCleanupListenerTest {
     @Test
     fun `explosion without containers does nothing`() {
         val repo = mockk<ShopRepository>(relaxed = true)
-        val logger = mockk<Logger>(relaxed = true)
 
         val block = mockk<Block>(relaxed = true)
         val state = mockk<org.bukkit.block.BlockState>(relaxed = true)
@@ -84,7 +81,7 @@ class ExplodeCleanupListenerTest {
         val loc = mockk<Location>(relaxed = true)
         val event = EntityExplodeEvent(entity, loc, listOf(block), 1.0f, ExplosionResult.DESTROY)
 
-        val listener = ExplodeCleanupListener(repo, logger)
+        val listener = ExplodeCleanupListener(repo)
         listener.onExplode(event)
 
         verify(exactly = 0) { repo.delete(any()) }
@@ -93,7 +90,6 @@ class ExplodeCleanupListenerTest {
     @Test
     fun `explosion destroys container without linked shops does nothing`() {
         val repo = mockk<ShopRepository>(relaxed = true)
-        val logger = mockk<Logger>(relaxed = true)
 
         val container = mockk<Container>(relaxed = true)
         val block = mockk<Block>(relaxed = true)
@@ -110,7 +106,7 @@ class ExplodeCleanupListenerTest {
         val entity = mockk<Entity>(relaxed = true)
         val event = EntityExplodeEvent(entity, loc, listOf(block), 1.0f, ExplosionResult.DESTROY)
 
-        val listener = ExplodeCleanupListener(repo, logger)
+        val listener = ExplodeCleanupListener(repo)
         listener.onExplode(event)
 
         verify(exactly = 0) { repo.delete(any()) }

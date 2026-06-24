@@ -19,7 +19,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
-import java.util.logging.Logger
 import kotlin.test.Test
 import net.kyori.adventure.text.Component
 
@@ -98,7 +97,7 @@ class BlockProtectionListenerTest {
 
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -120,7 +119,7 @@ class BlockProtectionListenerTest {
         val management = mockk<ShopManagementService>(relaxed = true)
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), management, mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), management, mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -143,7 +142,7 @@ class BlockProtectionListenerTest {
 
         val block = mockSign(x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -167,7 +166,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer(x = 50, y = 64, z = 60)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -190,7 +189,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer(x = 50, y = 64, z = 60)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -210,7 +209,7 @@ class BlockProtectionListenerTest {
 
         val block = mockContainer()
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -225,7 +224,7 @@ class BlockProtectionListenerTest {
         // block.state returns null by default from relaxed mockk
 
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 
@@ -242,7 +241,7 @@ class BlockProtectionListenerTest {
         val sign = mockk<Sign>(relaxed = true)
         val block = mockBlock(sign, x = 100, y = 64, z = 200)
         val event = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
 
         listener.onBlockBreak(event)
 

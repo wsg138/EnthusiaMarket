@@ -21,7 +21,6 @@ import org.junit.jupiter.api.Test
 import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
-import java.util.logging.Logger
 
 class ShopDeletedEventTest {
 
@@ -73,7 +72,7 @@ class ShopDeletedEventTest {
 
         val block = mockContainerBlock()
         val breakEvent = BlockBreakEvent(block, player)
-        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk<Logger>(relaxed = true), mockk(relaxed = true))
+        val listener = BlockProtectionListener(repo, mockk<AdminBreakMode>(relaxed = true), mockk<ShopManagementService>(relaxed = true), mockk(relaxed = true))
 
         // ── When: the container is broken ──
         listener.onBlockBreak(breakEvent)
@@ -88,7 +87,6 @@ class ShopDeletedEventTest {
     fun `explosion destroying container fires ShopDeletedEvent with correct owner UUID`() {
         // ── Given: an explosion that destroys a container with linked shops ──
         val repo = mockk<ShopRepository>(relaxed = true)
-        val logger = mockk<Logger>(relaxed = true)
         val shop = makeShop()
         every { repo.findByContainer("world", 50, 64, 60) } returns listOf(shop)
 
@@ -96,7 +94,7 @@ class ShopDeletedEventTest {
         val entity = mockk<Entity>(relaxed = true)
         val loc = mockk<Location>(relaxed = true)
         val explodeEvent = EntityExplodeEvent(entity, loc, listOf(block), 1.0f, ExplosionResult.DESTROY)
-        val listener = ExplodeCleanupListener(repo, logger)
+        val listener = ExplodeCleanupListener(repo)
 
         // ── When: the explosion happens ──
         listener.onExplode(explodeEvent)
