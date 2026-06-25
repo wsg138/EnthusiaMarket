@@ -1,48 +1,25 @@
 ---
-title: How do I…?
+title: "How do I…"
 audience: player
 topic: how-do-i
-summary: Index of common player tasks with deep links to the right feature page.
-keywords: [index, how to, tasks, find]
-related: [walkthrough]
-updated: 2026-06-06
+summary: "Task-oriented index: find the page that answers your question."
+keywords: [how-to, index, tasks]
+related: [stalls, rent, shop-creation, buy-sell-trade, barter-vault, shop-search, shop-management, bedrock, guild-stalls]
+updated: 2026-06-25
 ---
 
-# How do I…?
+# How do I…
 
-Quick index. Scan for your task; click through to the page that answers it.
+Pick what you want to do:
 
-## Stalls
+- **[Get a stall](stalls.md)** — Buy or sell a market stall.
+- **[Pay rent](rent.md)** — Keep your stall from getting evicted.
+- **[Create a shop](shop-creation.md)** — Place a sign and start trading.
+- **[Buy, sell, or trade](buy-sell-trade.md)** — Use someone else's shop as a customer.
+- **[Collect barter payments](barter-vault.md)** — Withdraw items from TRADE shop transactions.
+- **[Search for goods](shop-search.md)** — Find shops selling what you need.
+- **[Manage your shops](shop-management.md)** — Trust friends, edit prices, delete shops.
+- **[Run a guild market](guild-stalls.md)** — Guild stalls, tariffs, and embargoes.
+- **[Play on Bedrock](bedrock.md)** — Differences from Java Edition.
 
-- [Bid on a stall](auctions.md#bidding)
-- [Check my rent](rent.md#checking-rent)
-- [Pay rent](rent.md#paying-rent)
-- [Check my ownership limits](limits.md#checking-your-limits)
-- [Add a member to my stall](stalls.md#adding-members)
-- [Remove a member](stalls.md#removing-members)
-- [Sell my stall back to the system](stalls.md#sellback)
-- [Sell my stall to another player](stalls.md#sell-offers)
-
-## Auctions
-
-- [Browse active auctions](auctions.md#browsing)
-- [Place a bid](auctions.md#bidding)
-- [Understand anti-snipe](auctions.md#anti-snipe)
-
-## Shops
-
-- [Create a shop](shops.md#creating-a-shop)
-- [Set up a sell shop](shops.md#sell-shops)
-- [Set up a buy shop](shops.md#buy-shops)
-- [Set up a barter shop](shops.md#trade-barter-shops)
-- [Trust a player on my shop](shops.md#trusting-players)
-- [Untrust a player](shops.md#untrusting-players)
-- [Edit my shop](shops.md#editing-shops)
-- [Delete my shop](shops.md#deleting-shops)
-- [Collect shop earnings](shops.md#shop-vault)
-- [Search for shops](shops.md#searching-for-shops)
-- [View shop history](shops.md#transaction-history)
-
-## Other
-
-- [What's different on Bedrock?](bedrock.md)
+Or just type `/em help` in-game for the clickable topic menu.

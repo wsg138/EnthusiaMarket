@@ -12,3 +12,5 @@ libs/
 # Local Claude / SPEAR state
 .claude/
 .kotlin/
+.wiki-venv/
+site/

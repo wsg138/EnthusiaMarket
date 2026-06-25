@@ -391,6 +391,18 @@ return the stall to UNOWNED.
 
 **Ubiquitous.** THE SYSTEM SHALL render all menu item names and lore in normal-weight, non-italic text. Color SHALL be reserved for semantic categories: green for confirm/action/create, red for danger/delete/cancel, gold for currency/price, white for neutral item info, gray for secondary labels, aqua for navigation, yellow for warnings, and light-purple for barter/TRADE indicators. Bold or italic styling SHALL NOT be used in menu text.
 
+### REQ-296 — Player-facing wiki site
+
+**Ubiquitous.** THE SYSTEM SHALL provide a static documentation site at a stable public URL built with mkdocs-material from markdown source under `wiki/docs/`, organised into Getting Started, Players, Admins, and Developers sections matching the layout of the LumaGuilds wiki.
+
+### REQ-297 — Wiki auto-deployment on merge
+
+**Event-driven.** WHEN commits are pushed to the main branch that touch `wiki/**`, `mkdocs.yml`, or the deploy workflow THE SYSTEM SHALL build the mkdocs site with `--strict` and deploy it to GitHub Pages via the official `actions/deploy-pages` action.
+
+### REQ-298 — Wiki quality enforcement
+
+**Event-driven.** WHEN a pull request touches `wiki/**` THE SYSTEM SHALL run in CI: frontmatter validation, help-topic parity check, markdown lint, and a strict mkdocs build — blocking merge on any failure.
+
 ---
 
 ## Acceptance

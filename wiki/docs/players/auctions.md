@@ -16,7 +16,7 @@ Auctions are how you win stall ownership. When a stall becomes available (new, r
 
 Open the auction browser with:
 
-```
+```text
 /em auctions
 ```
 
@@ -24,7 +24,7 @@ This shows all active auctions with stall IDs, current high bids, and time remai
 
 ## Bidding
 
-```
+```text
 /em bid <auction-id> <amount>
 ```
 

@@ -1,72 +1,77 @@
 ---
-title: Frequently Asked Questions
+title: FAQ
 audience: player
 topic: faq
-summary: Common questions and quick answers about EnthusiaMarket.
-keywords: [faq, questions, help, troubleshooting]
-related: [welcome, walkthrough]
-updated: 2026-06-06
+summary: Common questions from new players about EnthusiaMarket.
+keywords: [faq, common questions, help, troubleshooting]
+related: [walkthrough, stalls, rent, shop-creation]
+updated: 2026-06-25
 ---
 
-# Frequently Asked Questions
+# FAQ
 
-## General
+## How do I get a stall?
 
-**Q: How do I check my stall's rent?**
-A: Click the stall sign. It shows the rent amount, time until next collection, and time remaining in the current period.
+Find an `UNOWNED` stall with a purchase sign. Right-click the sign to buy it. You need the `enthusiamarket.stall.buyout` permission (granted by default).
 
-**Q: What happens if I can't pay rent?**
-A: Your stall enters a 3-day grace period. You can still pay during grace. After grace expires, the stall is re-auctioned and you lose ownership.
+## Why can't I place a shop sign?
 
-**Q: Can I own multiple stalls?**
-A: Yes, up to your ownership limit. Check with `/em limit`. Default limits depend on your permission group.
+The sign must be on a **container** (chest, barrel, shulker box) inside a stall you **own** (or have member access to). For guild stalls, you need the `MANAGE_SHOPS` guild permission.
 
-**Q: Can my guild own a stall?**
-A: Yes. Guild members with the `MANAGE_SHOPS` permission can manage guild-owned stalls. Rent can be paid from the guild bank (configurable).
+## What's the difference between BUY, SELL, and TRADE?
 
-## Auctions
+- **SELL**: You sell items from your container. Players pay you. Container must have stock.
+- **BUY**: You buy items from players. You pay them. Stock (currency available) is checked against your economy balance.
+- **TRADE**: Item-for-item exchange. Players give you one item to receive another.
 
-**Q: How do I find active auctions?**
-A: Use `/em auctions` to open the auction browser menu.
+## How do I get paid from TRADE shops?
 
-**Q: What's the anti-snipe timer?**
-A: If a bid is placed within the last 30 seconds of an auction, the timer extends by 30 seconds. This prevents last-millisecond sniping.
+Items from TRADE transactions go to your **shop vault**. Open it with `/shopvault open`.
 
-**Q: Can I cancel my bid?**
-A: No. Bids are final. Only an admin can cancel an auction.
+## How is rent calculated?
 
-## Shops
+Rent depends on your server's config:
 
-**Q: How do I create a shop sign?**
-A: Hold the item you're trading, place a sign on a container inside your stall, and put a direction token — `[SELL]`, `[BUY]`, or `[TRADE]` — on line 1, the quantity on line 2, and the price on line 3. See [Shops](../players/shops.md) for full details.
+- **Formula mode**: `purchasePrice × rentPct%` per day (e.g. 1% of purchase price).
+- **Flat mode**: A fixed amount per period regardless of stall price.
 
-**Q: Where does the money from sales go?**
-A: Into your shop vault. Open it with `/shopvault open` (or `/svault open`).
+Check the current rent on your stall by double-clicking the purchase sign.
 
-**Q: Can I buy items from players (not just sell)?**
-A: Yes. Use a BUY-direction shop. See [Trade Directions](../players/shops.md#trade-directions).
+## What happens if I can't pay rent?
 
-**Q: What's the tax on trades?**
-A: By default, 2% tax on shop transactions. The tax destination is configurable by admins.
+Your stall enters a **grace period** (3 days by default). During grace, the stall is still yours and shops still work. If you pay rent (double-click the purchase sign twice), you're back in good standing. If the grace period expires, you're **evicted** — all shops are wiped and the stall returns to UNOWNED.
 
-## Rent & Ownership
+## Can I sell my stall?
 
-**Q: How is rent calculated?**
-A: Default: 1% of your winning bid per day. Admins can also use a flat-rate mode.
+Yes. Use `/em stall offer <stallId> <price>` to create a direct-sale listing. Another player buys it with `/em stall buy <stallId>`. You receive the listed price minus tax.
 
-**Q: What happens to my shops when my stall is re-auctioned?**
-A: All shops in the stall are deleted. Items in shop containers are lost — withdraw them before grace expires.
+Alternatively, use `/em sellback` for a prorated refund (partial, not the full purchase price).
 
-**Q: Can I sell my stall to another player?**
-A: Yes. Use `/em sellback <stall>` to relinquish ownership for a refund, or use the sell offer system to sell to a specific player.
+## How do I search for items to buy?
 
-## Troubleshooting
+```text
+/shop search <item>
+```
 
-**Q: My shop sign isn't working.**
-A: Make sure: (1) the sign is on a container inside your stall, (2) you were holding the item and line 1 has a valid direction token (`[SELL]`, `[BUY]`, or `[TRADE]`), (3) lines 2-3 have valid numbers, (4) the container has stock.
+Tab-complete works for item names. Add `buy` or `sell` to filter by direction. Results show in a GUI with live stock counts.
 
-**Q: I can't build in my stall.**
-A: You need to be the stall owner, a member, or have build permissions. Ask the stall owner to add you as a member.
+## I'm on Bedrock — does everything work?
 
-**Q: My items disappeared after my stall was re-auctioned.**
-A: Items in containers are lost when a stall is re-auctioned. Always withdraw valuables before grace expires.
+Mostly. Creation and purchase menus open as Cumulus forms instead of inventory GUIs. Sign interactions work the same way. See **[Bedrock differences](../players/bedrock.md)** for details.
+
+## How do I list my shop for others to find?
+
+New shops are searchable by default (`/shop search`). You can toggle search visibility in the shop edit GUI (`/shop edit`).
+
+## What are guild tariffs and embargoes?
+
+Guild leaders can set trade policies against other guilds:
+
+- **Tariff**: Extra fee percentage on trades between guilds.
+- **Embargo**: Complete block on all trades between guilds.
+
+Manage these with `/em guild policy` (requires `MANAGE_SHOPS` guild permission).
+
+## Where do I report a bug?
+
+Report it in our Discord, or open an issue at <https://github.com/BadgersMC/EnthusiaMarket/issues>.

@@ -2,65 +2,73 @@
 title: Rent
 audience: player
 topic: rent
-summary: How rent works — calculation, payment, grace period, and eviction.
-keywords: [rent, payment, grace, eviction, daily]
-related: [stalls, auctions]
-updated: 2026-06-06
+summary: How stall rent works — formula vs flat, collection, grace period, eviction, and extension.
+keywords: [rent, eviction, grace, extension, formula, flat]
+related: [stalls, shop-creation]
+updated: 2026-06-25
 ---
 
 # Rent
 
-Rent is the daily cost of keeping your stall. Pay it on time or lose your stall.
+Every stall you own costs rent. If you don't pay, you lose the stall. Here's how it works.
 
 ## How rent is calculated
 
-Rent is recalculated each time a new auction is won. The default formula:
+Rent depends on the server's config:
 
+### Formula mode (default)
+
+```text
+dailyRent = purchasePrice × rentPct%
 ```
-daily rent = winning bid × 1%
+
+Example: you bought a stall for $10,000. At 1%, your daily rent is $100.
+
+### Flat mode
+
+```text
+dailyRent = flatAmount
 ```
 
-For example, if you won an auction at 10,000 coins, your daily rent is 100 coins.
+Same amount per period regardless of what the stall cost. Example: $500/day flat.
 
-Admins can also configure a **flat rate** mode where every stall pays the same fixed amount.
+## When rent is collected
 
-## Checking rent
+Rent is collected automatically once per **collection interval** (default: every 24 hours). The system checks your economy balance and deducts the rent amount.
 
-Click your stall sign. It shows:
+## What happens if you can't pay
 
-- Rent amount due.
-- Time until next collection.
-- Time remaining in current period (if in grace).
+If your balance is too low when rent is collected:
 
-## Paying rent
+1. Your stall enters **GRACE** state — a warning period.
+2. During grace, your stall is still yours. Shops still work. You can still use the stall.
+3. You have a **grace period** (default 3 days) to pay rent.
+4. If you pay rent during grace, you return to OWNED in good standing.
+5. If the grace period expires without payment: **eviction**. All your shops are wiped and the stall goes back to UNOWNED.
 
-Click the stall sign and confirm the payment. The amount is deducted from your wallet.
+## How to pay or extend rent
 
-You can also see rent info via the admin info command if you have permissions.
+**Right-click the purchase sign twice** within 10 seconds (the confirmation window). Each double-click extends rent by one period.
 
-## Grace period
+You can pre-pay multiple periods ahead — the config option `rent.maxPrepaidPeriods` controls the cap (0 = unlimited).
 
-If rent isn't paid on time, your stall enters **grace** for **3 days**. During grace:
+## Check your rent status
 
-- You can still pay rent to recover the stall.
-- Your shops still work.
-- A warning appears on the sign.
+Use the purchase sign — the fourth line shows your remaining rent time in `dd:hh:mm:ss` format.
 
-## Eviction
+Or run:
 
-After grace expires, the stall is **re-auctioned**:
+```text
+/em stall info <stallId>
+```
 
-1. All shops inside are **deleted**.
-2. Items in containers are **lost**.
-3. A new auction starts for the stall.
-4. You receive no refund.
+## Config summary
 
-> **Warning:** Withdraw all valuable items before grace expires. Items left in containers are gone forever.
-
-## Rent collection interval
-
-Rent is collected every **24 hours** by default. The interval is configurable by admins.
-
-## Guild-owned stalls
-
-If a guild owns a stall, rent can be paid from the **guild bank** (configurable). Any guild member can pay rent during grace to save the stall.
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `rent.mode` | `formula` | `formula` (percentage) or `flat` (fixed) |
+| `rent.formulaPct` | `1.0` | Percentage of purchase price (1.0 = 1%) |
+| `rent.flatAmount` | `0` | Flat amount per period |
+| `rent.collectionInterval` | `P1D` | How often rent is collected (1 day) |
+| `rent.gracePeriod` | `P3D` | Grace period before eviction (3 days) |
+| `rent.maxPrepaidPeriods` | `0` | Max periods you can pre-pay (0 = unlimited) |

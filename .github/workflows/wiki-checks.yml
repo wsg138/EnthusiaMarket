@@ -1,0 +1,52 @@
+name: Wiki Checks
+
+on:
+  pull_request:
+    paths:
+      - 'wiki/**'
+      - 'mkdocs.yml'
+      - 'tools/wiki/**'
+      - '.github/workflows/wiki-checks.yml'
+      - '.markdownlint.jsonc'
+
+jobs:
+  frontmatter-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pyyaml
+      - run: python tools/wiki/lint_frontmatter.py
+
+  frontmatter-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python tools/wiki/check_topic_parity.py
+
+  markdown-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@b4c9feab76d8025d1e83c653fa3990936df0e6c8  # v16.0.0
+        with:
+          config: '.markdownlint.jsonc'
+          globs: |
+            wiki/docs/**/*.md
+
+  mkdocs-strict-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: wiki/requirements.txt
+      - run: pip install -r wiki/requirements.txt
+      - run: mkdocs build --strict

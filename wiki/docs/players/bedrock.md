@@ -1,57 +1,46 @@
 ---
-title: Bedrock Edition
+title: Bedrock differences
 audience: player
 topic: bedrock
-summary: What's different for Bedrock players — forms, shops, and known limitations.
-keywords: [bedrock, floodgate, forms, cumulus]
-related: [shops, stalls]
-updated: 2026-06-06
+summary: What's different when playing EnthusiaMarket on Bedrock Edition.
+keywords: [bedrock, geyser, floodgate, cumulus, forms, crossplay]
+related: [shop-creation, buy-sell-trade, shop-management]
+updated: 2026-06-25
 ---
 
-# Bedrock Edition
+# Bedrock differences
 
-EnthusiaMarket supports Bedrock players through Floodgate. Most features work the same, but there are some differences.
+EnthusiaMarket supports Bedrock players through Geyser and Floodgate. Most features work the same, with a few differences.
 
-## What works the same
+## Menus
 
-- Bidding on auctions (`/em bid`).
-- Paying rent (click the stall sign).
-- Trading at shops (click shop signs).
-- Viewing auction browser (`/em auctions`).
+Java players see **inventory GUIs** (chest menus). Bedrock players see **Cumulus forms** — chat-based windows with buttons.
 
-## What's different
+The same actions are available; the presentation differs:
 
-### Forms instead of signs
+- **Shop creation**: A form with dropdowns for direction, amount, and price.
+- **Shop purchase**: A form showing the item, cost, and trade count.
+- **Shop edit**: A form version of the Java edit GUI.
 
-Bedrock players can't edit sign text the same way Java players do. EnthusiaMarket provides **Cumulus forms** (Bedrock-native UI) for:
+## Sign interactions
 
-- Creating and editing shops.
-- Managing trust.
-- Browsing auctions.
+Right-clicking and sneak+click work the same on Bedrock. The shop signs update identically.
 
-When you place a shop sign, a form opens automatically to configure it.
+## Config
 
-### Shop creation
+Admins can control Bedrock behaviour:
 
-Instead of typing on the sign:
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `bedrock.forceForms` | `false` | Use Cumulus forms even without Floodgate (for testing). |
+| `bedrock.formTimeoutSec` | `60` | Seconds before a form auto-closes. |
+| `shop.allowBedrockEdit` | `true` | Allow Bedrock players to edit sign content via form. |
 
-1. Place a sign on a container.
-2. A form opens asking for quantity, price, and direction.
-3. Submit the form — the shop is created.
+## Placeholders
 
-### Menu interactions
-
-Right-click menus (like `/shop edit`) open as Bedrock forms instead of chat menus.
+PlaceholderAPI expansions (`%enthusiamarket_*%`) work the same across both editions.
 
 ## Known limitations
 
-- Some advanced sign formatting may not render identically on Bedrock.
-- Form timeout: 60 seconds (configurable). If you don't complete the form in time, you'll need to start over.
-
-## Troubleshooting
-
-**Q: The form isn't opening when I place a sign.**
-A: Make sure Floodgate is installed and you're connected as a Bedrock player. Ask staff to check the `forceForms` config option.
-
-**Q: I can't edit a shop sign.**
-A: Bedrock players use forms, not sign editing. Use `/shop edit` to open the edit form.
+- Some GUIs with complex layouts may render differently as forms.
+- If a form times out, reopen it by repeating the command or clicking the sign again.

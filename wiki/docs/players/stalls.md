@@ -2,80 +2,140 @@
 title: Stalls
 audience: player
 topic: stalls
-summary: How stalls work — ownership, members, sellback, and sell offers.
-keywords: [stalls, ownership, members, sellback, sell offer]
-related: [auctions, rent, shops]
-updated: 2026-06-06
+summary: How to buy, own, and sell market stalls — lifecycle, auctions, and sellback.
+keywords: [stalls, buy, sell, auction, sellback, lifecycle, purchase sign]
+related: [rent, shop-creation, guild-stalls]
+updated: 2026-06-25
 ---
 
 # Stalls
 
-Stalls are the foundation of EnthusiaMarket. Every shop, trade, and rental flows through stall ownership.
+A **stall** is a protected WorldGuard region you can own. Inside your stall, you can build, place containers, and create shops. This page covers buying, owning, and selling stalls.
 
-## What is a stall?
+## Stall lifecycle
 
-A stall is a WorldGuard-protected region in the market world. It gives you:
-
-- A protected build area where only you (and your members) can build.
-- The ability to create sign shops inside the region.
-- Responsibility to pay rent to keep the stall.
-
-## Stall states
+Stalls move through these states:
 
 | State | Meaning |
 |-------|---------|
-| **UNOWNED** | No one owns it. Available for auction. |
-| **AUCTIONING** | An auction is active. Place bids with `/em bid`. |
-| **OWNED** | A player or guild owns it. Rent is being paid. |
-| **GRACE** | Rent is overdue. A 3-day countdown before re-auction. |
-| **RE_AUCTIONING** | Grace expired. Being re-auctioned to the public. |
-| **EMERGENCY_AUCTIONING** | Admin-triggered re-auction. |
+| **UNOWNED** | Available. Anyone with permission can buy it. |
+| **AUCTIONING** | Up for auction. Bid with `/em bid`. |
+| **OWNED** | Occupied by a player or guild. Rent applies. |
+| **GRACE** | Rent not paid. You have time to catch up before eviction. |
+| **RE_AUCTIONING** | Being re-auctioned (system recovery). |
+| **EMERGENCY_AUCTIONING** | Urgent auction triggered by admin or system action. |
 
-## Ownership types
+> **Note:** There is no separate "RENTED" state. `OWNED` covers all occupied stalls regardless of rent status.
 
-A stall can be owned by:
+## Buying a stall
 
-- **Solo** — one player owns it.
-- **Guild** — a LumaGuilds guild owns it. Guild members with `MANAGE_SHOPS` permission can manage it.
-- **None** — unowned, available for auction.
+### From a purchase sign (UNOWNED stall)
 
-## Adding members
+1. Find an UNOWNED stall in the market area.
+2. Look for its purchase sign (first-line trigger token, stall ID on line 2, price on line 3).
+3. Right-click the sign to buy it for yourself.
+4. To buy for your **guild**, sneak + right-click instead.
 
-Members can build and interact inside your stall but don't own it. To add a member, the stall owner (or authorized guild member) uses:
+Permission: `enthusiamarket.stall.buyout` (default: all players).
 
-```
-/em stall members add <stall-id> <player>
-```
+### From a sell offer
 
-Members can be listed with:
+If a stall owner listed their stall for sale with `/em stall offer`, you can buy it:
 
-```
-/em stall members list <stall-id>
-```
-
-Each stall has a configurable member cap (default: unlimited).
-
-## Removing members
-
-```
-/em stall members remove <stall-id> <player>
+```text
+/em stall buy <stallId>
 ```
 
-## Sellback
+The listed price plus tax is deducted from your balance.
 
-Sell your stall back to the system for a refund. This is a two-step confirmation:
+### Via auction
 
-1. `/em sellback <stall-id>` — see the refund quote and warnings.
-2. `/em sellback confirm <stall-id>` — confirm within 30 seconds.
+Stalls can be auctioned. Browse open auctions:
 
-The refund is based on your winning bid and remaining rent periods. All shops inside the stall are **wiped** — withdraw items first.
+```text
+/em auctions
+```
 
-## Sell offers
+Place a bid:
 
-Offer your stall for sale to another player:
+```text
+/em bid <auctionId> <amount>
+```
 
-- `/em stall offer <stall-id> <price>` — create a sell offer.
-- `/em stall offer cancel <stall-id>` — cancel your offer.
-- `/em stall buy <stall-id>` — buy a stall someone else offered.
+At auction end, the highest bidder wins. The seller receives the bid minus the auction fee (default 5%).
 
-The buyer pays the listed price plus tax. The seller receives the price minus the auction fee (default: 5%).
+## Selling your stall
+
+### Direct sale
+
+List your OWNED stall for a fixed price:
+
+```text
+/em stall offer <stallId> <price>
+```
+
+Anyone can then buy it with `/em stall buy`. Cancel with `/em stall offer cancel <stallId>`.
+
+### Auction
+
+Start an auction on your stall:
+
+```text
+/em auction start <stallId> <startingPrice> [duration]
+```
+
+Duration is optional (default 24h, format: `PT24H` for 24 hours).
+
+### Sellback (voluntary relinquish)
+
+Give up your stall for a prorated refund:
+
+```text
+/em sellback <stallId>
+```
+
+Review the warning (refund amount, number of shops that will be wiped), then confirm within 30 seconds:
+
+```text
+/em sellback confirm <stallId>
+```
+
+## Stall members
+
+You can add co-owners to build and manage shops inside your stall:
+
+```text
+/em stall members add <stallId> <player>
+/em stall members remove <stallId> <player>
+/em stall members list <stallId>
+```
+
+Permission: `enthusiamarket.stall.members`
+
+## Stall info
+
+See details about any stall:
+
+```text
+/em stall info <stallId>
+```
+
+Shows owner, state, rent terms, member count, and region bounds.
+
+## View stall boundaries
+
+Render a particle outline of a stall's region:
+
+```text
+/em stall outline <stallId> <seconds>
+```
+
+## How you lose a stall
+
+| Way | Description |
+|-----|-------------|
+| **Eviction** | Rent unpaid after grace period. Shops wiped, stall back to UNOWNED. |
+| **Sellback** | You chose `/em sellback`. Partial refund, shops wiped. |
+| **Direct sale** | Another player bought via your sell offer. You get the price. |
+| **Auction won** | Your auction resolved. Winner gets the stall, you get bid minus fee. |
+| **Admin eviction** | An admin ran `/em evict`. Force-unclaimed. |

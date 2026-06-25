@@ -59,7 +59,7 @@ Tariffs and embargoes are public — you'll always know where you stand:
 - **Server broadcast** — whenever any guild sets, changes, or lifts a tariff/embargo, the whole server is told (e.g. *"Alpha has imposed a 20% tariff on Beta"*).
 - **Entry warning** — when you walk into a guild's stall where **your** guild is tariffed or embargoed, you get a personal message with the exact rate, so you know before you trade.
 
-*(Server admins can toggle either notification off in the config.)*
+> **Note:** Server admins can toggle either notification off in the config.
 
 ## Quick reference
 

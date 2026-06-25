@@ -14,7 +14,7 @@ By default, there's no limit to how many stalls you can own. Admins can configur
 
 ## Checking your limits
 
-```
+```text
 /em limit
 ```
 
@@ -32,7 +32,7 @@ Admins define **limit groups** in the config. Each group has:
 
 Players are assigned to groups via permissions:
 
-```
+```text
 enthusiamarket.limit.<group-name>
 ```
 

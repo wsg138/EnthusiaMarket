@@ -1,75 +1,71 @@
 ---
-title: Your First 30 Minutes
+title: Your first stall
 audience: player
 topic: walkthrough
-summary: Step-by-step guided tour for new players — from finding the market to making your first sale.
-keywords: [walkthrough, tutorial, first steps, beginner]
-related: [welcome, faq]
-updated: 2026-06-06
+summary: Step-by-step guide to buying a stall, understanding rent, and setting up your first shop.
+keywords: [walkthrough, first stall, buying, rent, shop setup]
+related: [welcome, faq, stalls, rent, shop-creation]
+updated: 2026-06-25
 ---
 
-# Your First 30 Minutes
+# Your first stall
 
-This walkthrough takes you from arriving at the market to running your first shop. Set aside about 30 minutes.
+This walkthrough takes you from zero to running your own shop in about 10 minutes.
 
-## Step 1: Find the market
+## Step 1: Find an available stall
 
-The market is a dedicated area on the server. Ask staff or other players for the current market location. You'll see rows of stall plots with sign posts.
+Walk around the market area and look for a stall with a purchase sign. The sign shows:
 
-## Step 2: Find an available stall
+- **Line 1**: `[em]` — the purchase sign token.
+- **Line 2**: The stall ID (e.g. `stall42`).
+- **Line 3**: The buyout price.
+- **Line 4**: Who owns it — or `Buy now!` if the stall is available.
 
-Look for stalls with signs showing **"Available"** or similar. These are either unowned or currently at auction. You can also use `/em auctions` to browse active auctions via the menu.
+Stalls in the `UNOWNED` state are available for purchase. The purchase sign's third line shows the price.
 
-## Step 3: Bid on a stall
+## Step 2: Buy the stall
 
-When an auction is running, you can bid:
+1. **Right-click** the purchase sign to buy it for yourself.
+2. Confirm the purchase when prompted.
+3. The price is withdrawn from your economy balance and the stall is now yours.
 
-```text
-/em bid <auction-id> <amount>
-```
+> **For guilds:** Sneak + right-click the purchase sign to buy the stall for your guild instead of yourself. The guild bank is charged.
 
-Type `/em auctions` to see active auctions and their IDs. Enter your bid amount — it must exceed the current high bid.
+## Step 3: Understand rent
 
-> **Tip:** If a bid is placed near the end of an auction, the timer extends by 30 seconds (anti-snipe). Don't wait until the last second!
+Every stall you own has rent. By default:
 
-## Step 4: Win and own
+- **Rent mode**: Formula-based (1% of purchase price per day).
+- **Collection**: Rent is collected once per day (configurable).
+- **Grace period**: If you miss a payment, you have 3 days to catch up before eviction.
 
-If you have the highest bid when the auction ends, you own the stall. You'll get a confirmation message. The stall sign updates to show your name.
+You can **pre-pay rent** by right-clicking the purchase sign twice within 10 seconds. Each double-click extends rent by one period.
 
-## Step 5: Pay rent
+Check `/em limit` to see how many stalls you're allowed to own.
 
-Rent is charged daily. The amount depends on your winning bid (default: 1% of winning bid per day). When you click your stall's sign, you'll see the rent due and time remaining.
+## Step 4: Set up a shop
 
-To pay rent, simply **click the stall sign** and confirm. The payment comes from your wallet.
+1. Place a **wall sign** on a chest, barrel, or shulker box inside your stall region.
+2. The shop creation GUI opens automatically — the container's contents are scanned.
+3. Pick your trade direction:
+   - **SELL** — sell items from the container to players (you receive money).
+   - **BUY** — buy items from players (you pay them).
+   - **TRADE** — exchange items for other items (barter).
+4. Set the per-trade amount (how many items per transaction).
+5. Set your price (currency amount for BUY/SELL, or barter item for TRADE).
+6. Confirm — the sign text is written for you automatically.
 
-> **Warning:** If you miss rent, your stall enters a 3-day grace period. After grace expires, the stall is re-auctioned and you lose it.
+> **Important:** The shop sign and the container must be inside a stall you own (or have member access to). Guild stalls require the `MANAGE_SHOPS` guild permission.
 
-## Step 6: Set up a shop
+## Step 5: Test your shop
 
-Inside your stall, place a **sign on a container** (chest, barrel, etc.) to create a shop:
-
-1. **Hold the item** you want to trade in your hand.
-2. Place a wall sign on the side of the container.
-3. On the first line, type a **direction token** — `[SELL]`, `[BUY]`, or `[TRADE]`.
-4. On the second line, type the **quantity** per trade.
-5. On the third line, type the **price**.
-6. The sign auto-formats into a working shop.
-
-Now other players can click your sign to buy from your container.
-
-## Step 7: Make your first sale
-
-Stock your container with items. When another player clicks your sign and the trade succeeds, the payment goes to your **shop vault**. Open it with:
-
-```text
-/shopvault open
-```
-
-or the alias `/svault open`.
+1. Look at your shop sign — it should show the direction, item, amount, and price.
+2. Have a friend right-click the sign to test a transaction.
+3. Money goes to/from your economy account; items transfer between your container and the customer.
 
 ## Next steps
 
-- Learn about [trade directions](../players/shops.md#trade-directions) — sell to players, buy from players, or barter.
-- Understand [rent mechanics](../players/rent.md) in detail.
-- Check [ownership limits](../players/limits.md) if you want multiple stalls.
-- Browse the full [How do I…?](../players/how-do-i.md) index.
+- **[Manage your shops](../players/shop-management.md)** — trust friends, edit prices, delete shops.
+- **[Search for goods](../players/shop-search.md)** — find what other players are selling.
+- **[Understand rent](../players/rent.md)** — avoid eviction.
+- **[Sell your stall](../players/stalls.md)** — list it for sale.

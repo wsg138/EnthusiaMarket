@@ -1,6 +1,6 @@
 site_name: EnthusiaMarket
 site_url: https://badgersmc.github.io/EnthusiaMarket/
-site_description: Player wiki and admin reference for the EnthusiaMarket plugin on EnthusiaSMP.
+site_description: Player wiki and admin/developer reference for the EnthusiaMarket plugin.
 repo_url: https://github.com/BadgersMC/EnthusiaMarket
 repo_name: BadgersMC/EnthusiaMarket
 edit_uri: edit/main/wiki/docs/
@@ -58,10 +58,3 @@ markdown_extensions:
   - md_in_html
   - tables
   - pymdownx.details
-  - pymdownx.superfences
-  - pymdownx.tabbed:
-      alternate_style: true
-  - toc:
-      permalink: true
-
-strict: true

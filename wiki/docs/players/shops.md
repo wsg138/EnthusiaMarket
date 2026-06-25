@@ -58,19 +58,19 @@ Players trade one item for another. No currency changes hands.
 
 Let other players manage your shop without giving them stall ownership:
 
-```
+```text
 /shop trust <player>
 ```
 
 This opens a menu where you can select which shops to share. To trust on all shops at once:
 
-```
+```text
 /shop trust <player> all
 ```
 
 ## Untrusting players
 
-```
+```text
 /shop untrust <player>
 ```
 
@@ -78,7 +78,7 @@ Removes the player from all your shops.
 
 ## Editing shops
 
-```
+```text
 /shop edit
 ```
 
@@ -86,13 +86,13 @@ Opens a menu showing all your shops. Click one to change price, quantity, direct
 
 ## Deleting shops
 
-```
+```text
 /shop delete
 ```
 
 Opens a menu to select shops for deletion. To delete all shops at once:
 
-```
+```text
 /shop delete all
 ```
 
@@ -102,13 +102,13 @@ Requires the `enthusiamarket.shop.delete.all` permission.
 
 Temporarily break a shop sign to delete it:
 
-```
+```text
 /shop breakdelete <duration>
 ```
 
 Then punch the shop sign to remove it. Mode turns off automatically after the duration, or manually:
 
-```
+```text
 /shop breakdelete off
 ```
 
@@ -116,13 +116,13 @@ Then punch the shop sign to remove it. Mode turns off automatically after the du
 
 Money from sell shops goes to your shop vault. Open it with:
 
-```
+```text
 /shopvault open
 ```
 
 or the alias:
 
-```
+```text
 /svault open
 ```
 
@@ -132,7 +132,7 @@ The vault is a menu showing your earnings. Click to withdraw.
 
 Find shops selling a specific item:
 
-```
+```text
 /shop search <item>
 ```
 
@@ -142,7 +142,7 @@ For example, `/shop search diamond` shows all shops selling diamonds. Results ar
 
 View your shop's sales history:
 
-```
+```text
 /shop history [page]
 ```
 
