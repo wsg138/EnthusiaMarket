@@ -29,6 +29,7 @@ class SearchResultsMenu(
     private val lang: LangService,
 ) : Menu {
 
+    @Suppress("LongMethod")
     override fun open(player: Player) {
         val totalPages = ((results.size + PER_PAGE - 1) / PER_PAGE).coerceAtLeast(1)
         val current = page.coerceIn(1, totalPages)
@@ -43,10 +44,12 @@ class SearchResultsMenu(
             val meta = icon.itemMeta
             if (meta != null) {
                 val owner = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
+                val dirLabel = ShopDisplay.directionLabel(shop.direction)
                 meta.displayName(lang.msg(
                     "gui.shop.search.result",
                     "sell_amt" to shop.sellAmount, "cost" to shop.costAmount,
                     "trades" to tradesAvailable(shop), "owner" to owner,
+                    "direction" to dirLabel,
                 ))
                 icon.itemMeta = meta
             }

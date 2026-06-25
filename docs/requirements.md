@@ -359,6 +359,40 @@ return the stall to UNOWNED.
 
 ---
 
+### REQ-289 — Unified shop creation GUI
+
+**Event-driven.** WHEN a player triggers shop creation via left-click+sneak on a wall sign attached to a container inside a stall they own or rent THE SYSTEM SHALL open a creation GUI that collects: trade direction (SELL/BUY/TRADE), per-trade amount, and cost configuration (Vault currency amount OR barter item type+amount from the player's hand). THE SYSTEM SHALL persist the shop only when the player confirms in the GUI.
+
+**Note:** Supersedes REQ-012 §1 (which said "open a creation GUI… as a buy or sell endpoint" but the GUI never offered the choice). The underlying stall/container/auth checks from REQ-012 §2+ are unchanged.
+
+### REQ-290 — Normalize shop sign text parsing
+
+**Ubiquitous.** THE SYSTEM SHALL parse the direction token on shop sign line 1 case-insensitively (accepting `[buy]`, `[BUY]`, `[Buy]` as equivalent) and render the sign using readable direction text rather than the raw enum name.
+
+*Supersedes REQ-005 (sign-text parsing created the shop directly; the new flow opens the REQ-289 GUI pre-populated with the parsed direction). Sign text parsing remains as a shortcut — the GUI is the canonical creation path.*
+
+### REQ-291 — PurchaseMenu shows full shop context
+
+**Ubiquitous.** THE SYSTEM SHALL render the trade GUI with: the sell item icon + per-trade amount, the cost item/currency icon + amount, a direction label ("Buying from shop"/"Selling to shop"/"Trading"), the remaining trades-available from live container stock, and the shop owner's name.
+
+### REQ-292 — OwnedShopsMenu shows shop status at a glance
+
+**Ubiquitous.** THE SYSTEM SHALL display each owned shop's direction label, stock count, and frozen status in its icon lore within the owned-shops listing.
+
+### REQ-293 — ShopEditMenu shows stock count
+
+**Ubiquitous.** THE SYSTEM SHALL display the shop's current container stock count and direction in the edit GUI.
+
+### REQ-294 — SearchResultsMenu shows direction
+
+**Ubiquitous.** THE SYSTEM SHALL include the shop's trade direction in each search result's lore.
+
+### REQ-295 — Normalize GUI text styling
+
+**Ubiquitous.** THE SYSTEM SHALL render all menu item names and lore in normal-weight, non-italic text. Color SHALL be reserved for semantic categories: green for confirm/action/create, red for danger/delete/cancel, gold for currency/price, white for neutral item info, gray for secondary labels, aqua for navigation, yellow for warnings, and light-purple for barter/TRADE indicators. Bold or italic styling SHALL NOT be used in menu text.
+
+---
+
 ## Acceptance
 
 ### REQ-100 — Smoke test on MockBukkit

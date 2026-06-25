@@ -27,6 +27,9 @@ object ShopFactory {
         price: Long,
         direction: SignDirection,
         searchEnabled: Boolean = true,
+        costItemBase64: String? = null,
+        costAmountOverride: Int? = null,
+        guildId: String? = null,
     ): Shop = Shop(
         stallId = stallId,
         owner = owner,
@@ -34,10 +37,11 @@ object ShopFactory {
         containerWorld = containerWorld, containerX = containerX, containerY = containerY, containerZ = containerZ,
         sellItem = sellItemBase64,
         sellAmount = sellAmount,
-        costItem = ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1)),
-        costAmount = price.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(),
+        costItem = costItemBase64 ?: ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1)),
+        costAmount = costAmountOverride ?: price.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(),
         creatorId = creator,
         direction = direction,
         searchEnabled = searchEnabled,
+        guildId = guildId?.let { UUID.fromString(it) },
     )
 }

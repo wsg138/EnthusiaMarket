@@ -102,10 +102,11 @@ class ContainerStockListener(
             .sumOf { it.amount }
     }
 
-    /** The shop's container block state. Never force-loads — must call only
-     *  when the chunk is known to be loaded (trade path already verified). */
+    /** The shop's container block state. Returns null if the container chunk
+     *  isn't loaded — the [isChunkLoaded] guard prevents synchronous chunk loads. */
     private fun loadedContainer(shop: Shop): Container? {
         val world = Bukkit.getWorld(shop.containerWorld) ?: return null
+        if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
         return world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
             .state as? Container
     }

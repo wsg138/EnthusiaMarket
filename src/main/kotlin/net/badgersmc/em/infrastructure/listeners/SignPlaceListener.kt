@@ -3,7 +3,6 @@ package net.badgersmc.em.infrastructure.listeners
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldguard.WorldGuard
 import net.badgersmc.em.application.ItemStackSerializer
-import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -11,13 +10,13 @@ import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
-import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
+import java.util.UUID
 import org.bukkit.block.Container
 import org.bukkit.block.data.type.WallSign
 import org.bukkit.entity.Player
@@ -52,7 +51,6 @@ open class SignPlaceListener(
     private val guildProvider: GuildProvider,
     private val lang: LangService,
     private val config: net.badgersmc.em.config.EnthusiaMarketConfig,
-    private val signRenderer: ShopSignRenderer,
 ) : Listener {
 
     @EventHandler
@@ -124,7 +122,7 @@ open class SignPlaceListener(
             return
         }
 
-        // Parse amount + price/cost depending on direction.
+        // Parse amount + price/cost depending on direction (REQ-290: open GUI, don't create directly).
         val amount = plain.serialize(lines.getOrElse(1) { net.kyori.adventure.text.Component.empty() })
             .trim().toIntOrNull()
         if (amount == null || amount <= 0) {
@@ -133,12 +131,20 @@ open class SignPlaceListener(
             return
         }
 
-        var costItemB64 = ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1))
-        var costAmount = 0
-        var costDisplay = ""
+        val held = player.inventory.itemInMainHand
+        if (held.type == Material.AIR || held.amount <= 0) {
+            player.sendMessage(lang.msg("shop.create.no_held_item"))
+            event.isCancelled = true
+            return
+        }
+        val heldClone = held.clone(); heldClone.amount = 1
+        val sellItemB64 = net.badgersmc.em.application.ItemStackSerializer.serialize(heldClone)
+
+        var costItemB64: String? = null
+        var costAmountOverride: Int? = null
+        var initialPrice: Long = 100
 
         if (direction == SignDirection.TRADE) {
-            // Line 3: "N material"
             val costParts = plain.serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
                 .trim().split(" ")
             val costQty = costParts.getOrNull(0)?.toIntOrNull()
@@ -148,9 +154,8 @@ open class SignPlaceListener(
                 event.isCancelled = true
                 return
             }
-            costItemB64 = ItemStackSerializer.serialize(ItemStack(costMat, 1))
-            costAmount = costQty
-            costDisplay = "${costQty}x ${costMat.name.lowercase()}"
+            costItemB64 = net.badgersmc.em.application.ItemStackSerializer.serialize(ItemStack(costMat, 1))
+            costAmountOverride = costQty
         } else {
             val price = plain.serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
                 .trim().toLongOrNull()
@@ -164,59 +169,46 @@ open class SignPlaceListener(
                 event.isCancelled = true
                 return
             }
-            costAmount = price.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            costDisplay = "$price"
+            initialPrice = price
         }
 
-        // Held item = the traded item. Player needs to be holding it.
-        val held = player.inventory.itemInMainHand
-        if (held.type == Material.AIR || held.amount <= 0) {
-            player.sendMessage(lang.msg("shop.create.no_held_item"))
-            event.isCancelled = true
-            return
-        }
-        val sellStack = held.clone().apply { this.amount = 1 }
-
-        // Persist the Shop bound to (sign, container).
-        val shop = Shop(
+        // REQ-290: open the unified creation GUI pre-populated instead of creating directly.
+        event.isCancelled = true  // cancel the sign text change — GUI handles it
+        val guildId = if (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.GUILD) stall.owner.id else null
+        openCreateGui(
             stallId = stall.id.value,
             owner = player.uniqueId,
-            signWorld = signLoc.world?.name ?: "world",
-            signX = signLoc.blockX,
-            signY = signLoc.blockY,
-            signZ = signLoc.blockZ,
-            containerWorld = attached.world.name,
-            containerX = attached.x,
-            containerY = attached.y,
-            containerZ = attached.z,
-            sellItem = ItemStackSerializer.serialize(sellStack),
-            sellAmount = amount,
-            costItem = costItemB64,
-            costAmount = costAmount,
-            creatorId = player.uniqueId,
+            signLoc = signLoc,
+            containerLoc = attached.location,
+            sellItemB64 = sellItemB64,
             direction = direction,
-            searchEnabled = config.shop.searchDefault,
-            // Bind the shop to the stall's guild so ContainerTradeService routes
-            // earnings to the guild bank. A corrupt id falls back to a personal
-            // shop rather than crashing sign placement.
-            guildId = if (stall.owner.type == OwnerType.GUILD) {
-                runCatching { java.util.UUID.fromString(stall.owner.id) }.getOrNull()
-            } else {
-                null
-            },
+            initialAmount = amount,
+            initialPrice = initialPrice,
+            costItemB64 = costItemB64,
+            costAmountOverride = costAmountOverride,
+            guildId = guildId,
+            player = player,
         )
-        shopRepository.upsert(shop)
+    }
 
-        // Auto-format the four lines.
-        val rendered = signRenderer.lines(direction, held.type.name.lowercase(), amount, costDisplay)
-        rendered.forEachIndexed { i, c -> event.line(i, c) }
-
-        player.sendMessage(lang.msg("shop.create.success"))
-        try {
-            Bukkit.getPluginManager().callEvent(ShopCreatedEvent(player.uniqueId))
-        } catch (_: Throwable) {
-            // External listener failure must not roll back the create.
-        }
+    /** Open for testability — override in tests to bypass IFramework GUI creation. */
+    @Suppress("LongParameterList")
+    open fun openCreateGui(
+        stallId: String, owner: UUID, signLoc: Location, containerLoc: Location,
+        sellItemB64: String, direction: SignDirection,
+        initialAmount: Int, initialPrice: Long,
+        costItemB64: String?, costAmountOverride: Int?,
+        guildId: String?,
+        player: Player,
+    ) {
+        net.badgersmc.em.interaction.gui.CreateShopMenu(
+            stallId = stallId, stallOwner = owner, signLoc = signLoc, containerLoc = containerLoc,
+            sellItemBase64 = sellItemB64, shopRepository = shopRepository, lang = lang,
+            initialDirection = direction, initialAmount = initialAmount, initialPrice = initialPrice,
+            initialCostItemB64 = costItemB64,
+            initialCostAmount = costAmountOverride,
+            guildId = guildId,
+        ).open(player)
     }
 
     /**

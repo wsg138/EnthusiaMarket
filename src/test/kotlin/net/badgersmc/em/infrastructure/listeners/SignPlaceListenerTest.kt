@@ -1,12 +1,8 @@
 package net.badgersmc.em.infrastructure.listeners
 
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.slot
-import net.badgersmc.em.application.ShopSignRenderer
+import io.mockk.*
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.GuildProvider
-import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
@@ -32,16 +28,13 @@ import org.junit.jupiter.api.Test
 import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
-import kotlin.test.assertEquals
-import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
- * TDD coverage for M-15: sign shops placed inside GUILD-owned stalls must
- * be persisted with `guildId` populated so that [net.badgersmc.em.application.ContainerTradeService]
- * routes earnings to the guild bank instead of the placer's personal balance.
- *
- * Regression for SOLO stalls: a personal sign shop must keep `guildId == null`
- * (and `owner` must remain the placer — the guild-bank branch is opt-in).
+ * REQ-290: SignPlaceListener now opens the unified CreateShopMenu instead
+ * of creating shops directly. Tests verify the event is cancelled (GUI path
+ * engaged) and the right stall is resolved. The guild-binding + persistence
+ * is tested via CreateShopMenu integration tests.
  */
 class SignPlaceListenerTest {
 
@@ -60,7 +53,6 @@ class SignPlaceListenerTest {
         MockBukkit.unmock()
     }
 
-    /** Sign block (wall sign pointing NORTH) attached to a Container block one block south. */
     private fun signAndContainer(): Pair<Block, Block> {
         val signBlock: Block = mockk(relaxed = true)
         val wallSign: Sign = mockk(relaxed = true)
@@ -78,9 +70,11 @@ class SignPlaceListenerTest {
         every { loc.blockZ } returns 200
         every { signBlock.location } returns loc
 
+        val containerLoc: Location = mockk(relaxed = true)
         val containerBlock: Block = mockk(relaxed = true)
         val container: Container = mockk(relaxed = true)
         every { containerBlock.state } returns container
+        every { containerBlock.location } returns containerLoc
         every { containerBlock.world.name } returns worldName
         every { containerBlock.x } returns 101
         every { containerBlock.y } returns 64
@@ -98,25 +92,15 @@ class SignPlaceListenerTest {
     }
 
     private fun guildStall(): Stall = Stall(
-        id = StallId("stall_01"),
-        regionId = "stall_01",
-        world = worldName,
-        state = StallState.OWNED,
-        owner = OwnerRef.guild(guildId),
-        ownerSince = null,
-        winningBid = 1000L,
-        rentTerms = RentTerms.formula(0.01),
+        id = StallId("stall_01"), regionId = "stall_01", world = worldName,
+        state = StallState.OWNED, owner = OwnerRef.guild(guildId),
+        ownerSince = null, winningBid = 1000L, rentTerms = RentTerms.formula(0.01),
     )
 
     private fun soloStall(): Stall = Stall(
-        id = StallId("stall_01"),
-        regionId = "stall_01",
-        world = worldName,
-        state = StallState.OWNED,
-        owner = OwnerRef.solo(placerUuid),
-        ownerSince = null,
-        winningBid = 1000L,
-        rentTerms = RentTerms.formula(0.01),
+        id = StallId("stall_01"), regionId = "stall_01", world = worldName,
+        state = StallState.OWNED, owner = OwnerRef.solo(placerUuid),
+        ownerSince = null, winningBid = 1000L, rentTerms = RentTerms.formula(0.01),
     )
 
     private fun lenientLang(): LangService {
@@ -127,34 +111,37 @@ class SignPlaceListenerTest {
 
     private fun listener(stall: Stall?, shopRepo: ShopRepository): SignPlaceListener {
         return object : SignPlaceListener(
-            mockk<StallRepository>(relaxed = true),
-            shopRepo,
-            mockk<GuildProvider>(relaxed = true),
-            lenientLang(),
+            mockk<StallRepository>(relaxed = true), shopRepo,
+            mockk<GuildProvider>(relaxed = true), lenientLang(),
             EnthusiaMarketConfig(),
-            ShopSignRenderer(),
         ) {
             override fun findStallAt(location: Location): Stall? = stall
             override fun canManageStall(stall: Stall, player: Player): Boolean = true
+            override fun openCreateGui(
+                stallId: String, owner: UUID, signLoc: Location, containerLoc: Location,
+                sellItemB64: String, direction: net.badgersmc.em.domain.shop.SignDirection,
+                initialAmount: Int, initialPrice: Long,
+                costItemB64: String?, costAmountOverride: Int?,
+                guildId: String?, player: Player,
+            ) {
+                // No-op: skip IFramework GUI creation in tests
+            }
         }
     }
 
-    /** A `[SELL]` sign-change event at the given block with 64× diamond @ 1000. */
     private fun signChangeEvent(player: Player, signBlock: Block): SignChangeEvent {
         val event: SignChangeEvent = mockk(relaxed = true)
         every { event.player } returns player
         every { event.block } returns signBlock
         every { event.lines() } returns listOf(
-            Component.text("[SELL]"),
-            Component.text("64"),
-            Component.text("1000"),
-            Component.text(""),
+            Component.text("[SELL]"), Component.text("64"),
+            Component.text("1000"), Component.text(""),
         )
         return event
     }
 
     @Test
-    fun `sign shop in a GUILD stall is created bound to the guild`() {
+    fun `valid sign in GUILD stall cancels event to open GUI`() {
         val (signBlock, _) = signAndContainer()
         val player = placerPlayer()
         val shopRepo = mockk<ShopRepository>(relaxed = true)
@@ -163,26 +150,14 @@ class SignPlaceListenerTest {
         val sut = listener(stall = guildStall(), shopRepo = shopRepo)
         val event = signChangeEvent(player, signBlock)
 
-        val captured = slot<Shop>()
-        every { shopRepo.upsert(capture(captured)) } answers { firstArg() }
-
         sut.onSignPlace(event)
 
-        val shop = captured.captured
-        assertEquals(
-            UUID.fromString(guildId),
-            shop.guildId,
-            "shop placed in a GUILD-owned stall must be persisted with the stall's guild id",
-        )
-        assertEquals(
-            placerUuid,
-            shop.owner,
-            "the placer stays the shop owner — only the money sink switches to the guild bank",
-        )
+        // REQ-290: event cancelled → GUI opens instead of direct creation
+        verify { event.isCancelled = true }
     }
 
     @Test
-    fun `sign shop in a SOLO stall has null guildId`() {
+    fun `valid sign in SOLO stall cancels event to open GUI`() {
         val (signBlock, _) = signAndContainer()
         val player = placerPlayer()
         val shopRepo = mockk<ShopRepository>(relaxed = true)
@@ -191,16 +166,10 @@ class SignPlaceListenerTest {
         val sut = listener(stall = soloStall(), shopRepo = shopRepo)
         val event = signChangeEvent(player, signBlock)
 
-        val captured = slot<Shop>()
-        every { shopRepo.upsert(capture(captured)) } answers { firstArg() }
-
         sut.onSignPlace(event)
 
-        val shop = captured.captured
-        assertNull(
-            shop.guildId,
-            "SOLO stall must produce a personal shop with guildId == null (regression for M-15)",
-        )
-        assertEquals(placerUuid, shop.owner)
+        verify { event.isCancelled = true }
+        // upsert must NOT be called — GUI handles persistence
+        verify(exactly = 0) { shopRepo.upsert(any()) }
     }
 }

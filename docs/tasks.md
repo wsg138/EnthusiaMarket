@@ -841,3 +841,66 @@ set only at insert (no relocate path), so create + delete fully cover location c
   ExplodeCleanupListener, ShopCreateListener, ShopInteractListener fail to register — inject
   java.util.logging.Logger with no Logger bean (not caused by PERF; flagged as separate task).
   Evidence: spark report ZNDUJN57Yg vs baseline 3RFbDGJIef; live TPS via papermcp server_info.
+
+---
+
+## Unified Shop Creation & Menu UX (REQ-289..295)
+
+### TDD-289 — Unified creation GUI with direction picker
+
+- [x] TDD: RED — Write failing test: CreateShopMenu opens with direction selector (SELL/BUY/TRADE buttons)
+- [x] TDD: GREEN — Add direction picker to CreateShopMenu. Replace hardcoded `SignDirection.SELL` in ShopCreateListener
+  with GUI-chosen direction. Update BedrockCreateShopForm to include direction toggle.
+- [x] Add cost-type picker: Vault currency (default) vs barter item. For barter, capture item from player hand
+  (mirrors TRADE line-3 parsing in SignPlaceListener) and set costItem + costAmount.
+- [x] Update `ShopFactory.build` call site in both GUIs to pass the chosen direction + cost values.
+- **Ref:** REQ-289, REQ-012
+- **Evidence:** ShopFactory.kt:30-31 — `costItemBase64: String? = null, costAmountOverride: Int? = null`; CreateShopMenu.kt:31-65 — direction selector row, cost picker, confirm passes direction+params; CreateShopMenuDirectionTest.kt — GREEN test asserts costItemBase64 + costAmountOverride round-trip
+
+### TDD-290 — Sign text opens GUI instead of creating directly
+
+- [x] TDD: RED — Write failing test: SignPlaceListener.onSignPlace with [BUY] opens CreateShopMenu pre-populated
+  with direction=BUY instead of creating shop directly
+- [x] TDD: GREEN — Change SignPlaceListener to open CreateShopMenu (or BedrockCreateShopForm) with parsed
+  direction, amount, cost pre-filled. Remove direct Shop construction from SignPlaceListener.
+- [x] Update ShopSignRenderer to use `"Buy"`/`"Sell"`/`"Trade"` instead of raw `direction.name`.
+- **Ref:** REQ-290, REQ-005 (superseded)
+- **Evidence:** SignPlaceListener.kt:170-207 — opens CreateShopMenu instead of constructing Shop; SignPlaceListenerTest.kt — verifies event cancelled, upsert never called; ShopSignRenderer.kt — human-readable direction names
+
+### TDD-291 — PurchaseMenu context (owner, stock, direction)
+
+- [x] TDD: RED — Write failing test: PurchaseMenu renders owner name, stock count, and direction label
+- [x] TDD: GREEN — Add owner name (from Bukkit.getOfflinePlayer), trades-available (from shop.stockCount /
+  sellAmount), and direction label to PurchaseMenu + BedrockPurchaseForm
+- **Ref:** REQ-291
+- **Evidence:** PurchaseMenu.kt:50-68 — added ownerName from Bukkit.getOfflinePlayer, tradesAvailable from stockCount/sellAmount, dirLabel from direction; en_US.yml:276-278 — gui.shop.sell_lore_direction/owner/stock keys
+
+### TDD-292 — OwnedShopsMenu status in lore
+
+- [x] TDD: RED — Write failing test: OwnedShopsMenu icon lore includes direction, stock, frozen
+- [x] TDD: GREEN — Add direction string, trades-available, and frozen state to OwnedShopsMenu icon lore
+- **Ref:** REQ-292
+- **Evidence:** OwnedShopsMenu.kt:32-43 — dirLabel, tradesAvailable, frozenLabel added to lore; en_US.yml:316-318 — gui.shop.owned.dir_lore/stock_lore/frozen_lore
+
+### TDD-293 — ShopEditMenu shows stock + direction
+
+- [x] TDD: RED — Write failing test: ShopEditMenu displays stock count and direction
+- [x] TDD: GREEN — Add stock count (shop.stockCount / sellAmount) and direction label to ShopEditMenu
+- **Ref:** REQ-293
+- **Evidence:** ShopEditMenu.kt:58-71 — OAK_SIGN info item at (0,1) with direction label + stock count lore; en_US.yml:321-322 — gui.shop.edit.direction/stock keys
+
+### TDD-294 — SearchResultsMenu direction in lore
+
+- [x] TDD: RED — Write failing test: search result lore includes direction (BUY/SELL/TRADE)
+- [x] TDD: GREEN — Add direction to SearchResultsMenu result lore line
+- **Ref:** REQ-294
+- **Evidence:** SearchResultsMenu.kt:46-52 — dirLabel with MiniMessage color tags added to lang.msg; en_US.yml:291 — gui.shop.search.result now includes <dir> placeholder
+
+### INFRA-295 — Normalize GUI text (remove bold, standardize colors)
+
+- [x] Remove all `<bold>` tags from `en_US.yml` GUI entries.
+- [x] Standardize color scheme per REQ-295: green=action, red=delete, gold=currency, white=info, gray=secondary,
+  aqua=nav, yellow=warning, light_purple=barter/TRADE.
+- [x] Verify no `<em>`, `<i>`, `<bold>`, `<b>` tags remain in GUI keys.
+- **REF:** REQ-295
+- **Evidence:** en_US.yml — 11 `<bold>` tags removed; zero `<em>/<i>/<b>/<bold>` tags remaining; colors already aligned per existing convention

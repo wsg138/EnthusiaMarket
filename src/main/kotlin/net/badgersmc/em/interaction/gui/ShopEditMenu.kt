@@ -55,6 +55,15 @@ class ShopEditMenu(
         val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.edit.title")))
         val pane = StaticPane(9, 3)
 
+        // Direction + stock info.
+        val dirLabel = ShopDisplay.directionLabel(shop.direction)
+        val tradesAvailable = ShopDisplay.tradesAvailable(shop)
+        pane.addItem(GuiItem(decorated(
+            Material.OAK_SIGN,
+            lang.msg("gui.shop.edit.direction", "direction" to dirLabel),
+            listOf(lang.msg("gui.shop.edit.stock", "stock" to tradesAvailable))
+        )), 0, 1)
+
         // Sell item preview (decoded). Clicking sets the sell item to the item in hand.
         val preview = ItemStackSerializer.deserialize(sellItemB64) ?: ItemStack(Material.BARRIER)
         pane.addItem(GuiItem(preview) { event ->
