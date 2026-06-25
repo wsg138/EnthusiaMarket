@@ -9,11 +9,14 @@ import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.paper.listeners.Listener
 import org.bukkit.Bukkit
+import org.bukkit.block.Chest
 import org.bukkit.block.Container
+import org.bukkit.block.DoubleChest
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.inventory.Inventory
+import org.bukkit.inventory.InventoryHolder
 
 /**
  * Keeps shop sign stock text in sync with linked container inventories.
@@ -43,8 +46,8 @@ class ContainerStockListener(
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onTransaction(event: PostShopTransactionEvent) {
         val shop = shopRepository.findById(event.shopId) ?: return
-        val container = loadedContainer(shop) ?: return
-        val rawStock = rawStockOf(container.inventory, shop)
+        val inventory = liveContainerInventory(shop) ?: return
+        val rawStock = rawStockOf(inventory, shop)
         val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
         lastRawStock[shop.id] = rawStock
         shopRepository.updateStock(shop.id, rawStock)
@@ -57,7 +60,7 @@ class ContainerStockListener(
     /** Recompute stock for every shop whose container chunk is loaded. */
     fun refreshAllSigns() {
         for (shop in shopRepository.all()) {
-            val inventory = containerInventoryIfLoaded(shop) ?: continue
+            val inventory = liveContainerInventory(shop) ?: continue
             refreshOne(shop, inventory)
         }
     }
@@ -81,33 +84,34 @@ class ContainerStockListener(
         loadedSign(shop)?.let { updateSignStock(it, trades) }
     }
 
-    /** The shop's container inventory, or null if the world/chunk/block is unavailable.
-     *  Never force-loads a chunk — the [isChunkLoaded] guard is required because
-     *  [World.getBlockAt] loads the chunk synchronously when it isn't in memory. */
-    private fun containerInventoryIfLoaded(shop: Shop): Inventory? {
+    // ── Helpers ─────────────────────────────────────────────────────────
+
+    /** Returns the LIVE inventory of the shop's container, bypassing the
+     *  [Block.getState] snapshot cache. Shift-click, hopper, and other
+     *  inventory mutations update the underlying NMS tile entity but not
+     *  the Bukkit [BlockState] cache, causing the timer path to read stale
+     *  contents. [Chest.getBlockInventory] (Paper API) returns the live
+     *  inventory directly from the tile entity. */
+    private fun liveContainerInventory(shop: Shop): Inventory? {
         val world = Bukkit.getWorld(shop.containerWorld) ?: return null
         if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
-        val container = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
-            .state as? Container ?: return null
-        return container.inventory
+        val block = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
+        return when (val state = block.state) {
+            is Chest -> {
+                val singleInv = state.blockInventory       // Paper API — live for this half
+                val holder = singleInv.holder
+                if (holder is DoubleChest) holder.inventory else singleInv
+            }
+            is Container -> state.inventory
+            else -> null
+        }
     }
-
-    // ── Helpers ─────────────────────────────────────────────────────────
 
     private fun rawStockOf(inventory: Inventory, shop: Shop): Int {
         val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
         return inventory.contents.filterNotNull()
             .filter { it.isSimilar(sellStack) }
             .sumOf { it.amount }
-    }
-
-    /** The shop's container block state. Returns null if the container chunk
-     *  isn't loaded — the [isChunkLoaded] guard prevents synchronous chunk loads. */
-    private fun loadedContainer(shop: Shop): Container? {
-        val world = Bukkit.getWorld(shop.containerWorld) ?: return null
-        if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
-        return world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
-            .state as? Container
     }
 
     /** The shop's sign block state, or null if the sign chunk isn't loaded.
