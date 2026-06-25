@@ -39,7 +39,7 @@ Check the current rent on your stall by double-clicking the purchase sign.
 
 ## What happens if I can't pay rent?
 
-Your stall enters a **grace period** (3 days by default). During grace, the stall is still yours and shops still work. If you pay rent (double-click the purchase sign twice), you're back in good standing. If the grace period expires, you're **evicted** — all shops are wiped and the stall returns to UNOWNED.
+Your stall enters a **grace period** (3 days by default). During grace, **all your shops are frozen** — no trades happen until rent is paid. To pay, double-click the purchase sign twice. If you pay during grace, everything unfreezes and you're back in good standing. If the grace period expires, the stall goes to **emergency auction** starting at the outstanding rent balance — any player can bid on it.
 
 ## Can I sell my stall?
 

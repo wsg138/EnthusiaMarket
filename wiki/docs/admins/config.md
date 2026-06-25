@@ -28,7 +28,7 @@ Config file: `plugins/EnthusiaMarket/enthusiamarket.yaml`
 | `rent.formulaPct` | Double | `1.0` | Percentage of winning bid per period. 1.0 = 1%. |
 | `rent.flatAmount` | Long | `0` | Flat rent per period when mode=flat. |
 | `rent.collectionInterval` | String | `"P1D"` | ISO-8601 duration between collections. |
-| `rent.gracePeriod` | String | `"P3D"` | Grace before eviction after missed rent. |
+| `rent.gracePeriod` | String | `"P3D"` | Grace before emergency auction after missed rent. |
 | `rent.maxPrepaidPeriods` | Int | `0` | Max periods a stall can be pre-paid (0 = unlimited). |
 
 ## Auction

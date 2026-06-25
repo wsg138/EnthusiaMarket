@@ -38,7 +38,7 @@ Run `/em import` to register WorldGuard regions. Check:
 2. `market.regionPrefix` matches your region naming (e.g. `stall` for `stall1`).
 3. WorldGuard regions exist and are loaded.
 
-## Rent collecting too fast / stalls evicting
+## Rent collecting too fast / stalls going to emergency auction
 
 **Symptom:** Players lose stalls quickly, rent drains fast.
 

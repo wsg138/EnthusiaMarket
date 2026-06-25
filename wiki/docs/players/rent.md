@@ -2,8 +2,8 @@
 title: Rent
 audience: player
 topic: rent
-summary: How stall rent works — formula vs flat, collection, grace period, eviction, and extension.
-keywords: [rent, eviction, grace, extension, formula, flat]
+summary: How stall rent works — formula vs flat, collection, grace period, emergency auction, and extension.
+keywords: [rent, emergency-auction, grace, extension, formula, flat]
 related: [stalls, shop-creation]
 updated: 2026-06-25
 ---
@@ -41,10 +41,11 @@ Rent is collected automatically once per **collection interval** (default: every
 If your balance is too low when rent is collected:
 
 1. Your stall enters **GRACE** state — a warning period.
-2. During grace, your stall is still yours. Shops still work. You can still use the stall.
+2. During grace, the stall **and all its shops are frozen**. No trades can happen until rent is paid.
 3. You have a **grace period** (default 3 days) to pay rent.
-4. If you pay rent during grace, you return to OWNED in good standing.
-5. If the grace period expires without payment: **eviction**. All your shops are wiped and the stall goes back to UNOWNED.
+4. If you pay rent during grace, the stall unfreezes and you return to OWNED in good standing.
+5. If the grace period expires without payment: the stall goes to **emergency auction**,
+   starting at minimum the outstanding rent balance. Any player can bid.
 
 ## How to pay or extend rent
 
@@ -70,5 +71,5 @@ Or run:
 | `rent.formulaPct` | `1.0` | Percentage of purchase price (1.0 = 1%) |
 | `rent.flatAmount` | `0` | Flat amount per period |
 | `rent.collectionInterval` | `P1D` | How often rent is collected (1 day) |
-| `rent.gracePeriod` | `P3D` | Grace period before eviction (3 days) |
+| `rent.gracePeriod` | `P3D` | Grace period before emergency auction (3 days) |
 | `rent.maxPrepaidPeriods` | `0` | Max periods you can pre-pay (0 = unlimited) |

@@ -21,7 +21,7 @@ Stalls move through these states:
 | **UNOWNED** | Available. Anyone with permission can buy it. |
 | **AUCTIONING** | Up for auction. Bid with `/em bid`. |
 | **OWNED** | Occupied by a player or guild. Rent applies. |
-| **GRACE** | Rent not paid. You have time to catch up before eviction. |
+| **GRACE** | Rent not paid. Shops are frozen. Pay rent to unfreeze. After grace: emergency auction. |
 | **RE_AUCTIONING** | Being re-auctioned (system recovery). |
 | **EMERGENCY_AUCTIONING** | Urgent auction triggered by admin or system action. |
 

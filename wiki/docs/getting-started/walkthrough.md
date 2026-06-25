@@ -37,7 +37,7 @@ Every stall you own has rent. By default:
 
 - **Rent mode**: Formula-based (1% of purchase price per day).
 - **Collection**: Rent is collected once per day (configurable).
-- **Grace period**: If you miss a payment, you have 3 days to catch up before eviction.
+- **Grace period**: If you miss a payment, your shops freeze and you have 3 days to pay before the stall goes to emergency auction.
 
 You can **pre-pay rent** by right-clicking the purchase sign twice within 10 seconds. Each double-click extends rent by one period.
 
