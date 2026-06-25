@@ -206,14 +206,14 @@ open class EnthusiaMarket : JavaPlugin() {
             particleService.renderTick(cfg.particles.maxPerTick, this)
         }, 0L, 4L)
 
-        // REQ-287: re-render purchase signs in loaded chunks every 60s so the OWNED rent
-        // countdown visibly ticks down instead of freezing between state changes.
+        // REQ-287: re-render purchase signs in loaded chunks every 20t so the OWNED rent
+        // countdown ticks down visibly instead of freezing between state changes.
         val signRefresh = ctx.getBean<net.badgersmc.em.infrastructure.listeners.PurchaseSignRefreshListener>()
         object : org.bukkit.scheduler.BukkitRunnable() {
             override fun run() {
                 signRefresh.refreshLoaded()
             }
-        }.runTaskTimer(this, 1200L, 1200L)
+        }.runTaskTimer(this, 20L, 20L)
 
         // Container stock sign refresh every 20 ticks — catches stock drift from shift-click,
         // hopper, or other-plugin inventory mutations. Only touches loaded chunks; deduplicates

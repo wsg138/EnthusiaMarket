@@ -252,6 +252,53 @@ class ContainerStockListenerTest {
         // Should not throw
     }
 
+    @Test
+    fun `onTransaction fires depletion event even when sign chunk unloaded`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val ownerUuid = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+        val s = shop(owner = ownerUuid)
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.findById(1L) } returns s
+
+        val diffItem = mockk<ItemStack>(relaxed = true)
+        every { diffItem.isSimilar(sellStack) } returns false
+
+        mockkStatic(Bukkit::class)
+        val world = mockk<World>(relaxed = true)
+        // Container chunk loaded, sign chunk NOT loaded
+        every { world.isChunkLoaded(50 shr 4, 60 shr 4) } returns true
+        every { world.isChunkLoaded(100 shr 4, 200 shr 4) } returns false
+        every { Bukkit.getWorld("world") } returns world
+
+        val sign = mockSignAt(world)
+        mockContainerAt(world, arrayOf(diffItem))
+        // Capture depletion event
+        val pmSlot = slot<Event>()
+        val pm = mockk<PluginManager>(relaxed = true)
+        every { pm.callEvent(capture(pmSlot)) } answers { }
+        every { Bukkit.getPluginManager() } returns pm
+
+        val event = PostShopTransactionEvent(
+            mockk(relaxed = true),
+            UUID.randomUUID(),
+            diffItem, 64, 100.0,
+            shopId = 1L
+        )
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.onTransaction(event)
+
+        // Stock persisted
+        verify { repo.updateStock(1L, 0) }
+        // Sign NOT updated (chunk unloaded)
+        verify(exactly = 0) { sign.line(3, any<Component>()) }
+        // Depletion event still fired
+        verify(exactly = 1) { pm.callEvent(any<ShopStockDepletedEvent>()) }
+        kotlin.test.assertEquals(ownerUuid, (pmSlot.captured as ShopStockDepletedEvent).ownerId)
+    }
+
     // ── Depletion event tests ─────────────────────────────────────────
 
     @Test

@@ -361,7 +361,7 @@ return the stall to UNOWNED.
 
 ### REQ-289 — Unified shop creation GUI
 
-**Event-driven.** WHEN a player triggers shop creation via left-click+sneak on a wall sign attached to a container inside a stall they own or rent THE SYSTEM SHALL open a creation GUI that collects: trade direction (SELL/BUY/TRADE), per-trade amount, and cost configuration (Vault currency amount OR barter item type+amount from the player's hand). THE SYSTEM SHALL persist the shop only when the player confirms in the GUI.
+**Event-driven.** WHEN a player places a wall sign on a container inside a stall they own or rent THE SYSTEM SHALL scan the container for the sellable item, open a creation GUI that collects: trade direction (SELL/BUY/TRADE), per-trade amount, and cost configuration (Vault currency amount OR barter item type+amount from the player's hand), and write the sign text only after the player confirms in the GUI.
 
 **Note:** Supersedes REQ-012 §1 (which said "open a creation GUI… as a buy or sell endpoint" but the GUI never offered the choice). The underlying stall/container/auth checks from REQ-012 §2+ are unchanged.
 
@@ -369,7 +369,7 @@ return the stall to UNOWNED.
 
 **Ubiquitous.** THE SYSTEM SHALL parse the direction token on shop sign line 1 case-insensitively (accepting `[buy]`, `[BUY]`, `[Buy]` as equivalent) and render the sign using readable direction text rather than the raw enum name.
 
-*Supersedes REQ-005 (sign-text parsing created the shop directly; the new flow opens the REQ-289 GUI pre-populated with the parsed direction). Sign text parsing remains as a shortcut — the GUI is the canonical creation path.*
+*Supersedes REQ-005 (sign-text parsing created the shop directly; the new flow scans the container and opens the REQ-289 GUI with the detected item).*
 
 ### REQ-291 — PurchaseMenu shows full shop context
 

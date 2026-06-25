@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.listeners
 
 import io.mockk.*
+import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -21,6 +22,7 @@ import org.bukkit.block.Sign
 import org.bukkit.block.data.type.WallSign
 import org.bukkit.entity.Player
 import org.bukkit.event.block.SignChangeEvent
+import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -28,13 +30,14 @@ import org.junit.jupiter.api.Test
 import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * REQ-290: SignPlaceListener now opens the unified CreateShopMenu instead
- * of creating shops directly. Tests verify the event is cancelled (GUI path
- * engaged) and the right stall is resolved. The guild-binding + persistence
- * is tested via CreateShopMenu integration tests.
+ * Simplified shop creation: player places wall sign on container, GUI opens
+ * with the sell item auto-detected from the container. Tests verify the event
+ * is cancelled (GUI path engaged), container is scanned, and the correct item
+ * is passed to openCreateGui.
  */
 class SignPlaceListenerTest {
 
@@ -46,14 +49,17 @@ class SignPlaceListenerTest {
     @BeforeEach
     fun setUp() {
         server = MockBukkit.mock()
+        mockkObject(ItemStackSerializer)
     }
 
     @AfterEach
     fun tearDown() {
         MockBukkit.unmock()
+        unmockkAll()
     }
 
-    private fun signAndContainer(): Pair<Block, Block> {
+    /** Creates sign + container blocks. Container has [contents] in its inventory. */
+    private fun signAndContainer(contents: Array<ItemStack?>): Pair<Block, Block> {
         val signBlock: Block = mockk(relaxed = true)
         val wallSign: Sign = mockk(relaxed = true)
         every { signBlock.state } returns wallSign
@@ -70,9 +76,13 @@ class SignPlaceListenerTest {
         every { loc.blockZ } returns 200
         every { signBlock.location } returns loc
 
+        val containerInv: Inventory = mockk(relaxed = true)
+        every { containerInv.contents } returns contents
+
         val containerLoc: Location = mockk(relaxed = true)
         val containerBlock: Block = mockk(relaxed = true)
         val container: Container = mockk(relaxed = true)
+        every { container.inventory } returns containerInv
         every { containerBlock.state } returns container
         every { containerBlock.location } returns containerLoc
         every { containerBlock.world.name } returns worldName
@@ -87,7 +97,6 @@ class SignPlaceListenerTest {
         val player: Player = mockk(relaxed = true)
         every { player.uniqueId } returns placerUuid
         every { player.hasPermission("enthusiamarket.shop.create") } returns true
-        every { player.inventory.itemInMainHand } returns ItemStack(Material.DIAMOND, 5)
         return player
     }
 
@@ -109,7 +118,8 @@ class SignPlaceListenerTest {
         return lang
     }
 
-    private fun listener(stall: Stall?, shopRepo: ShopRepository): SignPlaceListener {
+    /** Captures the [ShopCreateParams] passed to openCreateGui. */
+    private fun listener(stall: Stall?, shopRepo: ShopRepository, capture: MutableList<ShopCreateParams>): SignPlaceListener {
         return object : SignPlaceListener(
             mockk<StallRepository>(relaxed = true), shopRepo,
             mockk<GuildProvider>(relaxed = true), lenientLang(),
@@ -117,14 +127,8 @@ class SignPlaceListenerTest {
         ) {
             override fun findStallAt(location: Location): Stall? = stall
             override fun canManageStall(stall: Stall, player: Player): Boolean = true
-            override fun openCreateGui(
-                stallId: String, owner: UUID, signLoc: Location, containerLoc: Location,
-                sellItemB64: String, direction: net.badgersmc.em.domain.shop.SignDirection,
-                initialAmount: Int, initialPrice: Long,
-                costItemB64: String?, costAmountOverride: Int?,
-                guildId: String?, player: Player,
-            ) {
-                // No-op: skip IFramework GUI creation in tests
+            override fun openCreateGui(params: ShopCreateParams, player: Player) {
+                capture.add(params)
             }
         }
     }
@@ -133,43 +137,70 @@ class SignPlaceListenerTest {
         val event: SignChangeEvent = mockk(relaxed = true)
         every { event.player } returns player
         every { event.block } returns signBlock
-        every { event.lines() } returns listOf(
-            Component.text("[SELL]"), Component.text("64"),
-            Component.text("1000"), Component.text(""),
-        )
         return event
     }
 
     @Test
-    fun `valid sign in GUILD stall cancels event to open GUI`() {
-        val (signBlock, _) = signAndContainer()
+    fun `places sign on container with items opens GUI with sell item from container`() {
+        val diamond = ItemStack(Material.DIAMOND, 1)
+        every { ItemStackSerializer.serialize(any()) } returns "base64_diamond"
+
+        val (signBlock, _) = signAndContainer(arrayOf(diamond))
         val player = placerPlayer()
         val shopRepo = mockk<ShopRepository>(relaxed = true)
         every { shopRepo.findBySign(worldName, 100, 64, 200) } returns null
 
-        val sut = listener(stall = guildStall(), shopRepo = shopRepo)
+        val paramsCapture = mutableListOf<ShopCreateParams>()
+        val sut = listener(stall = soloStall(), shopRepo = shopRepo, capture = paramsCapture)
         val event = signChangeEvent(player, signBlock)
 
         sut.onSignPlace(event)
 
-        // REQ-290: event cancelled → GUI opens instead of direct creation
         verify { event.isCancelled = true }
+        verify(exactly = 0) { shopRepo.upsert(any()) }
+
+        val params = paramsCapture.single()
+        assertEquals("stall_01", params.stallId)
+        assertEquals(placerUuid, params.owner)
+        assertEquals("base64_diamond", params.sellItemB64)
     }
 
     @Test
-    fun `valid sign in SOLO stall cancels event to open GUI`() {
-        val (signBlock, _) = signAndContainer()
+    fun `empty container shows error and cancels event`() {
+        val (signBlock, _) = signAndContainer(arrayOf())
         val player = placerPlayer()
         val shopRepo = mockk<ShopRepository>(relaxed = true)
         every { shopRepo.findBySign(worldName, 100, 64, 200) } returns null
 
-        val sut = listener(stall = soloStall(), shopRepo = shopRepo)
+        val paramsCapture = mutableListOf<ShopCreateParams>()
+        val sut = listener(stall = soloStall(), shopRepo = shopRepo, capture = paramsCapture)
         val event = signChangeEvent(player, signBlock)
 
         sut.onSignPlace(event)
 
         verify { event.isCancelled = true }
-        // upsert must NOT be called — GUI handles persistence
-        verify(exactly = 0) { shopRepo.upsert(any()) }
+        // GUI must NOT be opened (container is empty)
+        assertTrue(paramsCapture.isEmpty())
+    }
+
+    @Test
+    fun `GUILD stall opens GUI with guildId set`() {
+        val diamond = ItemStack(Material.DIAMOND, 1)
+        every { ItemStackSerializer.serialize(any()) } returns "base64_diamond"
+
+        val (signBlock, _) = signAndContainer(arrayOf(diamond))
+        val player = placerPlayer()
+        val shopRepo = mockk<ShopRepository>(relaxed = true)
+        every { shopRepo.findBySign(worldName, 100, 64, 200) } returns null
+
+        val paramsCapture = mutableListOf<ShopCreateParams>()
+        val sut = listener(stall = guildStall(), shopRepo = shopRepo, capture = paramsCapture)
+        val event = signChangeEvent(player, signBlock)
+
+        sut.onSignPlace(event)
+
+        verify { event.isCancelled = true }
+        val params = paramsCapture.single()
+        assertTrue(params.guildId == guildId)
     }
 }

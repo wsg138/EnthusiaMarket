@@ -48,9 +48,8 @@ class ContainerStockListener(
         val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
         lastRawStock[shop.id] = rawStock
         shopRepository.updateStock(shop.id, rawStock)
-        val sign = loadedSign(shop) ?: return
-        updateSignStock(sign, trades)
         trackDepletion(shop, trades)
+        loadedSign(shop)?.let { updateSignStock(it, trades) }
     }
 
     // ── Timer path (called from EnthusiaMarket.onEnable every 20t) ─────

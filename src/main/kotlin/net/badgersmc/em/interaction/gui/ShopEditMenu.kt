@@ -50,18 +50,25 @@ class ShopEditMenu(
         render(player)
     }
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun render(player: Player) {
         val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.edit.title")))
         val pane = StaticPane(9, 3)
 
-        // Direction + stock info.
+        // Direction + stock info (from draft sellAmount when item unchanged).
         val dirLabel = ShopDisplay.directionLabel(shop.direction)
-        val tradesAvailable = ShopDisplay.tradesAvailable(shop)
+        val tradesAvailable = if (sellItemB64 == shop.sellItem)
+            if (sellAmount > 0) shop.stockCount / sellAmount else 0
+        else
+            null
+        val stockLore = if (tradesAvailable != null)
+            listOf(lang.msg("gui.shop.edit.stock", "stock" to tradesAvailable))
+        else
+            listOf(lang.msg("gui.shop.edit.stock_unknown"))
         pane.addItem(GuiItem(decorated(
             Material.OAK_SIGN,
             lang.msg("gui.shop.edit.direction", "direction" to dirLabel),
-            listOf(lang.msg("gui.shop.edit.stock", "stock" to tradesAvailable))
+            stockLore
         )), 0, 1)
 
         // Sell item preview (decoded). Clicking sets the sell item to the item in hand.

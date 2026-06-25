@@ -12,6 +12,8 @@ object ShopDisplay {
         SignDirection.TRADE -> "<light_purple>Trade</light_purple>"
     }
 
-    fun tradesAvailable(shop: Shop): Int =
-        if (shop.sellAmount > 0) shop.stockCount / shop.sellAmount else 0
+    fun tradesAvailable(shop: Shop): Int = when (shop.direction) {
+        SignDirection.BUY -> shop.stockCount  // BUY: how much the container already holds
+        else -> if (shop.sellAmount > 0) shop.stockCount / shop.sellAmount else 0
+    }
 }

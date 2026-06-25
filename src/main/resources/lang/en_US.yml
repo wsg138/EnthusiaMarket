@@ -167,9 +167,11 @@ shop:
     no_authority: "<red>You do not own or rent this stall"
     guild_unavailable: "<red>LumaGuilds integration is not available"
     success: "<green>Shop created!"
+    sign_failed: "<red>Failed to write sign text — the sign may have been destroyed."
     invalid_input: "<red>Invalid amount or price — both must be positive whole numbers"
     no_permission: "<red>You do not have permission to create shops (enthusiamarket.shop.create)"
     needs_wallsign: "<red>Shop signs must be wall-mounted on the side of a container"
+    empty_container: "<red>Container is empty — place items inside before creating a shop"
     no_held_item: "<red>Hold the item you want to trade in your main hand before placing the sign"
     no_guild_trade: "<red>Guild-owned stalls can't host [TRADE] shops."
     invalid_trade_cost: "<red>Line 3 must be '<amount> <item>', e.g. '16 diamond'."
@@ -247,10 +249,10 @@ shop:
     url: "<green>Our web store: <aqua><click:open_url:'<url>'><url></click>"
   help:
     line1: "<gold>━━ Shop Tutorial ━━"
-    line2: "<gray>1. Place a sign on a container (chest, barrel, etc.) inside your stall."
-    line3: "<gray>2. Write [SELL], [BUY], or [TRADE] on the first line."
-    line4: "<gray>3. Line 2: amount to trade. Line 3: price (or cost item for TRADE)."
-    line5: "<gray>4. Use /shop edit to manage your shops, and /shop search to find items."
+    line2: "<gray>1. Place a wall sign on a container (chest, barrel, etc.) inside your stall."
+    line3: "<gray>2. A configuration menu will open — choose BUY, SELL, or TRADE."
+    line4: "<gray>3. Set the amount per trade and the price (or cost item for TRADE)."
+    line5: "<gray>4. Confirm to create the shop. Use /shop edit to manage your shops."
 
 gui:
   common:
@@ -322,6 +324,7 @@ gui:
       title: "<dark_gray>Edit shop"
       direction: "<gray>Direction: <white><direction>"
       stock: "<gray>Stock: <aqua><stock> trades</aqua>"
+      stock_unknown: "<gray>Stock: <dark_gray>unknown (item changed)</dark_gray>"
       sell_up: "<green>Sell +1 (<amount>)"
       sell_amount: "<green>Sell amount: <amount>"
       sell_down: "<red>Sell -1 (<amount>)"

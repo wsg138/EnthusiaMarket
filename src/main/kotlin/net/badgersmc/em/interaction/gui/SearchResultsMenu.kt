@@ -48,7 +48,7 @@ class SearchResultsMenu(
                 meta.displayName(lang.msg(
                     "gui.shop.search.result",
                     "sell_amt" to shop.sellAmount, "cost" to shop.costAmount,
-                    "trades" to tradesAvailable(shop), "owner" to owner,
+                    "trades" to ShopDisplay.tradesAvailable(shop), "owner" to owner,
                     "direction" to dirLabel,
                 ))
                 icon.itemMeta = meta
@@ -106,9 +106,6 @@ class SearchResultsMenu(
         item.itemMeta = meta
         return item
     }
-
-    private fun tradesAvailable(shop: Shop): Int =
-        shop.stockCount / shop.sellAmount.coerceAtLeast(1)
 
     private companion object {
         private const val ROWS = 6
