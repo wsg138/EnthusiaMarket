@@ -5,6 +5,7 @@ import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.kyori.adventure.text.Component
+import net.badgersmc.em.events.PostShopTransactionEvent
 import net.badgersmc.em.events.ShopStockDepletedEvent
 import org.bukkit.Bukkit
 import org.bukkit.Location
@@ -12,13 +13,10 @@ import org.bukkit.World
 import org.bukkit.block.Block
 import org.bukkit.block.Container
 import org.bukkit.block.Sign
-import org.bukkit.event.inventory.InventoryClickEvent
-import org.bukkit.event.inventory.InventoryDragEvent
-import org.bukkit.event.inventory.InventoryType
-import org.bukkit.event.inventory.ClickType
-import org.bukkit.event.inventory.InventoryAction
-import org.bukkit.inventory.*
-import org.mockbukkit.mockbukkit.MockBukkit
+import org.bukkit.event.Event
+import org.bukkit.inventory.Inventory
+import org.bukkit.inventory.ItemStack
+import org.bukkit.plugin.PluginManager
 import org.junit.jupiter.api.AfterEach
 import java.util.UUID
 import kotlin.test.Test
@@ -27,282 +25,290 @@ class ContainerStockListenerTest {
 
     @AfterEach
     fun cleanupMocks() {
-        // The helper methods in this class call mockkStatic(Bukkit::class) without
-        // an unmockkStatic — and mockk's static mocks are JVM-global. Without this
-        // teardown, the static mock leaks into the next test class's execution and
-        // breaks anything that relies on Bukkit.getPluginManager() being dispatched
-        // through MockBukkit's ServerMock (e.g. ShopDeletedEventTest's
-        // assertEventFired never sees fired events because callEvent is intercepted
-        // by the leaked relaxed mock instead).
         unmockkAll()
-        if (MockBukkit.isMocked()) MockBukkit.unmock()
     }
 
     /** Creates a shop with the given coordinates. */
     private fun shop(
-        signX: Int = 100, signY: Int = 64, signZ: Int = 200,
-        contX: Int = 50, contY: Int = 64, contZ: Int = 60,
         sellAmount: Int = 1,
         owner: UUID = UUID.randomUUID()
     ): Shop = Shop(
         id = 1L, stallId = "s1", owner = owner,
-        signWorld = "world", signX = signX, signY = signY, signZ = signZ,
-        containerWorld = "world", containerX = contX, containerY = contY, containerZ = contZ,
+        signWorld = "world", signX = 100, signY = 64, signZ = 200,
+        containerWorld = "world", containerX = 50, containerY = 64, containerZ = 60,
         sellItem = "base64item", sellAmount = sellAmount,
         costItem = "base64cost", costAmount = 10
     )
 
-    /**
-     * Sets up Bukkit.getWorld("world") and registers blocks at:
-     *  - (signX, signY, signZ) → sign mock
-     *  - (contX, contY, contZ) → container with the given inventory contents
-     * Returns the [Sign] mock so tests can verify interactions.
-     */
-    private fun mockWorldWithShop(
-        signX: Int = 100, signY: Int = 64, signZ: Int = 200,
-        contX: Int = 50, contY: Int = 64, contZ: Int = 60,
-        contents: Array<ItemStack?> = emptyArray()
-    ): Sign {
-        mockkStatic(org.bukkit.Bukkit::class)
-        val world = mockk<World>(relaxed = true)
-        every { org.bukkit.Bukkit.getWorld("world") } returns world
+    // ── Mock helpers (split to stay under Codacy param/NLOC limits) ────
 
-        // Sign block
-        val sign = mockk<Sign>(relaxed = true)
-        val signBlock = mockk<Block>(relaxed = true).also {
-            every { it.state } returns sign
-        }
-        every { world.getBlockAt(signX, signY, signZ) } returns signBlock
+    /** Sets up a mocked World with sign + container blocks. Returns the sign mock. */
+    private fun mockWorld(contents: Array<ItemStack?>): Sign {
+        mockkStatic(Bukkit::class)
+        val world = mockWorldWithChunksLoaded()
+        every { Bukkit.getWorld("world") } returns world
 
-        // Container block at shop's container coords
-        val contLoc = mockk<Location>(relaxed = true).also {
-            every { it.world?.name } returns "world"
-            every { it.blockX } returns contX
-            every { it.blockY } returns contY
-            every { it.blockZ } returns contZ
-        }
-        val containerInv = mockk<Inventory>(relaxed = true).also {
-            every { it.contents } returns contents
-        }
-        val container = mockk<Container>(relaxed = true).also {
-            every { it.inventory } returns containerInv
-        }
-        val containerBlock = mockk<Block>(relaxed = true).also {
-            every { it.location } returns contLoc
-            every { it.state } returns container
-        }
-        every { world.getBlockAt(contX, contY, contZ) } returns containerBlock
-
+        val sign = mockSignAt(world)
+        mockContainerAt(world, contents)
+        stubPluginManager()
         return sign
     }
 
-    /** Creates a mock InventoryView whose top inventory holder is the given object. */
-    private fun inventoryView(holder: Any): InventoryView {
-        val topInv = mockk<Inventory>(relaxed = true).also {
-            every { it.holder } returns (holder as? org.bukkit.inventory.InventoryHolder)
-        }
-        return mockk<InventoryView>(relaxed = true).also {
-            every { it.topInventory } returns topInv
-        }
+    /** Returns a World mock where all chunks report as loaded. */
+    private fun mockWorldWithChunksLoaded(): World {
+        val world = mockk<World>(relaxed = true)
+        every { world.isChunkLoaded(any(), any()) } returns true
+        return world
     }
 
-    /** Creates a mock Container holder for the inventory view. */
-    private fun containerHolder(): org.bukkit.inventory.InventoryHolder {
-        val contLoc = mockk<Location>(relaxed = true).also {
-            every { it.world?.name } returns "world"
-            every { it.blockX } returns 50
-            every { it.blockY } returns 64
-            every { it.blockZ } returns 60
-        }
+    /** Creates a sign block at (100,64,200) on [world] and returns the sign mock. */
+    private fun mockSignAt(world: World): Sign {
+        val sign = mockk<Sign>(relaxed = true)
+        val signBlock = mockk<Block>(relaxed = true)
+        every { signBlock.state } returns sign
+        every { world.getBlockAt(100, 64, 200) } returns signBlock
+        return sign
+    }
+
+    /** Creates a container block at (50,64,60) on [world] with the given contents. */
+    private fun mockContainerAt(world: World, contents: Array<ItemStack?>) {
+        val containerInv = mockk<Inventory>(relaxed = true)
+        every { containerInv.contents } returns contents
         val container = mockk<Container>(relaxed = true)
-        val block = mockk<Block>(relaxed = true).also {
-            every { it.location } returns contLoc
-            every { it.state } returns container
-        }
-        every { container.block } returns block
-        return container
+        every { container.inventory } returns containerInv
+        val contLoc = mockk<Location>(relaxed = true)
+        every { contLoc.world?.name } returns "world"
+        every { contLoc.blockX } returns 50; every { contLoc.blockY } returns 64; every { contLoc.blockZ } returns 60
+        val containerBlock = mockk<Block>(relaxed = true)
+        every { containerBlock.location } returns contLoc
+        every { containerBlock.state } returns container
+        every { world.getBlockAt(50, 64, 60) } returns containerBlock
     }
 
-    @Test
-    fun `click in linked container refreshes sign with stock count`() {
-        // Mock deserialize
-        val sellStack = mockk<ItemStack>(relaxed = true)
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
-        val shop = shop()
-        val repo = mockk<ShopRepository>(relaxed = true)
-        every { repo.findByContainer("world", 50, 64, 60) } returns listOf(shop)
-
-        // Container has 10 items matching the sell item
-        val contItem = mockk<ItemStack>(relaxed = true)
-        every { contItem.isSimilar(sellStack) } returns true
-        every { contItem.amount } returns 10
-
-        // World has sign at (100,64,200) and container at (50,64,60) with 10 items
-        val sign = mockWorldWithShop(contents = arrayOf(contItem))
-
-        // The view's top inventory is our container
-        val view = inventoryView(containerHolder())
-
-        val event = InventoryClickEvent(
-            view, InventoryType.SlotType.CONTAINER, 0,
-            ClickType.LEFT, InventoryAction.PICKUP_ALL
-        )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
-        listener.onClick(event)
-
-        verify { sign.line(3, any<Component>()) }
-        verify { sign.update(true) }
-    }
-
-    @Test
-    fun `click in non-shop container does nothing`() {
-        val repo = mockk<ShopRepository>(relaxed = true)
-        every { repo.findByContainer(any(), any(), any(), any()) } returns emptyList()
-
-        val view = inventoryView(containerHolder())
-
-        val event = InventoryClickEvent(
-            view, InventoryType.SlotType.CONTAINER, 0,
-            ClickType.LEFT, InventoryAction.PICKUP_ALL
-        )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
-        listener.onClick(event)
-        // Should not throw
-    }
-
-    @Test
-    fun `drag in linked container refreshes sign with stock count`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
-        val shop = shop()
-        val repo = mockk<ShopRepository>(relaxed = true)
-        every { repo.findByContainer("world", 50, 64, 60) } returns listOf(shop)
-
-        val contItem = mockk<ItemStack>(relaxed = true)
-        every { contItem.isSimilar(sellStack) } returns true
-        every { contItem.amount } returns 10
-
-        val sign = mockWorldWithShop(contents = arrayOf(contItem))
-        val view = inventoryView(containerHolder())
-
-        val event = InventoryDragEvent(
-            view,
-            mockk<ItemStack>(relaxed = true),
-            mockk<ItemStack>(relaxed = true),
-            false,
-            mapOf(0 to mockk<ItemStack>(relaxed = true))
-        )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
-        listener.onDrag(event)
-
-        verify { sign.line(3, any<Component>()) }
-        verify { sign.update(true) }
-    }
-
-    @Test
-    fun `drag in non-shop container does nothing`() {
-        val repo = mockk<ShopRepository>(relaxed = true)
-        every { repo.findByContainer(any(), any(), any(), any()) } returns emptyList()
-
-        val view = inventoryView(containerHolder())
-
-        val event = InventoryDragEvent(
-            view,
-            mockk<ItemStack>(relaxed = true),
-            mockk<ItemStack>(relaxed = true),
-            false,
-            mapOf(0 to mockk<ItemStack>(relaxed = true))
-        )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
-        listener.onDrag(event)
-        // Should not throw
-    }
-
-    @Test
-    fun `click in player inventory does nothing`() {
-        val repo = mockk<ShopRepository>(relaxed = true)
-        val player = mockk<org.bukkit.entity.Player>(relaxed = true)
-        val view = inventoryView(player)
-
-        val event = InventoryClickEvent(
-            view, InventoryType.SlotType.CONTAINER, 0,
-            ClickType.LEFT, InventoryAction.PICKUP_ALL
-        )
-        val listener = ContainerStockListener(repo, mockk(relaxed = true))
-        listener.onClick(event)
-        // Should not call findByContainer
-        verify(exactly = 0) { repo.findByContainer(any(), any(), any(), any()) }
-    }
-
-    @Test
-    fun `click in container with deserialize failure shows stock 0`() {
-        // deserialize returns null -> 0 trades
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns null
-
-        val shop = shop()
-        val repo = mockk<ShopRepository>(relaxed = true)
-        every { repo.findByContainer("world", 50, 64, 60) } returns listOf(shop)
-
-        // Container contents don't matter since deserialize returns null
-        val sign = mockWorldWithShop()
+    /** Stubs Bukkit.getPluginManager() with a relaxed mock so depletion tracking doesn't NPE. */
+    private fun stubPluginManager() {
         every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
-        val view = inventoryView(containerHolder())
+    }
 
-        val event = InventoryClickEvent(
-            view, InventoryType.SlotType.CONTAINER, 0,
-            ClickType.LEFT, InventoryAction.PICKUP_ALL
-        )
+    // ── Timer path tests ──────────────────────────────────────────────
+
+    @Test
+    fun `refreshAllSigns updates sign with stock count`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val s = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(s)
+
+        val contItem = mockk<ItemStack>(relaxed = true)
+        every { contItem.isSimilar(sellStack) } returns true
+        every { contItem.amount } returns 10
+
+        val sign = mockWorld(contents = arrayOf(contItem))
+
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
-        listener.onClick(event)
+        listener.refreshAllSigns()
 
         verify { sign.line(3, any<Component>()) }
         verify { sign.update(true) }
+        verify { repo.updateStock(s.id, 10) }
     }
 
     @Test
-    fun `inventory change to zero stock fires ShopStockDepletedEvent with correct owner UUID`() {
-        // ── Given: a shop with zero stock in its linked container ──
-        val server = MockBukkit.mock()
-        try {
-            val sellStack = mockk<ItemStack>(relaxed = true)
-            mockkObject(ItemStackSerializer)
-            every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+    fun `refreshAllSigns skips update when stock unchanged`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
-            val ownerUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
-            val shop = shop(owner = ownerUuid)
-            val repo = mockk<ShopRepository>(relaxed = true)
-            every { repo.findByContainer("world", 50, 64, 60) } returns listOf(shop)
+        val s = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(s)
 
-            // Non-matching item → stock = 0
-            val diffItem = mockk<ItemStack>(relaxed = true)
-            every { diffItem.isSimilar(sellStack) } returns false
+        val contItem = mockk<ItemStack>(relaxed = true)
+        every { contItem.isSimilar(sellStack) } returns true
+        every { contItem.amount } returns 10
 
-            val sign = mockWorldWithShop(contents = arrayOf(diffItem))
+        val sign = mockWorld(contents = arrayOf(contItem))
 
-            // Point Bukkit.getPluginManager() at server's plugin manager
-            every { org.bukkit.Bukkit.getPluginManager() } returns server.pluginManager
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
 
-            val view = inventoryView(containerHolder())
-            val event = InventoryClickEvent(
-                view, InventoryType.SlotType.CONTAINER, 0,
-                ClickType.LEFT, InventoryAction.PICKUP_ALL
-            )
-            val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+        verify(exactly = 1) { sign.line(3, any<Component>()) }
+        verify(exactly = 1) { repo.updateStock(s.id, 10) }
 
-            // ── When: the listener processes the inventory click ──
-            listener.onClick(event)
+        listener.refreshAllSigns()
+        verify(exactly = 1) { sign.line(3, any<Component>()) }
+        verify(exactly = 1) { repo.updateStock(s.id, 10) }
+    }
 
-            // ── Then: ShopStockDepletedEvent should have been fired ──
-            server.pluginManager.assertEventFired(ShopStockDepletedEvent::class.java) { e ->
-                e.ownerId == ownerUuid
-            }
-        } finally {
-            MockBukkit.unmock()
-        }
+    @Test
+    fun `refreshAllSigns skips unloaded container chunk`() {
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(shop())
+
+        mockkStatic(Bukkit::class)
+        val world = mockk<World>(relaxed = true)
+        every { world.isChunkLoaded(any(), any()) } returns false
+        every { Bukkit.getWorld("world") } returns world
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+
+        verify(exactly = 0) { world.getBlockAt(any(), any(), any()) }
+    }
+
+    @Test
+    fun `refreshAllSigns does nothing with empty shop list`() {
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns emptyList()
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+        // Should not throw
+    }
+
+    @Test
+    fun `refreshAllSigns skips update when sign chunk not loaded`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val s = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(s)
+
+        val contItem = mockk<ItemStack>(relaxed = true)
+        every { contItem.isSimilar(sellStack) } returns true
+        every { contItem.amount } returns 10
+
+        mockkStatic(Bukkit::class)
+        val world = mockk<World>(relaxed = true)
+        // Container chunk IS loaded, sign chunk is NOT
+        every { world.isChunkLoaded(50 shr 4, 60 shr 4) } returns true
+        every { world.isChunkLoaded(100 shr 4, 200 shr 4) } returns false
+        every { Bukkit.getWorld("world") } returns world
+
+        val sign = mockSignAt(world)
+        mockContainerAt(world, arrayOf(contItem))
+        stubPluginManager()
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+
+        // DB must STILL be updated — stock_count exists for /shop search,
+        // and the container chunk IS loaded (V019 design).
+        verify(exactly = 1) { repo.updateStock(s.id, 10) }
+        // Sign must NOT be touched (chunk not loaded)
+        verify(exactly = 0) { sign.line(3, any<Component>()) }
+    }
+
+    // ── Trade path tests ──────────────────────────────────────────────
+
+    @Test
+    fun `onTransaction updates sign and persists stock`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val s = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.findById(1L) } returns s
+
+        val contItem = mockk<ItemStack>(relaxed = true)
+        every { contItem.isSimilar(sellStack) } returns true
+        every { contItem.amount } returns 64
+
+        val sign = mockWorld(contents = arrayOf(contItem))
+
+        val event = PostShopTransactionEvent(
+            mockk(relaxed = true),
+            UUID.randomUUID(),
+            contItem, 64, 100.0,
+            shopId = 1L
+        )
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.onTransaction(event)
+
+        verify { sign.line(3, any<Component>()) }
+        verify { sign.update(true) }
+        verify { repo.updateStock(1L, 64) }
+    }
+
+    @Test
+    fun `onTransaction with unknown shopId does nothing`() {
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.findById(999L) } returns null
+
+        val event = PostShopTransactionEvent(
+            mockk(relaxed = true),
+            UUID.randomUUID(),
+            mockk(relaxed = true), 1, 10.0,
+            shopId = 999L
+        )
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.onTransaction(event)
+        // Should not throw
+    }
+
+    // ── Depletion event tests ─────────────────────────────────────────
+
+    @Test
+    fun `zero stock fires ShopStockDepletedEvent`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val ownerUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+        val s = shop(owner = ownerUuid)
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(s)
+
+        val diffItem = mockk<ItemStack>(relaxed = true)
+        every { diffItem.isSimilar(sellStack) } returns false
+
+        val sign = mockWorld(contents = arrayOf(diffItem))
+
+        // Capture the callEvent argument
+        val pmSlot = slot<Event>()
+        val pm = mockk<PluginManager>(relaxed = true)
+        every { pm.callEvent(capture(pmSlot)) } answers { }
+        every { Bukkit.getPluginManager() } returns pm
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+
+        verify { sign.line(3, any<Component>()) }
+        verify(exactly = 1) { pm.callEvent(any<ShopStockDepletedEvent>()) }
+        val fired = pmSlot.captured as ShopStockDepletedEvent
+        kotlin.test.assertEquals(ownerUuid, fired.ownerId)
+    }
+
+    @Test
+    fun `depletion event not re-fired when still at zero`() {
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val s = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(s)
+
+        val diffItem = mockk<ItemStack>(relaxed = true)
+        every { diffItem.isSimilar(sellStack) } returns false
+
+        val sign = mockWorld(contents = arrayOf(diffItem))
+
+        val pm = mockk<PluginManager>(relaxed = true)
+        every { Bukkit.getPluginManager() } returns pm
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+
+        listener.refreshAllSigns()
+        verify(exactly = 1) { pm.callEvent(any<ShopStockDepletedEvent>()) }
+
+        listener.refreshAllSigns()
+        verify(exactly = 1) { pm.callEvent(any<ShopStockDepletedEvent>()) }
     }
 }

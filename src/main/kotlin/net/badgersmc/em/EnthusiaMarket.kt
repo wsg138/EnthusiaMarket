@@ -215,6 +215,14 @@ open class EnthusiaMarket : JavaPlugin() {
             }
         }.runTaskTimer(this, 1200L, 1200L)
 
+        // Container stock sign refresh every 20 ticks — catches stock drift from shift-click,
+        // hopper, or other-plugin inventory mutations. Only touches loaded chunks; deduplicates
+        // via lastRawStock so signs and DB are only touched when the count actually changes.
+        val stockRefresh = ctx.getBean<net.badgersmc.em.infrastructure.listeners.ContainerStockListener>()
+        Bukkit.getScheduler().runTaskTimer(this, Runnable {
+            stockRefresh.refreshAllSigns()
+        }, 20L, 20L)
+
         // M-20: one-time backfill of sell_material for shops written before V018.
         // Off the main thread + fail-open so a large table or a DB hiccup can't stall boot.
         val shopRepoForBackfill = ctx.getBean<net.badgersmc.em.domain.shop.ShopRepository>()

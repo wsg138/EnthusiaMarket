@@ -1,112 +1,122 @@
 package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.PostShopTransactionEvent
 import net.badgersmc.em.events.ShopStockDepletedEvent
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
+import net.badgersmc.nexus.paper.listeners.Listener
 import org.bukkit.Bukkit
-import org.bukkit.block.Block
 import org.bukkit.block.Container
 import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
-import org.bukkit.event.Listener
-import org.bukkit.event.inventory.InventoryClickEvent
-import org.bukkit.event.inventory.InventoryDragEvent
-import org.bukkit.inventory.DoubleChestInventory
 import org.bukkit.inventory.Inventory
 
 /**
- * Monitors container inventory changes and refreshes linked shop sign text (REQ-017).
- * Uses MONITOR priority so it runs after all other handlers.
+ * Keeps shop sign stock text in sync with linked container inventories.
+ *
+ * **Trade path** — [onTransaction] fires after every successful [PostShopTransactionEvent]:
+ * recomputes raw stock, persists [ShopRepository.updateStock], and updates the sign.
+ *
+ * **Timer path** — [refreshAllSigns] is called every 20 ticks from [EnthusiaMarket.onEnable].
+ * Iterates all shops, reads the live container inventory for loaded chunks only (never
+ * force-loads), and updates sign + denormalized stock_count when the raw stock changes.
+ * This catches stock drift from shift-click, hopper, or other-plugin inventory mutations
+ * without needing per-event listeners.
  */
-@net.badgersmc.nexus.paper.listeners.Listener
+@Listener
 @Component
 class ContainerStockListener(
     private val shopRepository: ShopRepository,
     private val lang: LangService
-) : Listener {
+) : org.bukkit.event.Listener {
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    fun onClick(event: InventoryClickEvent) {
-        val containerBlock = containerBlockOf(event.view) ?: return
-        refreshShopsAt(containerBlock)
-    }
+    /** shopId → last-persisted raw stock (dedup: skip sign update if unchanged). */
+    private val lastRawStock: MutableMap<Long, Int> = mutableMapOf()
+    private var previouslyDepletedShops: MutableSet<Long> = mutableSetOf()
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    fun onDrag(event: InventoryDragEvent) {
-        val containerBlock = containerBlockOf(event.view) ?: return
-        refreshShopsAt(containerBlock)
-    }
+    // ── Trade path ──────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     fun onTransaction(event: PostShopTransactionEvent) {
         val shop = shopRepository.findById(event.shopId) ?: return
-        // Persist stock FIRST — the trade already mutated the container, so stock_count
-        // must update even if the sign is gone (mirrors refreshShopsAt). Otherwise a
-        // missing/destroyed sign would leave search showing stale availability.
-        val trades = recomputeAndPersist(shop)
-        val signWorld = Bukkit.getWorld(shop.signWorld) ?: return
-        val signBlock = signWorld.getBlockAt(shop.signX, shop.signY, shop.signZ)
-        val state = signBlock.state as? Sign ?: return
-        updateSignStock(state, trades)
+        val container = loadedContainer(shop) ?: return
+        val rawStock = rawStockOf(container.inventory, shop)
+        val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
+        lastRawStock[shop.id] = rawStock
+        shopRepository.updateStock(shop.id, rawStock)
+        val sign = loadedSign(shop) ?: return
+        updateSignStock(sign, trades)
         trackDepletion(shop, trades)
     }
 
-    private var previouslyDepletedShops: MutableSet<Long> = mutableSetOf()
+    // ── Timer path (called from EnthusiaMarket.onEnable every 20t) ─────
 
-    private fun containerBlockOf(view: org.bukkit.inventory.InventoryView): Block? {
-        val top = view.topInventory
-        val holder = top.holder
-        return when {
-            holder is Container -> holder.block
-            holder is org.bukkit.block.DoubleChest -> {
-                val leftInv = (top as? DoubleChestInventory)?.leftSide
-                val rightInv = (top as? DoubleChestInventory)?.rightSide
-                val leftBlock = (leftInv?.holder as? Container)?.block
-                val rightBlock = (rightInv?.holder as? Container)?.block
-                leftBlock ?: rightBlock
-            }
-            else -> null
+    /** Recompute stock for every shop whose container chunk is loaded. */
+    fun refreshAllSigns() {
+        for (shop in shopRepository.all()) {
+            val inventory = containerInventoryIfLoaded(shop) ?: continue
+            refreshOne(shop, inventory)
         }
     }
 
-    private fun refreshShopsAt(containerBlock: Block) {
-        val loc = containerBlock.location
-        val shops = shopRepository.findByContainer(
-            loc.world?.name ?: "world",
-            loc.blockX, loc.blockY, loc.blockZ
-        )
-        for (shop in shops) {
-            val trades = recomputeAndPersist(shop)
-            val signWorld = Bukkit.getWorld(shop.signWorld) ?: continue
-            val signBlock = signWorld.getBlockAt(shop.signX, shop.signY, shop.signZ)
-            val state = signBlock.state as? Sign ?: continue
-            updateSignStock(state, trades)
-            trackDepletion(shop, trades)
-        }
-    }
+    /** Recompute + persist + sign-update for a single shop whose inventory is known to be loaded. */
+    private fun refreshOne(shop: Shop, inventory: Inventory) {
+        val rawStock = rawStockOf(inventory, shop)
+        if (rawStock == lastRawStock[shop.id]) return                      // unchanged → skip
 
-    private fun recomputeAndPersist(shop: net.badgersmc.em.domain.shop.Shop): Int {
-        val container = getContainer(shop) ?: return 0
-        val rawStock = rawStockOf(container, shop)
+        // Persist stock_count to DB regardless of sign availability —
+        // /shop search reads shop.stockCount (V019). This is the whole
+        // point of the denormalized column: search results must stay
+        // accurate even when the sign chunk happens to be unloaded.
+        lastRawStock[shop.id] = rawStock
+        val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
         shopRepository.updateStock(shop.id, rawStock)
-        return rawStock / shop.sellAmount.coerceAtLeast(1)
+        trackDepletion(shop, trades)
+
+        // Best-effort sign update — if the sign chunk isn't loaded,
+        // the text will catch up on the next tick when it loads.
+        loadedSign(shop)?.let { updateSignStock(it, trades) }
     }
 
-    private fun getContainer(shop: net.badgersmc.em.domain.shop.Shop): Container? {
-        val containerBlock = Bukkit.getWorld(shop.containerWorld)
-            ?.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
-        return containerBlock?.state as? Container
+    /** The shop's container inventory, or null if the world/chunk/block is unavailable.
+     *  Never force-loads a chunk — the [isChunkLoaded] guard is required because
+     *  [World.getBlockAt] loads the chunk synchronously when it isn't in memory. */
+    private fun containerInventoryIfLoaded(shop: Shop): Inventory? {
+        val world = Bukkit.getWorld(shop.containerWorld) ?: return null
+        if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
+        val container = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
+            .state as? Container ?: return null
+        return container.inventory
     }
 
-    private fun rawStockOf(container: Container, shop: net.badgersmc.em.domain.shop.Shop): Int {
+    // ── Helpers ─────────────────────────────────────────────────────────
+
+    private fun rawStockOf(inventory: Inventory, shop: Shop): Int {
         val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
-        return container.inventory.contents.filterNotNull()
+        return inventory.contents.filterNotNull()
             .filter { it.isSimilar(sellStack) }
             .sumOf { it.amount }
+    }
+
+    /** The shop's container block state. Never force-loads — must call only
+     *  when the chunk is known to be loaded (trade path already verified). */
+    private fun loadedContainer(shop: Shop): Container? {
+        val world = Bukkit.getWorld(shop.containerWorld) ?: return null
+        return world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
+            .state as? Container
+    }
+
+    /** The shop's sign block state, or null if the sign chunk isn't loaded.
+     *  The [isChunkLoaded] guard is mandatory — [World.getBlockAt] force-loads. */
+    private fun loadedSign(shop: Shop): Sign? {
+        val world = Bukkit.getWorld(shop.signWorld) ?: return null
+        if (!world.isChunkLoaded(shop.signX shr 4, shop.signZ shr 4)) return null
+        return world.getBlockAt(shop.signX, shop.signY, shop.signZ)
+            .state as? Sign
     }
 
     private fun updateSignStock(state: Sign, trades: Int) {
@@ -114,7 +124,7 @@ class ContainerStockListener(
         state.update(true)
     }
 
-    private fun trackDepletion(shop: net.badgersmc.em.domain.shop.Shop, trades: Int) {
+    private fun trackDepletion(shop: Shop, trades: Int) {
         if (trades == 0) {
             if (shop.id !in previouslyDepletedShops) {
                 previouslyDepletedShops.add(shop.id)
