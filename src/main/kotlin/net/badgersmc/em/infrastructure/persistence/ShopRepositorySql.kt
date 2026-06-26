@@ -276,6 +276,16 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         }
     }
 
+    override fun freezeByStall(stallId: String, frozen: Boolean) {
+        ds.connection.use { conn ->
+            conn.prepareStatement("UPDATE shop_items SET frozen = ? WHERE stall_id = ?").use { ps ->
+                ps.setBoolean(1, frozen)
+                ps.setString(2, stallId)
+                ps.executeUpdate()
+            }
+        }
+    }
+
     private fun sellMaterialOf(shop: Shop): String? =
         net.badgersmc.em.application.ItemStackSerializer.deserialize(shop.sellItem)?.type?.name
 

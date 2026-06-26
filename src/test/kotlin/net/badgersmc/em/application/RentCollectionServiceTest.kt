@@ -4,7 +4,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
-import net.badgersmc.em.domain.offer.SellOfferRepository
+import net.badgersmc.em.domain.auction.Auction
+import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.OwnerRef
@@ -93,7 +94,8 @@ class RentCollectionServiceTest {
         val shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
         val economy: EconomyProvider,
         val config: EnthusiaMarketConfig,
-        val guildProvider: GuildProvider
+        val guildProvider: GuildProvider,
+        val auctionRepo: AuctionRepository
     )
 
     private fun buildService(
@@ -114,17 +116,20 @@ class RentCollectionServiceTest {
         val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
         every { shopRepo.findByStall(any()) } returns emptyList()
 
+        val auctionRepo = mockk<AuctionRepository>(relaxed = true)
+
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, mockk(relaxed = true), shopRepo, economy, guildProvider, cfg, mockk(relaxed = true)),
+            service = RentCollectionService(stallRepo, shopRepo, economy, guildProvider, cfg, auctionRepo),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             economy = economy,
             config = cfg,
-            guildProvider = guildProvider
+            guildProvider = guildProvider,
+            auctionRepo = auctionRepo
         )
     }
 
-    // --- M-4 (audit 2026-06-09): eviction must wipe bound shops ---
+    // --- Emergency auction on grace expiry ---
 
     private fun shop(id: Long, stallId: String) = net.badgersmc.em.domain.shop.Shop(
         id = id, stallId = stallId, owner = playerUuid,
@@ -134,16 +139,22 @@ class RentCollectionServiceTest {
     )
 
     @Test
-    fun `tick eviction wipes shops bound to the stall`() {
+    fun `tick past grace starts emergency auction, does NOT wipe shops`() {
         val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = false, gracePeriod = "P3D")
         every { svc.shopRepo.findByStall("stall_02") } returns
             listOf(shop(11, "stall_02"), shop(12, "stall_02"))
 
         val report = svc.service.tick()
 
-        assertEquals(1, report.evictions)
-        verify { svc.shopRepo.delete(11) }
-        verify { svc.shopRepo.delete(12) }
+        assertEquals(1, report.evictions) // still counted as eviction
+        // Shops must NOT be deleted (auction winner inherits them)
+        verify(exactly = 0) { svc.shopRepo.delete(any()) }
+        // An emergency auction must be created
+        verify { svc.auctionRepo.create(any()) }
+        // Stall must be EMERGENCY_AUCTIONING, not UNOWNED
+        verify { svc.stallRepo.save(match {
+            it.state == StallState.EMERGENCY_AUCTIONING
+        }) }
     }
 
     // --- tick: collects rent from OWNED stall successfully ---
@@ -177,12 +188,14 @@ class RentCollectionServiceTest {
         assertEquals(0, report.errors)
 
         verify { svc.stallRepo.save(match { it.state == StallState.GRACE }) }
+        // Shops must be frozen on GRACE entry
+        verify { svc.shopRepo.freezeByStall(ownedStall.id.value, true) }
     }
 
-    // --- tick: GRACE + grace expired evicts stall ---
+    // --- tick: GRACE + grace expired starts emergency auction ---
 
     @Test
-    fun `tick GRACE and grace expired evicts stall`() {
+    fun `tick GRACE and grace expired starts emergency auction`() {
         // Stall has been in GRACE for 5 days, grace period is 3 days
         val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = false, gracePeriod = "P3D")
 
@@ -193,8 +206,9 @@ class RentCollectionServiceTest {
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
 
+        verify { svc.auctionRepo.create(any()) }
         verify { svc.stallRepo.save(match {
-            it.state == StallState.UNOWNED && it.owner == OwnerRef.unowned()
+            it.state == StallState.EMERGENCY_AUCTIONING
         }) }
     }
 
@@ -288,6 +302,8 @@ class RentCollectionServiceTest {
         verify { svc.stallRepo.save(match {
             it.state == StallState.OWNED && it.ownerSince != null
         }) }
+        // Shops must be unfrozen on GRACE→OWNED recovery
+        verify { svc.shopRepo.freezeByStall(graceStall.id.value, false) }
     }
 
     // --- tick: AUCTIONING stall is skipped ---
@@ -355,10 +371,10 @@ class RentCollectionServiceTest {
         verify { svc.stallRepo.save(match { it.state == StallState.GRACE }) }
     }
 
-    // --- tick: GUILD stall past grace with insufficient bank is evicted ---
+    // --- tick: GUILD stall past grace with insufficient bank starts emergency auction ---
 
     @Test
-    fun `tick guild stall past grace with insufficient bank is evicted`() {
+    fun `tick guild stall past grace with insufficient bank starts emergency auction`() {
         val svc = buildService(stalls = listOf(guildGraceStall), gracePeriod = "P3D")
         every { svc.guildProvider.bankWithdraw(guildId, 50L) } returns false
 
@@ -371,8 +387,9 @@ class RentCollectionServiceTest {
 
         verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
         verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
+        verify { svc.auctionRepo.create(any()) }
         verify { svc.stallRepo.save(match {
-            it.state == StallState.UNOWNED && it.owner == OwnerRef.unowned()
+            it.state == StallState.EMERGENCY_AUCTIONING
         }) }
     }
 

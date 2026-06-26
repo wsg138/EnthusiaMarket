@@ -1,12 +1,12 @@
 package net.badgersmc.em.application
 
 import net.badgersmc.em.config.EnthusiaMarketConfig
-import net.badgersmc.em.domain.offer.SellOfferRepository
+import net.badgersmc.em.domain.auction.Auction
+import net.badgersmc.em.domain.auction.AuctionId
+import net.badgersmc.em.domain.auction.AuctionRepository
+import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
-import net.badgersmc.em.domain.ports.RegionMemberSync
-import net.badgersmc.em.domain.ports.SchematicService
-import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
@@ -15,7 +15,6 @@ import net.badgersmc.nexus.annotations.Service
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
-import java.util.logging.Logger
 
 /**
  * Report from a single rent collection tick.
@@ -34,16 +33,12 @@ data class RentReport(
 @Service
 class RentCollectionService(
     private val stallRepository: StallRepository,
-    private val offers: SellOfferRepository,
     private val shops: net.badgersmc.em.domain.shop.ShopRepository,
     private val economy: EconomyProvider,
     private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
-    private val regionMembers: RegionMemberSync,
-    private val schematics: SchematicService = SchematicService.Disabled,
+    private val auctionRepository: AuctionRepository,
 ) {
-
-    private val log = java.util.logging.Logger.getLogger(RentCollectionService::class.java.name)
 
     private val activeStates = setOf(StallState.OWNED, StallState.GRACE)
 
@@ -107,7 +102,7 @@ class RentCollectionService(
 
         // null = skip: a corrupt SOLO owner id shouldn't evict on bad data.
         val withdrawSuccess = chargeRent(stall, rentDue) ?: return ProcessResult.Skipped
-        return if (withdrawSuccess) collect(stall, now) else handleFailure(stall, now)
+        return if (withdrawSuccess) collect(stall, now) else handleFailure(stall, now, rentDue)
     }
 
     /**
@@ -124,90 +119,65 @@ class RentCollectionService(
         OwnerType.NONE -> null // unreachable (guarded in processStall)
     }
 
-    /** Payment succeeded — advance the rent timer and, if in GRACE, restore to OWNED. */
+    /** Payment succeeded — advance the rent timer and, if in GRACE, restore to OWNED and unfreeze all shops. */
     private fun collect(stall: Stall, now: Instant): ProcessResult {
         val nextRent = now.plus(collectionInterval())
         if (stall.state == StallState.GRACE) {
+            // Save stall FIRST so shop unfreeze failure doesn't leave a GRACE stall with unfrozen shops.
             stallRepository.save(stall.copy(state = StallState.OWNED, ownerSince = now, nextRentAt = nextRent))
+            shops.freezeByStall(stall.id.value, frozen = false)
         } else {
             stallRepository.save(stall.copy(nextRentAt = nextRent))
         }
         return ProcessResult.Collected
     }
 
-    /** Payment failed — OWNED defaults into GRACE; GRACE past its window is evicted. */
-    private fun handleFailure(stall: Stall, now: Instant): ProcessResult = when (stall.state) {
+    /** Payment failed — OWNED defaults into GRACE (freeze shops); GRACE past its window starts emergency auction. */
+    private fun handleFailure(stall: Stall, now: Instant, rentDue: Long): ProcessResult = when (stall.state) {
         StallState.OWNED -> {
-            // First failure — move to GRACE (defaulted), start grace timer.
-            stallRepository.save(stall.copy(state = StallState.GRACE, ownerSince = Instant.now()))
+            // Save stall FIRST: if shop freeze fails we're at least in GRACE for next tick retry.
+            stallRepository.save(stall.copy(state = StallState.GRACE, ownerSince = now))
+            shops.freezeByStall(stall.id.value, frozen = true)
             ProcessResult.Defaulted
         }
         StallState.GRACE -> {
             val ownerSince = stall.ownerSince
-            if (ownerSince != null && isPastGrace(ownerSince, now)) evict(stall) else ProcessResult.Skipped
+            if (ownerSince != null && isPastGrace(ownerSince, now)) emergencyAuction(stall, now, rentDue)
+            else ProcessResult.Skipped
         }
         else -> ProcessResult.Skipped
     }
 
-    /** Clear DB ownership + WG perms so the evicted owner immediately loses build rights. */
-    private fun evict(stall: Stall): ProcessResult {
-        stallRepository.save(
-            stall.copy(
-                state = StallState.UNOWNED,
-                owner = OwnerRef.unowned(),
-                ownerSince = null,
-                winningBid = 0L,
-                nextRentAt = null,
-            )
+    /** Start an emergency auction for a stall whose grace period expired.
+     *  Shops stay frozen (already set on GRACE entry). The starting bid
+     *  is the one-period rent due. Does NOT delete shops or clear WG —
+     *  the auction winner inherits the stall with all bound shops. */
+    private fun emergencyAuction(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
+        val startingBid = maxOf(rentDue, 1L)
+        val auction = Auction(
+            id = AuctionId(UUID.randomUUID().toString()),
+            stallId = stall.id,
+            state = AuctionState.OPEN,
+            startAt = now,
+            endAt = now.plus(auctionDuration()),
+            startingBid = startingBid,
+            highBid = null,
+            antiSnipeWindow = Duration.ofSeconds(config.auction.antiSnipeSec.toLong()),
         )
-        cleanupAfterEviction(stall)
-        return ProcessResult.Evicted
+        // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
+        // (admin must manually create one). This prevents duplicate auctions on retry — the stall
+        // won't be processed again once it leaves GRACE/OWNED activeStates.
+        stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING, ownerSince = now))
+        auctionRepository.create(auction)
+        return ProcessResult.Evicted  // reuse Evicted for counting
     }
 
-    /** Best-effort post-eviction cleanup: wipe bound shops, drop lingering offer, clear WG, restore geometry. */
-    private fun cleanupAfterEviction(stall: Stall) {
-        // M-4 (audit 2026-06-09) — wipe shops bound to the stall, parity with
-        // sellback. Otherwise the next buyer inherits the evicted owner's live
-        // shops: trade proceeds reroute to the new stall owner and (with
-        // schematics disabled) the old stock stays sellable.
-        for (shop in shops.findByStall(stall.id.value)) {
-            try {
-                shops.delete(shop.id)
-            } catch (e: Exception) {
-                log.warning(
-                    "RentCollectionService: failed to delete shop ${shop.id} bound to evicted " +
-                        "stall ${stall.id.value}; continuing. cause=${e.message}"
-                )
-            }
-        }
-        // M3 — drop any lingering sell offer on the now-UNOWNED stall so a follow-up
-        // click doesn't trip the offer-mutex check (best-effort, logged, never re-thrown).
-        if (offers.findByStall(stall.id) != null) {
-            try {
-                offers.delete(stall.id)
-            } catch (cleanupErr: Exception) {
-                log.warning(
-                    "RentCollectionService: failed to cleanup lingering sell offer for " +
-                        "${stall.id.value}. cause=${cleanupErr.message}"
-                )
-            }
-        }
-        try {
-            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-        } catch (_: Exception) {
-            // DB is authoritative; WG can be resynced via /em rg resync. Eviction stands.
-        }
-        // REQ-271 — restore the pre-claim geometry now the stall is UNOWNED. Best-effort:
-        // a failed paste must not roll back the eviction (REQ-272/273). Gated on schematics.enabled.
-        if (config.schematics.enabled) {
-            val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
-            if (restore is SchematicService.Result.Failure) {
-                log.warning(
-                    "Eviction: schematic restore failed for stall ${stall.id.value}; " +
-                        "geometry left as-is. cause=${restore.cause.message}"
-                )
-            }
-        }
+    private fun auctionDuration(): Duration = try {
+        Duration.parse(config.auction.defaultDuration)
+            .takeIf { !it.isZero && !it.isNegative }
+            ?: Duration.ofDays(1)
+    } catch (_: Exception) {
+        Duration.ofDays(1)
     }
 
     private fun collectionInterval(): Duration = try {

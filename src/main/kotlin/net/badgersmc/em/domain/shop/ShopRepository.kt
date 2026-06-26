@@ -25,4 +25,7 @@ interface ShopRepository {
     fun backfillSellMaterials(): Int
     /** Set the denormalized container stock for [id]. */
     fun updateStock(id: Long, stockCount: Int)
+
+    /** Freeze or unfreeze all shops on a stall (bulk, single UPDATE). */
+    fun freezeByStall(stallId: String, frozen: Boolean)
 }
