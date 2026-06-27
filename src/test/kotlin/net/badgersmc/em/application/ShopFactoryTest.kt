@@ -21,7 +21,7 @@ class ShopFactoryTest {
         val sellItemB64 = ItemStackSerializer.serialize(sellStack.clone().apply { amount = 1 })
         val owner = UUID.randomUUID()
         val shop = ShopFactory.build(
-            stallId = "stall1", owner = owner, creator = owner,
+            stallId = "stall1", owner = owner,
             signWorld = "world", signX = 1, signY = 2, signZ = 3,
             containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
             sellItemBase64 = sellItemB64, sellAmount = 5, price = 100,
@@ -45,7 +45,7 @@ class ShopFactoryTest {
         val owner = UUID.randomUUID()
         val sell = ItemStackSerializer.serialize(ItemStack(Material.DIRT, 1))
         val shop = ShopFactory.build(
-            stallId = "s", owner = owner, creator = owner,
+            stallId = "s", owner = owner,
             signWorld = "world", signX = 0, signY = 0, signZ = 0,
             containerWorld = "world", containerX = 0, containerY = 0, containerZ = 0,
             sellItemBase64 = sell, sellAmount = 1, price = Long.MAX_VALUE,

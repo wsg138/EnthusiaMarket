@@ -39,7 +39,6 @@ class CreateShopMenu(
     private val initialPrice: Long = 100,
     private val initialCostItemB64: String? = null,
     private val initialCostAmount: Int? = null,
-    private val guildId: String? = null,
 ) : Menu {
 
     private var direction: SignDirection = initialDirection
@@ -98,7 +97,7 @@ class CreateShopMenu(
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.create.confirm"))) { event ->
             event.isCancelled = true
             val shop = ShopFactory.build(
-                stallId = stallId, owner = stallOwner, creator = player.uniqueId,
+                stallId = stallId, owner = stallOwner,
                 signWorld = signLoc.world?.name ?: "world",
                 signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
                 containerWorld = containerLoc.world?.name ?: "world",
@@ -108,7 +107,6 @@ class CreateShopMenu(
                 searchEnabled = true,
                 costItemBase64 = costItemB64,
                 costAmountOverride = if (direction == SignDirection.TRADE) costItemAmount else null,
-                guildId = guildId,
             )
             if (!writeSignText(shop)) {
                 player.closeInventory()

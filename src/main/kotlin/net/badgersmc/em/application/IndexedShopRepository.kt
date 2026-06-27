@@ -35,12 +35,6 @@ class IndexedShopRepository(
         return persisted
     }
 
-    override fun setGuildOwnership(id: Long, guildId: UUID, creatorId: UUID): Shop? =
-        delegate.setGuildOwnership(id, guildId, creatorId)?.also(::reindex)
-
-    override fun removeGuildOwnership(id: Long): Shop? =
-        delegate.removeGuildOwnership(id)?.also(::reindex)
-
     override fun delete(id: Long) {
         val shop = delegate.findById(id)
         delegate.delete(id)
@@ -75,7 +69,6 @@ class IndexedShopRepository(
     override fun findBySign(world: String, x: Int, y: Int, z: Int): Shop? = delegate.findBySign(world, x, y, z)
     override fun findByStall(stallId: String): List<Shop> = delegate.findByStall(stallId)
     override fun findByOwner(owner: UUID): List<Shop> = delegate.findByOwner(owner)
-    override fun findByGuildId(guildId: UUID): List<Shop> = delegate.findByGuildId(guildId)
     override fun all(): List<Shop> = delegate.all()
     override fun countAll(): Int = delegate.countAll()
     override fun countByOwner(owner: UUID): Int = delegate.countByOwner(owner)

@@ -30,7 +30,7 @@ import java.util.logging.Logger
 class GuildDissolutionService(
     private val stalls: StallRepository,
     private val eviction: StallEvictionService,
-    private val shops: ShopRepository,
+    @Suppress("unused") private val shops: ShopRepository,
     private val policies: GuildTradePolicyRepository,
 ) {
     private val log = Logger.getLogger(GuildDissolutionService::class.java.name)
@@ -91,45 +91,11 @@ class GuildDissolutionService(
 
     @Suppress("TooGenericExceptionCaught")
     private fun unbindShops(guildId: String): Int {
-        val uuid = try {
-            UUID.fromString(guildId)
-        } catch (_: IllegalArgumentException) {
-            log.warning(
-                "GuildDissolution: guild id '$guildId' is not a valid UUID; " +
-                    "skipping shop unbind. Stalls were still evicted."
-            )
-            return 0
-        }
-
-        val guildShops = try {
-            shops.findByGuildId(uuid)
-        } catch (e: Exception) {
-            log.warning(
-                "GuildDissolution: findByGuildId failed for guild=$guildId: ${e.message}"
-            )
-            return 0
-        }
-
-        var unbound = 0
-        var failed = 0
-        for (shop in guildShops) {
-            try {
-                shops.removeGuildOwnership(shop.id)
-                unbound++
-            } catch (e: Exception) {
-                failed++
-                log.warning(
-                    "GuildDissolution: removeGuildOwnership failed for shop ${shop.id} " +
-                        "(guild=$guildId): ${e.message}"
-                )
-            }
-        }
-        if (failed > 0) {
-            log.warning(
-                "GuildDissolution: shop unbind for guild=$guildId had $failed failure(s) " +
-                    "out of ${guildShops.size}"
-            )
-        }
-        return unbound
+        // Per-shop guild ownership (guild_id/creator_id columns) was removed
+        // in favour of stall-level ownership. Guild-owned stalls are already
+        // evicted by handleDissolved() above. Shops inside those stalls
+        // naturally lose their guild context when the stall is evicted.
+        log.info("GuildDissolution: per-shop guild ownership removed — shops are now stall-scoped. Skipping individual shop unbind for guild=$guildId.")
+        return 0
     }
 }

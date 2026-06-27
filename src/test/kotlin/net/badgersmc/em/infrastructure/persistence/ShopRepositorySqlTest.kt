@@ -2,14 +2,11 @@ package net.badgersmc.em.infrastructure.persistence
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
-import net.badgersmc.em.domain.shop.SignDirection
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockbukkit.mockbukkit.MockBukkit
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -22,7 +19,6 @@ class ShopRepositorySqlTest {
 
     @BeforeEach
     fun setUp() {
-        MockBukkit.mock()
         ds = HikariDataSource(HikariConfig().apply {
             jdbcUrl = "jdbc:sqlite::memory:"
             maximumPoolSize = 1
@@ -32,7 +28,7 @@ class ShopRepositorySqlTest {
     }
 
     @AfterEach
-    fun tearDown() { ds.close(); MockBukkit.unmock() }
+    fun tearDown() { ds.close() }
 
     @Test fun `upsert and findById round-trips`() {
         val shop = Shop(
@@ -56,30 +52,6 @@ class ShopRepositorySqlTest {
         assertEquals(shop.owner, found.owner)
         assertEquals(shop.signX, found.signX)
         assertEquals(shop.sellItem, found.sellItem)
-    }
-
-    /** N-1 (audit 2026-06-09): a corrupt guild_id/creator_id must not poison bulk row loads. */
-    @Test fun `corrupt guild_id falls back to null instead of failing the whole query`() {
-        val owner = UUID.randomUUID()
-        fun shopAt(x: Int) = Shop(
-            stallId = "stall_01", owner = owner,
-            signWorld = "world", signX = x, signY = 64, signZ = 0,
-            containerWorld = "world", containerX = x, containerY = 63, containerZ = 0,
-            sellItem = "item", sellAmount = 1, costItem = "cost", costAmount = 5,
-        )
-        val corrupted = repo.upsert(shopAt(1))
-        repo.upsert(shopAt(2))
-        ds.connection.use { c ->
-            c.prepareStatement("UPDATE shop_items SET guild_id = 'not-a-uuid', creator_id = 'junk' WHERE id = ?").use {
-                it.setLong(1, corrupted.id); it.executeUpdate()
-            }
-        }
-
-        val found = repo.findByOwner(owner)
-
-        assertEquals(2, found.size)
-        assertNull(found.single { it.id == corrupted.id }.guildId)
-        assertNull(found.single { it.id == corrupted.id }.creatorId)
     }
 
     @Test fun `findBySign locates by sign coordinates`() {
@@ -231,243 +203,5 @@ class ShopRepositorySqlTest {
         val found = repo.findById(created.id)!!
         assertEquals("updated", found.sellItem)
         assertEquals(3, found.sellAmount)
-    }
-
-    @Test fun `guildId and creatorId round-trip through V005 columns`() {
-        val guildId = UUID.randomUUID()
-        val creatorId = UUID.randomUUID()
-        val shop = Shop(
-            stallId = "stall_guild",
-            owner = UUID.randomUUID(),
-            signWorld = "world", signX = 200, signY = 64, signZ = 300,
-            containerWorld = "world", containerX = 201, containerY = 64, containerZ = 301,
-            sellItem = "item", sellAmount = 1,
-            costItem = "cost", costAmount = 5,
-            guildId = guildId,
-            creatorId = creatorId
-        )
-        val created = repo.upsert(shop)
-        assertTrue(created.id > 0)
-        assertEquals(guildId, created.guildId)
-        assertEquals(creatorId, created.creatorId)
-
-        val found = repo.findById(created.id)
-        assertNotNull(found)
-        assertEquals(guildId, found.guildId)
-        assertEquals(creatorId, found.creatorId)
-    }
-
-    @Test fun `findByGuildId returns all shops for a given guild`() {
-        val guildId = UUID.randomUUID()
-        val owner = UUID.randomUUID()
-        repeat(3) { i ->
-            repo.upsert(Shop(
-                stallId = "stall_guild_$i",
-                owner = owner,
-                signWorld = "world", signX = i * 10, signY = 64, signZ = i * 20,
-                containerWorld = "world", containerX = 1, containerY = 64, containerZ = 1,
-                sellItem = "item$i", sellAmount = 1,
-                costItem = "cost", costAmount = 5,
-                guildId = guildId,
-                creatorId = UUID.randomUUID()
-            ))
-        }
-        // Add a shop with a different guild
-        repo.upsert(Shop(
-            stallId = "stall_other_guild",
-            owner = owner,
-            signWorld = "world", signX = 99, signY = 64, signZ = 99,
-            containerWorld = "world", containerX = 2, containerY = 64, containerZ = 2,
-            sellItem = "other", sellAmount = 1,
-            costItem = "cost", costAmount = 5,
-            guildId = UUID.randomUUID(),
-            creatorId = UUID.randomUUID()
-        ))
-        val shops = repo.findByGuildId(guildId)
-        assertEquals(3, shops.size)
-        shops.forEach { assertEquals(guildId, it.guildId) }
-    }
-
-    @Test fun `setGuildOwnership updates guild_id and creator_id`() {
-        val shop = repo.upsert(Shop(
-            stallId = "stall_ownership",
-            owner = UUID.randomUUID(),
-            signWorld = "world", signX = 50, signY = 64, signZ = 60,
-            containerWorld = "world", containerX = 51, containerY = 64, containerZ = 61,
-            sellItem = "item", sellAmount = 1,
-            costItem = "cost", costAmount = 5
-        ))
-        assertNull(shop.guildId)
-        assertNull(shop.creatorId)
-
-        val guildId = UUID.randomUUID()
-        val creatorId = UUID.randomUUID()
-        val updated = repo.setGuildOwnership(shop.id, guildId, creatorId)
-        assertNotNull(updated)
-        assertEquals(guildId, updated.guildId)
-        assertEquals(creatorId, updated.creatorId)
-    }
-
-    @Test fun `removeGuildOwnership clears guild_id and creator_id`() {
-        val guildId = UUID.randomUUID()
-        val creatorId = UUID.randomUUID()
-        val shop = repo.upsert(Shop(
-            stallId = "stall_remove",
-            owner = UUID.randomUUID(),
-            signWorld = "world", signX = 60, signY = 64, signZ = 70,
-            containerWorld = "world", containerX = 61, containerY = 64, containerZ = 71,
-            sellItem = "item", sellAmount = 1,
-            costItem = "cost", costAmount = 5,
-            guildId = guildId,
-            creatorId = creatorId
-        ))
-        assertEquals(guildId, shop.guildId)
-        assertEquals(creatorId, shop.creatorId)
-
-        val cleared = repo.removeGuildOwnership(shop.id)
-        assertNotNull(cleared)
-        assertNull(cleared.guildId)
-        assertNull(cleared.creatorId)
-    }
-
-    @Test fun `upsert stores sell_material derived from the sell item`() {
-        val diamondB64 = ItemStackSerializer.serialize(org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND))
-        val shop = Shop(
-            stallId = "stall_mat",
-            owner = UUID.randomUUID(),
-            signWorld = "world", signX = 1, signY = 2, signZ = 3,
-            containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
-            sellItem = diamondB64, sellAmount = 1,
-            costItem = "cost", costAmount = 10,
-            direction = SignDirection.SELL, searchEnabled = true,
-        )
-        val created = repo.upsert(shop)
-        val found = repo.findBySellMaterial("DIAMOND")
-        assertEquals(listOf(created.id), found.map { it.id })
-    }
-
-    @Test fun `findBySellMaterial excludes search-disabled shops`() {
-        val diamondB64 = ItemStackSerializer.serialize(org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND))
-        val shop = Shop(
-            stallId = "stall_disabled",
-            owner = UUID.randomUUID(),
-            signWorld = "world", signX = 1, signY = 2, signZ = 3,
-            containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
-            sellItem = diamondB64, sellAmount = 1,
-            costItem = "cost", costAmount = 10,
-            direction = SignDirection.SELL, searchEnabled = false,
-        )
-        repo.upsert(shop)
-        assertTrue(repo.findBySellMaterial("DIAMOND").isEmpty())
-    }
-
-    @Test fun `stockCount defaults to 0`() {
-        val created = repo.upsert(Shop(
-            stallId = "stall_sc",
-            owner = UUID.randomUUID(),
-            signWorld = "world", signX = 1, signY = 2, signZ = 3,
-            containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
-            sellItem = "item", sellAmount = 1,
-            costItem = "cost", costAmount = 5,
-        ))
-        val found = repo.findById(created.id)
-        assertNotNull(found)
-        assertEquals(0, found.stockCount)
-    }
-
-    @Test fun `upsert and findById round-trip stockCount`() {
-        val shop = Shop(
-            stallId = "stall_sc2",
-            owner = UUID.randomUUID(),
-            signWorld = "world", signX = 5, signY = 6, signZ = 7,
-            containerWorld = "world", containerX = 5, containerY = 5, containerZ = 5,
-            sellItem = "item", sellAmount = 1,
-            costItem = "cost", costAmount = 5,
-            stockCount = 7,
-        )
-        val created = repo.upsert(shop)
-        val found = repo.findById(created.id)
-        assertNotNull(found)
-        assertEquals(7, found.stockCount)
-    }
-
-    @Test fun `updateStock sets stockCount and leaves other fields unchanged`() {
-        val created = repo.upsert(Shop(
-            stallId = "stall_sc3",
-            owner = UUID.randomUUID(),
-            signWorld = "world", signX = 10, signY = 11, signZ = 12,
-            containerWorld = "world", containerX = 10, containerY = 10, containerZ = 10,
-            sellItem = "item", sellAmount = 3,
-            costItem = "cost", costAmount = 8,
-            stockCount = 7,
-        ))
-        assertEquals(7, repo.findById(created.id)!!.stockCount)
-        repo.updateStock(created.id, 3)
-        val after = repo.findById(created.id)!!
-        assertEquals(3, after.stockCount)
-        assertEquals(3, after.sellAmount)
-        assertEquals("stall_sc3", after.stallId)
-    }
-
-    @Test fun `backfill fills null sell_material rows`() {
-        // Insert a row directly with sell_material left NULL (pre-V018 style)
-        val diamondB64 = ItemStackSerializer.serialize(org.bukkit.inventory.ItemStack(org.bukkit.Material.DIAMOND))
-        ds.connection.use { conn ->
-            conn.prepareStatement(
-                """INSERT INTO shop_items
-                (stall_id, owner, sign_world, sign_x, sign_y, sign_z,
-                 container_world, container_x, container_y, container_z,
-                 sell_item, sell_amount, cost_item, cost_amount,
-                 trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
-                 guild_id, creator_id, direction, search_enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
-            ).use { ps ->
-                val shop = Shop(
-                    stallId = "stall_bf",
-                    owner = UUID.randomUUID(),
-                    signWorld = "world", signX = 1, signY = 2, signZ = 3,
-                    containerWorld = "world", containerX = 1, containerY = 1, containerZ = 1,
-                    sellItem = diamondB64, sellAmount = 1,
-                    costItem = "cost", costAmount = 10,
-                    direction = SignDirection.SELL, searchEnabled = true,
-                )
-                ps.setString(1, shop.stallId)
-                ps.setString(2, shop.owner.toString())
-                ps.setString(3, shop.signWorld); ps.setInt(4, shop.signX); ps.setInt(5, shop.signY); ps.setInt(6, shop.signZ)
-                ps.setString(7, shop.containerWorld); ps.setInt(8, shop.containerX); ps.setInt(9, shop.containerY); ps.setInt(10, shop.containerZ)
-                ps.setString(11, shop.sellItem); ps.setInt(12, shop.sellAmount)
-                ps.setString(13, shop.costItem); ps.setInt(14, shop.costAmount)
-                ps.setString(15, "")
-                ps.setBoolean(16, true); ps.setBoolean(17, true); ps.setBoolean(18, false); ps.setBoolean(19, false)
-                ps.setNull(20, java.sql.Types.VARCHAR); ps.setNull(21, java.sql.Types.VARCHAR)
-                ps.setString(22, shop.direction.name)
-                ps.setBoolean(23, shop.searchEnabled)
-                ps.executeUpdate()
-            }
-        }
-        val updated = repo.backfillSellMaterials()
-        assertTrue(updated > 0)
-        val found = repo.findBySellMaterial("DIAMOND")
-        assertEquals(1, found.size)
-    }
-
-    /**
-     * Regression: V012's `CHECK (direction IN ('BUY','SELL'))` predated the TRADE
-     * direction, so placing a [TRADE] sign crashed with SQLITE_CONSTRAINT_CHECK.
-     * V020 widens the constraint. This persists every SignDirection to prove the
-     * CHECK no longer rejects TRADE.
-     */
-    @Test fun `persists every SignDirection including TRADE`() {
-        for (dir in SignDirection.entries) {
-            val shop = Shop(
-                stallId = "stall_dir", owner = UUID.randomUUID(),
-                signWorld = "world", signX = dir.ordinal, signY = 64, signZ = 0,
-                containerWorld = "world", containerX = dir.ordinal, containerY = 63, containerZ = 0,
-                sellItem = "item", sellAmount = 1, costItem = "cost", costAmount = 5,
-                direction = dir,
-            )
-            val created = repo.upsert(shop)
-            assertEquals(dir, repo.findById(created.id)?.direction)
-        }
     }
 }

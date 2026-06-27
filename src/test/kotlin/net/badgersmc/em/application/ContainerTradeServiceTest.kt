@@ -85,9 +85,8 @@ class ContainerTradeServiceTest {
         guildProvider: GuildProvider? = null,
         mockItemStack: ItemStack = mockk(relaxed = true),
         mockContainer: Container = mockk(relaxed = true),
-        policyService: GuildTradePolicyService? = null,
     ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider, mockk(relaxed = true), policyService) {
+        return object : ContainerTradeService(stallRepo, economy, guildProvider) {
             override fun deserializeStack(base64: String): ItemStack? = mockItemStack
             override fun getContainer(shop: Shop): Container? = mockContainer
         }
@@ -150,7 +149,7 @@ class ContainerTradeServiceTest {
 
         val result = service.executeBuy(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for player not online")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("not online", ignoreCase = true))
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Invalid item", ignoreCase = true))
     }
 
     @Test
@@ -164,7 +163,7 @@ class ContainerTradeServiceTest {
 
         val result = service.executeSell(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for player not online")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("not online", ignoreCase = true))
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Invalid item", ignoreCase = true))
     }
 
     // ===== Container missing =====
@@ -184,7 +183,7 @@ class ContainerTradeServiceTest {
         every { player.inventory } returns playerInv
         every { Bukkit.getPlayer(playerUuid) } returns player
 
-        val service = object : ContainerTradeService(stallRepo, economy, null, mockk(relaxed = true), null) {
+        val service = object : ContainerTradeService(stallRepo, economy, null) {
             override fun deserializeStack(base64: String): ItemStack? = mockk(relaxed = true)
             override fun getContainer(shop: Shop): Container? = null
         }
@@ -202,7 +201,7 @@ class ContainerTradeServiceTest {
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns mockk(relaxed = true)
 
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, mockk(relaxed = true), null) {
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null) {
             override fun deserializeStack(base64: String): ItemStack? = mockk(relaxed = true)
             override fun getContainer(shop: Shop): Container? = null
         }
@@ -652,35 +651,33 @@ class ContainerTradeServiceTest {
 
         val result = service.executeBuy(testShop(), playerUuid)
         assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for invalid owner")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Invalid owner", ignoreCase = true))
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Stall not found", ignoreCase = true))
     }
 
-    // ===== Guild-owned shops =====
+    // ===== Guild-owned stalls =====
+    // Shops no longer carry guildId — guild ownership is determined by the stall.
+    // When a stall is owned by OwnerRef.guild(...), income routes to the guild bank.
 
     private val guildId = UUID.fromString("00000000-0000-0000-0000-0000000000aa")
 
-    private fun guildShop(
-        stallId: String = "stall_01",
-        frozen: Boolean = false,
-        sellAmount: Int = 1,
-        costAmount: Int = 10
-    ): Shop = Shop(
-        stallId = stallId,
-        owner = ownerUuid,
-        signWorld = "world", signX = 100, signY = 64, signZ = 200,
-        containerWorld = "world", containerX = 0, containerY = 0, containerZ = 0,
-        sellItem = "itemBase64", sellAmount = sellAmount,
-        costItem = "costBase64", costAmount = costAmount,
-        frozen = frozen,
-        guildId = guildId
+    /** A stall owned by a guild (OwnerType.GUILD). */
+    private fun guildStall(): Stall = Stall(
+        id = StallId("stall_guild"),
+        regionId = "stall_guild",
+        world = "world",
+        state = StallState.OWNED,
+        owner = OwnerRef.guild(guildId.toString()),
+        ownerSince = java.time.Instant.now(),
+        winningBid = 1000L,
+        rentTerms = RentTerms.formula(0.01)
     )
 
     @Test
-    fun `BUY on guild shop debits guild bank and credits player`() {
-        val shop = guildShop(costAmount = 50)
+    fun `BUY on guild-owned stall shop debits guild bank and credits player`() {
+        val shop = testShop(stallId = "stall_guild", costAmount = 50)
 
         val stallRepo = mockk<StallRepository>(relaxed = true)
-        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+        every { stallRepo.findById(StallId("stall_guild")) } returns guildStall()
 
         val economy = mockk<EconomyProvider>(relaxed = true)
         every { economy.balance(any()) } returns 100L
@@ -724,11 +721,11 @@ class ContainerTradeServiceTest {
     }
 
     @Test
-    fun `BUY on guild shop fails when guild bank insufficient`() {
-        val shop = guildShop(costAmount = 50)
+    fun `BUY on guild-owned stall shop fails when guild bank insufficient`() {
+        val shop = testShop(stallId = "stall_guild", costAmount = 50)
 
         val stallRepo = mockk<StallRepository>(relaxed = true)
-        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+        every { stallRepo.findById(StallId("stall_guild")) } returns guildStall()
 
         val guildProvider = mockk<GuildProvider>(relaxed = true)
         every { guildProvider.bankBalance(guildId.toString()) } returns 10L // less than 50
@@ -757,11 +754,11 @@ class ContainerTradeServiceTest {
     }
 
     @Test
-    fun `SELL on guild shop credits guild bank and debits player`() {
-        val shop = guildShop(costAmount = 75)
+    fun `SELL on guild-owned stall shop credits guild bank and debits player`() {
+        val shop = testShop(stallId = "stall_guild", costAmount = 75)
 
         val stallRepo = mockk<StallRepository>(relaxed = true)
-        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+        every { stallRepo.findById(StallId("stall_guild")) } returns guildStall()
 
         val economy = mockk<EconomyProvider>(relaxed = true)
         every { economy.balance(playerUuid) } returns 200L

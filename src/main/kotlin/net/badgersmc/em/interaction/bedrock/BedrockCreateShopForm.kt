@@ -47,7 +47,7 @@ class BedrockCreateShopForm(
                     return@validResultHandler
                 }
                 val shop = ShopFactory.build(
-                    stallId = stallId, owner = stallOwner, creator = player.uniqueId,
+                    stallId = stallId, owner = stallOwner,
                     signWorld = signLoc.world?.name ?: "world",
                     signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
                     containerWorld = containerLoc.world?.name ?: "world",
