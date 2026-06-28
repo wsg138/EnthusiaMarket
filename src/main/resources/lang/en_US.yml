@@ -93,6 +93,7 @@ purchase_sign:
     method_personal_lore: "<gray>Own this stall as a personal plot"
     method_guild: "<gold>Buy for your guild"
     method_guild_lore: "<gray>Own this stall as a guild stall"
+    method_guild_buyer: "<gray>Guild: <gold><guild_name>"
     confirm_title: "Confirm purchase"
     confirm_personal: "<green>Buy <aqua><stall></aqua> <gray>for</gray> <gold><price></gold> <gray>(personal)"
     confirm_guild: "<gold>Buy <aqua><stall></aqua> <gray>for your guild</gray> <gold><price>"

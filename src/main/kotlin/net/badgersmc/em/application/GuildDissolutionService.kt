@@ -1,7 +1,6 @@
 package net.badgersmc.em.application
 
 import net.badgersmc.em.domain.guild.GuildTradePolicyRepository
-import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
@@ -30,7 +29,6 @@ import java.util.logging.Logger
 class GuildDissolutionService(
     private val stalls: StallRepository,
     private val eviction: StallEvictionService,
-    @Suppress("unused") private val shops: ShopRepository,
     private val policies: GuildTradePolicyRepository,
 ) {
     private val log = Logger.getLogger(GuildDissolutionService::class.java.name)

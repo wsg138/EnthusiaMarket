@@ -2,14 +2,12 @@ package net.badgersmc.em.infrastructure.persistence
 
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
-import net.badgersmc.nexus.annotations.Repository
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.sql.Statement
 import java.util.UUID
 import javax.sql.DataSource
 
-@Repository
 @Suppress("TooManyFunctions")
 class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 

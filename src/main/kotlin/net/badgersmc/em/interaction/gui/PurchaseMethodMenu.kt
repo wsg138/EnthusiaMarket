@@ -73,7 +73,7 @@ class PurchaseMethodMenu(
             pane.addItem(
                 GuiItem(decorated(banner, lang.msg("purchase_sign.msg.method_guild"), listOf(
                     lang.msg("purchase_sign.msg.method_guild_lore"),
-                    Component.text("§7Guild: §6${guild.name}"),
+                    lang.msg("purchase_sign.msg.method_guild_buyer", "guild_name" to guild.name),
                 ))) { event ->
                     event.isCancelled = true
                     PurchaseConfirmMenu(stallId, price, isGuild = true, buyout, lang).open(player)

@@ -185,10 +185,15 @@ open class ContainerTradeService(
             val received = sellStack.amount - remainder.values.sumOf { it.amount }
             val toRemove = sellStack.clone().apply { amount = received }
             ctx.player.inventory.removeItem(toRemove)
-            rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack)
+            val rolledBack = rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack)
+            val msg = if (rolledBack) {
+                "Trade reversed — check your inventory"
+            } else {
+                "Trade rollback incomplete — contact staff"
+            }
             return ContainerTradeResult.CompensationFailed(
                 error = "Inventory full",
-                compensation = "Trade reversed — check your inventory"
+                compensation = msg
             )
         }
 
@@ -343,8 +348,9 @@ open class ContainerTradeService(
             val received = sellStack.amount - remainder.values.sumOf { it.amount }
             val toRemove = sellStack.clone().apply { amount = received }
             ctx.player.inventory.removeItem(toRemove)
-            // Return to container only what was removed (not duplicated)
-            ctx.containerInv.addItem(toRemove)
+            // Return full sell stack to container (not just accepted portion) —
+            // the full sellStack was removed at line 338.
+            ctx.containerInv.addItem(sellStack.clone())
             ctx.player.inventory.addItem(costStack.clone())
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
