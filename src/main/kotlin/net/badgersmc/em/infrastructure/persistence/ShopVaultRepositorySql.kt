@@ -15,12 +15,26 @@ class ShopVaultRepositorySql(private val ds: DataSource) : ShopVaultRepository {
     override fun deposit(owner: UUID, itemBytes: String, amount: Int) {
         require(amount > 0) { "Deposit amount must be positive, got $amount" }
         ds.connection.use { c ->
-            if (addToExisting(c, owner.toString(), itemBytes, amount) > 0) return
+            val previousAutoCommit = c.autoCommit
+            c.autoCommit = false
             try {
-                insertRow(c, owner.toString(), itemBytes, amount)
+                depositInTransaction(c, owner.toString(), itemBytes, amount)
+                c.commit()
             } catch (e: java.sql.SQLException) {
-                if (addToExisting(c, owner.toString(), itemBytes, amount) == 0) throw e
+                c.rollback()
+                throw e
+            } finally {
+                c.autoCommit = previousAutoCommit
             }
+        }
+    }
+
+    private fun depositInTransaction(c: java.sql.Connection, owner: String, itemBytes: String, amount: Int) {
+        if (addToExisting(c, owner, itemBytes, amount) > 0) return
+        try {
+            insertRow(c, owner, itemBytes, amount)
+        } catch (e: java.sql.SQLException) {
+            if (addToExisting(c, owner, itemBytes, amount) == 0) throw e
         }
     }
 

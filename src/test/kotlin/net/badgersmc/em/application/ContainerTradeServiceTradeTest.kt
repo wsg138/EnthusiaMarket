@@ -70,14 +70,35 @@ class ContainerTradeServiceTradeTest {
         stallRepo: StallRepository = mockk(relaxed = true),
         economy: EconomyProvider = mockk(relaxed = true),
         guildProvider: GuildProvider? = null,
+        tradePolicy: GuildTradePolicyService? = null,
         shopVault: ShopVaultService? = mockk(relaxed = true),
         mockCostStack: ItemStack = mockk(relaxed = true),
-        mockContainer: Container = mockk(relaxed = true),
-    ): ContainerTradeService {
-        return object : ContainerTradeService(stallRepo, economy, guildProvider, shopVault) {
-            override fun deserializeStack(base64: String): ItemStack? = mockCostStack
-            override fun getContainer(shop: Shop): Container? = mockContainer
-        }
+        mockContainer: Container? = mockk(relaxed = true),
+        hasAtLeast: InventoryPredicate = inventoryAlwaysHas,
+        canFit: InventoryPredicate = inventoryFitsWhenPositive,
+    ): ContainerTradeService = ContainerTradeServiceHarness(
+        stallRepo, economy, guildProvider, tradePolicy, shopVault,
+        mockItemStack = mockCostStack,
+        mockContainer = mockContainer,
+        hasAtLeast = hasAtLeast,
+        canFit = canFit,
+    )
+
+    private fun mockOnlinePlayer(): Pair<Player, PlayerInventory> {
+        val playerInv = mockk<PlayerInventory>(relaxed = true)
+        val player = mockk<Player>(relaxed = true)
+        every { player.inventory } returns playerInv
+        every { player.uniqueId } returns playerUuid
+        mockkStatic(Bukkit::class)
+        every { Bukkit.getPlayer(playerUuid) } returns player
+        return player to playerInv
+    }
+
+    private fun mockContainerPair(): Pair<Container, Inventory> {
+        val containerInv = mockk<Inventory>(relaxed = true)
+        val container = mockk<Container>(relaxed = true)
+        every { container.inventory } returns containerInv
+        return container to containerInv
     }
 
     @Test
@@ -109,9 +130,10 @@ class ContainerTradeServiceTradeTest {
         every { costStack.amount } returns 3
 
         val vaultService = mockk<ShopVaultService>(relaxed = true)
-        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, vaultService) {
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, shopVault = vaultService) {
             override fun deserializeStack(base64: String): ItemStack? = costStack
             override fun getContainer(shop: Shop): Container? = container
+            override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int) = true
         }
 
         val result = service.executeTrade(shop, playerUuid)
@@ -137,7 +159,7 @@ class ContainerTradeServiceTradeTest {
         mockkStatic(Bukkit::class)
         every { Bukkit.getPlayer(playerUuid) } returns player
 
-        val service = buildService(stallRepo = stallRepo, mockContainer = mockk(relaxed = true))
+        val service = buildService(stallRepo = stallRepo, hasAtLeast = inventoryNeverHas)
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure)
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("Out of stock", ignoreCase = true))
@@ -149,22 +171,14 @@ class ContainerTradeServiceTradeTest {
         val stallRepo = mockk<StallRepository>(relaxed = true)
         every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
 
-        val playerInv = mockk<PlayerInventory>(relaxed = true)
-        every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+        mockOnlinePlayer()
+        val (container, containerInv) = mockContainerPair()
 
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
-
-        mockkStatic(Bukkit::class)
-        every { Bukkit.getPlayer(playerUuid) } returns player
-
-        val containerInv = mockk<Inventory>(relaxed = true)
-        every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns false
-
-        val container = mockk<Container>(relaxed = true)
-        every { container.inventory } returns containerInv
-
-        val service = buildService(stallRepo = stallRepo, mockContainer = container)
+        val service = buildService(
+            stallRepo = stallRepo,
+            mockContainer = container,
+            hasAtLeast = inventoryFailsExcept(containerInv),
+        )
         val result = service.executeTrade(shop, playerUuid)
         assertTrue(result is ContainerTradeResult.Failure)
         assertTrue((result as ContainerTradeResult.Failure).reason.contains("Out of stock", ignoreCase = true))
@@ -172,44 +186,44 @@ class ContainerTradeServiceTradeTest {
 
     @Test
     fun `solo shop ignores policy (factor unaffected)`() {
-        val shop = testShop(costAmount = 100) // guildId = null
+        val shop = testShop(costAmount = 100)
         val stallRepo = mockk<StallRepository>(relaxed = true)
         every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
 
         val policyService = mockk<GuildTradePolicyService>(relaxed = true)
-        // stanceFor should never be called because shop.guildId is null
-
         val economy = mockk<EconomyProvider>(relaxed = true)
         every { economy.balance(playerUuid) } returns 500L
         every { economy.withdraw(playerUuid, 100L) } returns true
         every { economy.deposit(ownerUuid, 100L) } returns true
 
-        val playerInv = mockk<PlayerInventory>(relaxed = true)
-        val player = mockk<Player>(relaxed = true)
-        every { player.inventory } returns playerInv
-        mockkStatic(Bukkit::class)
-        every { Bukkit.getPlayer(playerUuid) } returns player
+        val (_, playerInv) = mockOnlinePlayer()
         every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
-
-        val containerInv = mockk<Inventory>(relaxed = true)
-        every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
         every { playerInv.addItem(any()) } returns hashMapOf()
+        val (container, _) = mockContainerPair()
 
-        val container = mockk<Container>(relaxed = true)
-        every { container.inventory } returns containerInv
-
-        val service = buildService(
-            stallRepo = stallRepo,
-            economy = economy,
-            mockContainer = container,
-        )
-
+        val service = buildService(stallRepo, economy, tradePolicy = policyService, mockContainer = container)
         val result = service.executeSell(shop, playerUuid)
+
         assertTrue(result is ContainerTradeResult.Success, "Expected Success but got $result")
-        // Cost is exactly 100 (no tariff applied)
         verify { economy.withdraw(playerUuid, 100L) }
         verify { economy.deposit(ownerUuid, 100L) }
-        // policyService.stanceFor was never called
         io.mockk.verify(exactly = 0) { policyService.stanceFor(any(), any(), any()) }
+    }
+
+    @Test
+    fun `executeTrade fails when guild stall is embargoed`() {
+        val guildId = UUID.fromString("00000000-0000-0000-0000-000000000042")
+        val shop = testShop(sellAmount = 2, costAmount = 3)
+        val stallRepo = mockk<StallRepository>(relaxed = true)
+        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall().copy(owner = OwnerRef.guild(guildId.toString()))
+        val policyService = mockk<GuildTradePolicyService>(relaxed = true)
+        every { policyService.stanceFor(guildId.toString(), playerUuid, SignDirection.TRADE) } returns GuildTradePolicyService.TradeStance.Embargoed
+        val (_, playerInv) = mockOnlinePlayer()
+        val (container, containerInv) = mockContainerPair()
+        val result = buildService(stallRepo, tradePolicy = policyService, mockContainer = container).executeTrade(shop, playerUuid)
+        assertTrue(result is ContainerTradeResult.Failure, "Expected Failure but got $result")
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("embargoed", ignoreCase = true))
+        verify(exactly = 0) { playerInv.removeItem(any()) }
+        verify(exactly = 0) { containerInv.removeItem(any()) }
     }
 }

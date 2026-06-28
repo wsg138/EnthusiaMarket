@@ -92,7 +92,7 @@ open class ShopInteractListener(
         val state = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state
         val inv = (state as? org.bukkit.block.Container)?.inventory ?: return 0
         val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
-        val total = inv.contents.filterNotNull().filter { it.isSimilar(sellStack) }.sumOf { it.amount }
+        val total = net.badgersmc.em.application.ItemStackMatch.countIn(inv, sellStack)
         return total / shop.sellAmount.coerceAtLeast(1)
     }
 }

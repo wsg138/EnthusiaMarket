@@ -24,9 +24,14 @@ class VaultEconomyProviderTest {
         return VaultEconomyProvider(server, economy)
     }
 
-    @Test fun `balance reads from vault as truncated long`() {
+    @Test fun `balance truncates fractional Vault amount for conservative spending`() {
         every { economy.getBalance(offline) } returns 1234.99
         assertEquals(1234L, provider().balance(uuid))
+    }
+
+    @Test fun `balance truncation prevents overstating spendable funds`() {
+        every { economy.getBalance(offline) } returns 99.51
+        assertEquals(99L, provider().balance(uuid))
     }
 
     @Test fun `withdraw returns true when vault reports success`() {

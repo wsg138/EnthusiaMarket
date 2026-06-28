@@ -15,18 +15,42 @@ import org.bukkit.block.Container
 import org.bukkit.block.DoubleChest
 import org.bukkit.block.Sign
 import org.bukkit.event.Event
+import org.bukkit.Material
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.ItemMeta
 import org.bukkit.plugin.PluginManager
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.mockbukkit.mockbukkit.MockBukkit
 import java.util.UUID
 import kotlin.test.Test
 
 class ContainerStockListenerTest {
 
+    @BeforeEach
+    fun setupMockBukkit() {
+        MockBukkit.mock()
+    }
+
     @AfterEach
     fun cleanupMocks() {
         unmockkAll()
+        if (MockBukkit.isMocked()) MockBukkit.unmock()
+    }
+
+    private fun sellTemplate(): ItemStack = ItemStack(Material.DIAMOND, 1)
+
+    private fun matchingStock(amount: Int): ItemStack = ItemStack(Material.DIAMOND, amount)
+
+    /** Same material as sellTemplate, but different display name — isSimilar would match,
+     *  but the byte-exact [net.badgersmc.em.application.ItemStackMatch] must reject it. */
+    private fun nonMatchingStock(amount: Int): ItemStack {
+        val stack = ItemStack(Material.DIAMOND, amount)
+        val meta = stack.itemMeta
+        meta.displayName(net.kyori.adventure.text.Component.text("Non-matching Diamond"))
+        stack.itemMeta = meta
+        return stack
     }
 
     /** Creates a shop with the given coordinates. */
@@ -95,7 +119,7 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns updates sign with stock count`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -103,9 +127,7 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
 
-        val contItem = mockk<ItemStack>(relaxed = true)
-        every { contItem.isSimilar(sellStack) } returns true
-        every { contItem.amount } returns 10
+        val contItem = matchingStock(10)
 
         val sign = mockWorld(contents = arrayOf(contItem))
 
@@ -118,8 +140,8 @@ class ContainerStockListenerTest {
     }
 
     @Test
-    fun `refreshAllSigns skips update when stock unchanged`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+    fun `refreshAllSigns counts only byte-exact matching stacks`() {
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -127,9 +149,28 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
 
-        val contItem = mockk<ItemStack>(relaxed = true)
-        every { contItem.isSimilar(sellStack) } returns true
-        every { contItem.amount } returns 10
+        val matching = matchingStock(10)
+        val nonMatching = nonMatchingStock(99)
+        mockWorld(contents = arrayOf(matching, nonMatching))
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        listener.refreshAllSigns()
+
+        // Only the diamond stack counts — iron ingots must not inflate stock.
+        verify { repo.updateStock(s.id, 10) }
+    }
+
+    @Test
+    fun `refreshAllSigns skips update when stock unchanged`() {
+        val sellStack = sellTemplate()
+        mockkObject(ItemStackSerializer)
+        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+
+        val s = shop()
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(s)
+
+        val contItem = matchingStock(10)
 
         val sign = mockWorld(contents = arrayOf(contItem))
 
@@ -172,7 +213,7 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns skips update when sign chunk not loaded`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -180,9 +221,7 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
 
-        val contItem = mockk<ItemStack>(relaxed = true)
-        every { contItem.isSimilar(sellStack) } returns true
-        every { contItem.amount } returns 10
+        val contItem = matchingStock(10)
 
         mockkStatic(Bukkit::class)
         val world = mockk<World>(relaxed = true)
@@ -209,7 +248,7 @@ class ContainerStockListenerTest {
 
     @Test
     fun `onTransaction updates sign and persists stock`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -217,9 +256,7 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.findById(1L) } returns s
 
-        val contItem = mockk<ItemStack>(relaxed = true)
-        every { contItem.isSimilar(sellStack) } returns true
-        every { contItem.amount } returns 64
+        val contItem = matchingStock(64)
 
         val sign = mockWorld(contents = arrayOf(contItem))
 
@@ -255,7 +292,7 @@ class ContainerStockListenerTest {
 
     @Test
     fun `onTransaction fires depletion event even when sign chunk unloaded`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -264,8 +301,7 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.findById(1L) } returns s
 
-        val diffItem = mockk<ItemStack>(relaxed = true)
-        every { diffItem.isSimilar(sellStack) } returns false
+        val diffItem = nonMatchingStock(64)
 
         mockkStatic(Bukkit::class)
         val world = mockk<World>(relaxed = true)
@@ -304,7 +340,7 @@ class ContainerStockListenerTest {
 
     @Test
     fun `zero stock fires ShopStockDepletedEvent`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -313,8 +349,7 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
 
-        val diffItem = mockk<ItemStack>(relaxed = true)
-        every { diffItem.isSimilar(sellStack) } returns false
+        val diffItem = nonMatchingStock(64)
 
         val sign = mockWorld(contents = arrayOf(diffItem))
 
@@ -335,7 +370,7 @@ class ContainerStockListenerTest {
 
     @Test
     fun `depletion event not re-fired when still at zero`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -343,8 +378,7 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
 
-        val diffItem = mockk<ItemStack>(relaxed = true)
-        every { diffItem.isSimilar(sellStack) } returns false
+        val diffItem = nonMatchingStock(64)
 
         val sign = mockWorld(contents = arrayOf(diffItem))
 
@@ -364,7 +398,7 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns reads live Chest blockInventory not snapshot`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -372,9 +406,7 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
 
-        val contItem = mockk<ItemStack>(relaxed = true)
-        every { contItem.isSimilar(sellStack) } returns true
-        every { contItem.amount } returns 42
+        val contItem = matchingStock(42)
 
         // Set up a Chest block (not just Container) so the code takes
         // the Chest.getBlockInventory() live-inventory path.
@@ -411,7 +443,7 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns sums both halves of double chest via holder`() {
-        val sellStack = mockk<ItemStack>(relaxed = true)
+        val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
 
@@ -419,13 +451,8 @@ class ContainerStockListenerTest {
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
 
-        val leftItem = mockk<ItemStack>(relaxed = true)
-        every { leftItem.isSimilar(sellStack) } returns true
-        every { leftItem.amount } returns 32
-
-        val rightItem = mockk<ItemStack>(relaxed = true)
-        every { rightItem.isSimilar(sellStack) } returns true
-        every { rightItem.amount } returns 32
+        val leftItem = matchingStock(32)
+        val rightItem = matchingStock(32)
 
         // Double chest: one half's blockInventory is a single-side view.
         // Its holder is DoubleChest — the combined inventory has 64 total.

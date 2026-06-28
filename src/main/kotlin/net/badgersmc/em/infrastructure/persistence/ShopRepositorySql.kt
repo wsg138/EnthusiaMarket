@@ -300,7 +300,11 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         val trusted = if (trustedStr.isBlank()) {
             emptySet()
         } else {
-            trustedStr.split(",").filter { it.isNotBlank() }.map { UUID.fromString(it) }.toSet()
+            trustedStr.split(",")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .mapNotNull { runCatching { UUID.fromString(it) }.getOrNull() }
+                .toSet()
         }
         return Shop(
             id = rs.getLong("id"),
