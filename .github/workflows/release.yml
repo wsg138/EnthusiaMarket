@@ -36,6 +36,7 @@ jobs:
           cp "$ROSE_JAR" "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar"
 
       - name: Build LumaGuilds shadowJar
+        id: lg
         run: |
           git clone --depth 1 https://github.com/BadgersMC/LumaGuilds.git "$RUNNER_TEMP/lumaguilds"
           mkdir -p "$RUNNER_TEMP/lumaguilds/libs"
@@ -43,8 +44,10 @@ jobs:
           cd "$RUNNER_TEMP/lumaguilds"
           chmod +x gradlew
           ./gradlew shadowJar --no-daemon
+          JAR=$(ls "$RUNNER_TEMP/lumaguilds/build/libs/"LumaGuilds-*.jar | grep -v '\-sources\|\-javadoc' | head -1)
+          echo "jar=$JAR" >> "$GITHUB_OUTPUT"
           mkdir -p "$RUNNER_TEMP/lumaguilds-out"
-          cp "$RUNNER_TEMP/lumaguilds/build/libs/"LumaGuilds-*.jar "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar"
+          cp "$JAR" "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar"
 
       - name: Build RoseChat (master, with hook)
         run: |
@@ -56,6 +59,8 @@ jobs:
           ./gradlew shadowJar --no-daemon
 
       - name: Build shadowJar
+        env:
+          LUMAGUILDS_JAR: ${{ steps.lg.outputs.jar }}
         run: ./gradlew shadowJar --no-daemon
 
       - name: Read version
