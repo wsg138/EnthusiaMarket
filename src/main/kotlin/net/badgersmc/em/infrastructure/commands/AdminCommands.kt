@@ -655,6 +655,24 @@ class AdminCommands(
         sender.sendMessage(msg)
     }
 
+    @Subcommand("help")
+    @Permission("enthusiamarket.shop.help")
+    fun help(
+        @Context sender: CommandSender,
+        @Arg("topic") topicSlug: String? = null,
+    ) {
+        if (topicSlug == null) {
+            sender.sendMessage(net.badgersmc.em.interaction.help.HelpTopicsRenderer.renderTopicMenu())
+            return
+        }
+        val topic = net.badgersmc.em.interaction.help.HelpTopics.bySlug(topicSlug)
+        if (topic == null) {
+            sender.sendMessage(lang.msg("shop.help.unknown_topic", "topic" to topicSlug))
+            return
+        }
+        sender.sendMessage(net.badgersmc.em.interaction.help.HelpTopicsRenderer.renderTopicPage(topic))
+    }
+
     /**
      * Drop expired entries from [pendingSellbacks] so the map doesn't
      * leak across stagings that never confirm. Called inline on every

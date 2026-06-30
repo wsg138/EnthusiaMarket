@@ -54,3 +54,8 @@ commands:
     description: EnthusiaMarket administrative commands
     usage: /enthusiamarket <subcommand>
     aliases: [em]
+
+permissions:
+  enthusiamarket.shop.help:
+    description: Allows viewing the /em help menu
+    default: true

@@ -3,7 +3,6 @@ package net.badgersmc.em.interaction.gui
 import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
-import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.ContainerTradeResult
 import net.badgersmc.em.application.ContainerTradeService
@@ -12,6 +11,7 @@ import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
+import net.badgersmc.em.interaction.blockItemTheft
 import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Material
@@ -22,72 +22,111 @@ import org.bukkit.inventory.meta.BlockStateMeta
 /**
  * Trade GUI for a sign shop. Direction-aware (REQ-006):
  *
- * - **SELL** sign (owner sells): the clicker is the buyer. Button
- *   calls [ContainerTradeService.executeSell] which withdraws
- *   [Shop.costAmount] from the clicker, deposits to the owner, and
- *   moves [Shop.sellAmount] of [Shop.sellItem] from the chest to
- *   the clicker.
- * - **BUY** sign (owner buys): the clicker is the seller. Button
- *   calls [ContainerTradeService.executeBuy] which moves the items
- *   from the clicker into the chest and pays the clicker.
+ * Uses "YOU RECEIVE" / "YOU GIVE" labels to remove BUY/SELL confusion.
  *
- * Pre-V012 the menu always wired executeBuy, so [SELL] shops were
- * unreachable for actual purchases.
+ * - **SELL** sign: YOU RECEIVE the shop's item, YOU GIVE currency.
+ * - **BUY** sign:  YOU RECEIVE currency, YOU GIVE the shop's item.
+ * - **TRADE** sign: YOU RECEIVE the shop's item, YOU GIVE a specific item.
  */
 class PurchaseMenu(
     private val shop: Shop,
     private val tradeService: ContainerTradeService,
-    private val lang: LangService
+    private val lang: LangService,
 ) : Menu {
 
-    @Suppress("LongMethod")
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     override fun open(player: Player) {
-        val gui = ChestGui(
-            3,
-            ComponentHolder.of(lang.msg("gui.shop.title", "amount" to shop.sellAmount))
-        )
-        val pane = StaticPane(9, 3)
+        val sellStack = ItemStackSerializer.deserialize(shop.sellItem)
+        val sellName = sellStack?.type?.name?.lowercase()?.replace('_', ' ') ?: "?"
+        val costStack = if (shop.direction == SignDirection.TRADE) {
+            ItemStackSerializer.deserialize(shop.costItem)
+        } else null
+        val costName = costStack?.type?.name?.lowercase()?.replace('_', ' ') ?: "currency"
 
         val ownerName = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
         val dirLabel = ShopDisplay.directionLabel(shop.direction)
-        val tradesAvailable = ShopDisplay.tradesAvailable(shop)
 
-        pane.addItem(GuiItem(decorated(
-            Material.DIAMOND,
-            lang.msg("gui.shop.sell_name", "amount" to shop.sellAmount),
-            listOf(
-                lang.msg("gui.shop.sell_lore_price", "cost" to shop.costAmount),
-                lang.msg("gui.shop.sell_lore_direction", "direction" to dirLabel),
-                lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
-                lang.msg("gui.shop.sell_lore_stock", "stock" to tradesAvailable),
-            )
-        )), 2, 1)
+        // Chat direction reminder
+        val chatHintKey = when (shop.direction) {
+            SignDirection.SELL -> "gui.shop.chat_reminder_buy"
+            SignDirection.BUY -> "gui.shop.chat_reminder_sell"
+            SignDirection.TRADE -> "gui.shop.chat_reminder_trade"
+        }
+        player.sendMessage(lang.msg(chatHintKey, "owner" to ownerName, "item" to sellName))
 
-        pane.addItem(GuiItem(decorated(Material.ARROW, lang.msg("gui.shop.arrow_name"))), 4, 1)
+        val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.title", "amount" to shop.sellAmount)))
+        val pane = StaticPane(9, 3)
 
-        pane.addItem(GuiItem(decorated(
-            Material.EMERALD,
-            lang.msg("gui.shop.cost_name", "cost" to shop.costAmount)
-        )), 6, 1)
+        // --- Row 0: YOU RECEIVE / arrow / YOU GIVE labels ---
+        val receiveLabel = lang.msg("gui.shop.receive_label")
+        val giveLabel = lang.msg("gui.shop.give_label")
+        pane.addItem(GuiItem(decorated(Material.GREEN_STAINED_GLASS_PANE, receiveLabel)), 2, 0)
+        pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, 0)
+        pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
 
-        // Direction-aware action button. SELL sign → player buys
-        // from owner. BUY sign → player sells to owner. The lang key
-        // picks the verb that matches the player's perspective.
+        // --- Row 1: the actual items ---
+        // Left: what the player RECEIVES
+        val receiveItem: ItemStack
+        val receiveName: Component
+        val receiveLore: List<Component>
+        val giveItem: ItemStack
+        val giveName: Component
+        val giveLore: List<Component>
+
+        when (shop.direction) {
+            SignDirection.SELL -> {
+                // Player is BUYER: receives sell item, gives currency
+                receiveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER)
+                receiveName = lang.msg("gui.shop.receive_sell", "amount" to shop.sellAmount, "item" to sellName)
+                receiveLore = listOf(
+                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
+                    lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
+                )
+                giveItem = ItemStack(Material.EMERALD)
+                giveName = lang.msg("gui.shop.give_currency", "cost" to shop.costAmount)
+                giveLore = listOf(lang.msg("gui.shop.give_currency_lore", "cost" to shop.costAmount))
+            }
+            SignDirection.BUY -> {
+                // Player is SELLER: receives currency, gives sell item
+                receiveItem = ItemStack(Material.EMERALD)
+                receiveName = lang.msg("gui.shop.receive_currency", "cost" to shop.costAmount)
+                receiveLore = listOf(lang.msg("gui.shop.receive_currency_lore", "cost" to shop.costAmount))
+                giveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER)
+                giveName = lang.msg("gui.shop.give_item", "amount" to shop.sellAmount, "item" to sellName)
+                giveLore = listOf(
+                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
+                    lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
+                )
+            }
+            SignDirection.TRADE -> {
+                // Player is TRADER: receives sell item, gives cost item
+                receiveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER)
+                receiveName = lang.msg("gui.shop.receive_sell", "amount" to shop.sellAmount, "item" to sellName)
+                receiveLore = listOf(
+                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
+                )
+                giveItem = costStack?.clone() ?: ItemStack(Material.BARRIER)
+                giveName = lang.msg("gui.shop.give_trade_item", "amount" to shop.costAmount, "item" to costName)
+                giveLore = listOf(lang.msg("gui.shop.give_trade_item_lore", "amount" to shop.costAmount))
+            }
+        }
+
+        pane.addItem(GuiItem(decorated(receiveItem, receiveName, receiveLore)), 2, 1)
+        pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, 1)
+        pane.addItem(GuiItem(decorated(giveItem, giveName, giveLore)), 6, 1)
+
+        // --- Row 2: action button ---
         val buttonKey = when (shop.direction) {
-            SignDirection.SELL -> "gui.shop.buy_name"
-            SignDirection.TRADE -> "gui.shop.trade_name"
-            else -> "gui.shop.sell_action_name"
+            SignDirection.SELL -> "gui.shop.confirm_buy"
+            SignDirection.BUY -> "gui.shop.confirm_sell"
+            SignDirection.TRADE -> "gui.shop.confirm_trade"
         }
-        val buttonLoreKey = when (shop.direction) {
-            SignDirection.SELL -> "gui.shop.buy_lore_click"
-            SignDirection.TRADE -> "gui.shop.trade_lore_click"
-            else -> "gui.shop.sell_action_lore_click"
-        }
+        val buttonLore = listOf(
+            lang.msg("gui.shop.confirm_lore", "dir" to dirLabel),
+        )
 
         pane.addItem(GuiItem(decorated(
-            Material.LIME_STAINED_GLASS_PANE,
-            lang.msg(buttonKey),
-            listOf(lang.msg(buttonLoreKey, "cost" to shop.costAmount))
+            Material.LIME_STAINED_GLASS_PANE, lang.msg(buttonKey), buttonLore,
         )) { event ->
             event.isCancelled = true
             val result = when (shop.direction) {
@@ -97,10 +136,10 @@ class PurchaseMenu(
             }
             when (result) {
                 is ContainerTradeResult.Success -> player.sendMessage(
-                    lang.msg("shop.trade.success", "message" to result.message)
+                    lang.msg("shop.trade.success", "message" to result.message),
                 )
                 is ContainerTradeResult.Failure -> player.sendMessage(
-                    lang.msg("shop.trade.failure", "reason" to result.reason)
+                    lang.msg("shop.trade.failure", "reason" to result.reason),
                 )
                 is ContainerTradeResult.CompensationFailed -> {
                     player.sendMessage(lang.msg("shop.trade.compensation_failed", "error" to result.error))
@@ -126,6 +165,15 @@ class PurchaseMenu(
         return item
     }
 
+    private fun decorated(base: ItemStack, name: Component, lore: List<Component> = emptyList()): ItemStack {
+        val item = base.clone()
+        val meta = item.itemMeta ?: return item
+        meta.displayName(name)
+        if (lore.isNotEmpty()) meta.lore(lore)
+        item.itemMeta = meta
+        return item
+    }
+
     /** IS2-12, REQ-298: add a shulker preview button when the shop sells a shulker box. */
     private fun addShulkerPreview(pane: StaticPane, player: Player) {
         val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return
@@ -133,10 +181,10 @@ class PurchaseMenu(
         pane.addItem(GuiItem(decorated(
             Material.SHULKER_BOX,
             lang.msg("gui.shop.shulker_preview_name"),
-            listOf(lang.msg("gui.shop.shulker_preview_lore"))
+            listOf(lang.msg("gui.shop.shulker_preview_lore")),
         )) { event ->
             event.isCancelled = true
             ShulkerPreviewMenu(sellStack.clone(), lang).open(player)
-        }, 4, 0)
+        }, 8, 0)
     }
 }

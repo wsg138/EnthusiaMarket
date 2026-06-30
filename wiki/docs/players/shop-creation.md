@@ -2,57 +2,49 @@
 title: Creating shops
 audience: player
 topic: shop-creation
-summary: How to create BUY, SELL, and TRADE shops — sign placement, GUI choices, and per-trade settings.
-keywords: [shop, create, sign, buy, sell, trade, barter, gui]
+summary: "How to create BUY, SELL, and TRADE shops — shift-click for the GUI or place a sign with text."
+keywords: [shop, create, sign, buy, sell, trade, barter, gui, shift-click]
 related: [buy-sell-trade, barter-vault, shop-management, guild-stalls]
-updated: 2026-06-25
+updated: 2026-06-29
 ---
 
 # Creating shops
 
-Shops are the core of EnthusiaMarket. You place a sign on a container inside your stall, pick what you want to trade, set a price, and you're in business.
+Shops are the core of EnthusiaMarket. You link a container to a wall sign inside your stall, configure what you trade and at what price, and you're in business.
 
-## Requirements
+There are two ways to create a shop — the GUI method (recommended) and the text-sign method (fallback).
 
-- You must **own the stall** (or have member access).
-- For guild stalls, you need the `MANAGE_SHOPS` guild permission.
-- You need the `enthusiamarket.shop.create` permission (granted by default).
+## Method 1: GUI (recommended)
 
-## Step-by-step
+This method opens a menu where you pick the trade direction, amounts, and payment item without typing anything on the sign.
 
-### 1. Place a wall sign on a container
+### Step-by-step
 
-Attach a wall sign to a **chest, barrel, shulker box, or other container** inside your stall. The shop creation GUI opens automatically.
+1. **Place a blank wall sign** on a chest, barrel, shulker box, or other container **inside your stall**.
+2. **Hold the item you want to trade** in your main hand.
+3. **Shift + left-click the sign.** The shop creation GUI opens.
+4. **Choose trade direction** — SELL, BUY, or TRADE (item-for-item).
+5. **Set per-trade amount** — how many items change hands per click.
+6. **Set your price** — currency amount for BUY/SELL, or hold the payment item for TRADE.
+7. **Confirm** — the plugin creates the shop, writes the sign text, and links everything.
 
-> **Empty container?** If the container is empty, you'll see an error and the sign is cancelled. Put items in the container first.
+> **Bedrock players:** A form opens instead of the Java GUI. The process is the same — pick trade direction, amounts, and confirm.
 
-### 2. Choose trade direction
+## Method 2: Text sign (fallback)
 
-The GUI shows three buttons:
+The classic sign-based method from earlier versions. Write the trade details directly on the sign.
 
-- **SELL** — You sell items from the container to other players. They pay you.
-- **BUY** — You buy items from other players. You pay them. Your economy balance is checked to ensure you can afford the total stock.
-- **TRADE** — Item-for-item exchange. Players give you a specific item to receive the container's item.
+### Step-by-step
 
-### 3. Set per-trade amount
+1. **Place a wall sign** on a container inside your stall.
+2. **Hold the item you want to trade** in your main hand.
+3. **Write on the sign** (before confirming):
+   - **Line 1:** `[BUY]`, `[SELL]`, or `[TRADE]`
+   - **Line 2:** Amount per trade (e.g. `64`)
+   - **Line 3:** Price (e.g. `1000` for currency, or `16 DIAMOND` for TRADE)
+4. **Confirm the sign.** The plugin validates your input, creates the shop, and reformats the sign text.
 
-How many items change hands per transaction. Example: set 16 to sell/buy 16 items per click.
-
-### 4. Set your price
-
-For **BUY** and **SELL** shops: a currency amount in the server's economy unit.
-
-For **TRADE** shops: hold the payment item in your hand, then click the barter cost button in the GUI. The plugin captures the item type and amount.
-
-### 5. Confirm
-
-Click the confirm button. The plugin:
-
-1. Creates the shop record.
-2. Writes the sign text (direction, item, amount, price).
-3. Links the sign to your container.
-
-Your shop is now live.
+> **Tip:** Both methods produce the same result. Use whichever you find faster.
 
 ## Sign text
 
@@ -68,6 +60,7 @@ After creation, your sign reads:
 | Problem | Fix |
 |---------|-----|
 | "You don't own a stall in this region" | Place the sign inside a stall you own. |
-| "Container is empty" | Put items in the container, then place the sign. |
-| No GUI opens | You're on Bedrock — the form opens instead. If neither appears, check your permissions. |
+| "Container is empty" | Put items in the container first. |
+| No GUI opens on shift+click | You might be on Bedrock — the form opens instead. If neither appears, check your permissions. |
 | Guild shops require permission | Ask a guild leader to grant you `MANAGE_SHOPS`. |
+| Old text-sign method doesn't work | Make sure line 1 is exactly `[BUY]`, `[SELL]`, or `[TRADE]` — uppercase, with brackets. |

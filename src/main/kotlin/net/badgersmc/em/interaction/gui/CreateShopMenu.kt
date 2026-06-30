@@ -25,6 +25,8 @@ import java.util.UUID
  * IFramework GUI for creating a sign shop (REQ-012, REQ-289).
  * Collects direction (SELL/BUY/TRADE), per-trade amount, and cost
  * (Vault currency or barter item) before persisting via [ShopFactory].
+ *
+ * Step buttons: +1, +5, +10, -10, -5, -1 for both trade amount and price/cost.
  */
 class CreateShopMenu(
     private val stallId: String,
@@ -69,28 +71,28 @@ class CreateShopMenu(
             pane.addItem(GuiItem(decorated(mat, lang.msg("gui.shop.create.dir_${dir.name.lowercase()}", "sel" to sel))) { event ->
                 event.isCancelled = true
                 direction = dir
-                // Clear barter item when switching away from TRADE (CR#3)
                 if (dir != SignDirection.TRADE) costItemB64 = null
                 render(player)
             }, 1 + idx * 3, 0)
         }
 
         // Row 1: sell item preview + amount controls
+        // Layout: [preview] [+1][+5][+10][AMOUNT][-10][-5][-1]
         val preview = ItemStackSerializer.deserialize(sellItemBase64) ?: ItemStack(Material.BARRIER)
-        pane.addItem(GuiItem(preview), 2, 1)
-        pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.create.amount_up", "amount" to amount))) { event ->
-            event.isCancelled = true; amount += 1; render(player)
-        }, 4, 1)
-        pane.addItem(GuiItem(decorated(Material.PAPER, lang.msg("gui.shop.create.amount", "amount" to amount))), 5, 1)
-        pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.create.amount_down", "amount" to amount))) { event ->
-            event.isCancelled = true; amount = (amount - 1).coerceAtLeast(1); render(player)
-        }, 6, 1)
+        pane.addItem(GuiItem(preview), 0, 1)
+        addStepButtons(pane, 1, 1,
+            get = { amount.toLong() },
+            set = { amount = it.toInt() },
+            rerender = { render(player) },
+            coerce = { coerceAtLeast(1L) },
+            displayLabel = { lang.msg("gui.shop.create.amount", "amount" to amount) },
+        )
 
         // Row 2: cost configuration
         if (direction == SignDirection.TRADE) {
             renderBarterCost(pane, player)
         } else {
-            renderCurrencyCost(pane)
+            renderCurrencyCost(pane, player)
         }
 
         // Row 3: confirm + cancel
@@ -126,14 +128,65 @@ class CreateShopMenu(
         gui.show(player)
     }
 
-    private fun renderCurrencyCost(pane: StaticPane) {
-        pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.create.price_up", "price" to price))) {
-            it.isCancelled = true; price += 10; (it.whoClicked as? Player)?.let { p -> render(p) }
-        }, 2, 2)
-        pane.addItem(GuiItem(decorated(Material.EMERALD, lang.msg("gui.shop.create.price", "price" to price))), 5, 2)
-        pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.create.price_down", "price" to price))) {
-            it.isCancelled = true; price = (price - 10).coerceAtLeast(1); (it.whoClicked as? Player)?.let { p -> render(p) }
-        }, 8, 2)
+    /**
+     * Add 6 step buttons + center display in a row:
+     *   [+1][+5][+10]  [VALUE]  [-10][-5][-1]
+     */
+    @Suppress("LongParameterList")
+    private fun addStepButtons(
+        pane: StaticPane,
+        col: Int,
+        row: Int,
+        get: () -> Long,
+        set: (Long) -> Unit,
+        rerender: () -> Unit,
+        coerce: Long.() -> Long,
+        displayLabel: () -> Component,
+    ) {
+        data class Step(val delta: Int, val mat: Material, val langKey: String)
+
+        val steps = listOf(
+            Step(1, Material.LIME_DYE, "gui.shop.create.btn_plus1"),
+            Step(5, Material.LIME_STAINED_GLASS, "gui.shop.create.btn_plus5"),
+            Step(10, Material.LIME_STAINED_GLASS_PANE, "gui.shop.create.btn_plus10"),
+            // display at col+3
+            Step(-10, Material.RED_STAINED_GLASS_PANE, "gui.shop.create.btn_minus10"),
+            Step(-5, Material.RED_STAINED_GLASS, "gui.shop.create.btn_minus5"),
+            Step(-1, Material.RED_DYE, "gui.shop.create.btn_minus1"),
+        )
+
+        // +1, +5, +10
+        for (i in 0..2) {
+            val s = steps[i]
+            pane.addItem(GuiItem(decorated(s.mat, lang.msg(s.langKey, "delta" to s.delta, "val" to (get() + s.delta)))) { event ->
+                event.isCancelled = true
+                set((get() + s.delta).coerce())
+                rerender()
+            }, col + i, row)
+        }
+
+        // Value display
+        pane.addItem(GuiItem(decorated(Material.PAPER, displayLabel())), col + 3, row)
+
+        // -10, -5, -1
+        for (i in 3..5) {
+            val s = steps[i]
+            pane.addItem(GuiItem(decorated(s.mat, lang.msg(s.langKey, "delta" to s.delta, "val" to (get() + s.delta)))) { event ->
+                event.isCancelled = true
+                set((get() + s.delta).coerce())
+                rerender()
+            }, col + 4 + (i - 3), row)
+        }
+    }
+
+    private fun renderCurrencyCost(pane: StaticPane, player: Player) {
+        addStepButtons(pane, 1, 2,
+            get = { price.coerceIn(1, Long.MAX_VALUE) },
+            set = { price = it },
+            rerender = { render(player) },
+            coerce = { coerceIn(1, Long.MAX_VALUE) },
+            displayLabel = { lang.msg("gui.shop.create.price", "price" to price) },
+        )
     }
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
@@ -146,20 +199,20 @@ class CreateShopMenu(
                 costItemAmount = hand.amount.coerceAtLeast(1)
                 render(player)
             }
-        }, 2, 2)
+        }, 0, 2)
 
         // Show current cost item
         val costPreview = costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)
-        pane.addItem(GuiItem(costPreview), 4, 2)
+        pane.addItem(GuiItem(costPreview), 1, 2)
 
-        // Cost amount controls
-        pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.create.cost_amount_up", "amount" to costItemAmount))) { event ->
-            event.isCancelled = true; costItemAmount += 1; render(player)
-        }, 6, 2)
-        pane.addItem(GuiItem(decorated(Material.PAPER, lang.msg("gui.shop.create.cost_amount", "amount" to costItemAmount))), 7, 2)
-        pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.create.cost_amount_down", "amount" to costItemAmount))) { event ->
-            event.isCancelled = true; costItemAmount = (costItemAmount - 1).coerceAtLeast(1); render(player)
-        }, 8, 2)
+        // Cost amount controls with step buttons
+        addStepButtons(pane, 2, 2,
+            get = { costItemAmount.toLong() },
+            set = { costItemAmount = it.toInt() },
+            rerender = { render(player) },
+            coerce = { coerceAtLeast(1L) },
+            displayLabel = { lang.msg("gui.shop.create.cost_amount", "amount" to costItemAmount) },
+        )
     }
 
     private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
