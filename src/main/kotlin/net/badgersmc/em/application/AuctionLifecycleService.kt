@@ -10,11 +10,13 @@ import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -77,6 +79,9 @@ class AuctionLifecycleService(
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
+    /** Injectable clock for deterministic time-travel in tests. */
+    internal var clock: Clock = Clock.systemUTC()
+
     /**
      * Create a new auction for a stall.
      *
@@ -117,7 +122,7 @@ class AuctionLifecycleService(
         val duration = resolveDuration(durationStr)
             ?: return AuctionResult.Failure("Duration resolution failed — this should not happen")
 
-        val now = Instant.now()
+        val now = clock.instant()
         val auction = Auction(
             id = AuctionId(UUID.randomUUID().toString()),
             stallId = stallId,
@@ -149,7 +154,7 @@ class AuctionLifecycleService(
         val duration = resolveDuration(durationStr)
             ?: return MassAuctionResult.Invalid("Invalid auction duration: '$durationStr'")
 
-        val now = Instant.now()
+        val now = clock.instant()
         val endAt = now.plus(duration)
         val antiSnipe = Duration.ofSeconds(config.auction.antiSnipeSec.toLong())
 
@@ -260,7 +265,7 @@ class AuctionLifecycleService(
         }
 
         return try {
-            val updated = auction.placeBid(playerUuid, amount, Instant.now())
+            val updated = auction.placeBid(playerUuid, amount, clock.instant())
             auctionRepository.save(updated)
             AuctionResult.Success(updated)
         } catch (e: IllegalArgumentException) {
@@ -284,12 +289,29 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: return AuctionResult.Failure("Stall not found for auction")
 
-        if (stall.owner != OwnerRef.solo(playerUuid)) {
-            return AuctionResult.Failure("Only the stall owner can cancel this auction")
+        // Gate: only the stall owner (SOLO) or an admin cancelling a
+        // system auction (NONE) may cancel. GUILD auctions are not
+        // cancellable via this path — the caller must be the owner.
+        when (stall.owner.type) {
+            OwnerType.SOLO -> if (stall.owner.id != playerUuid.toString()) {
+                return AuctionResult.Failure("Only the stall owner can cancel this auction")
+            }
+            OwnerType.GUILD -> return AuctionResult.Failure(
+                "Guild-owned auctions cannot be cancelled this way"
+            )
+            OwnerType.NONE -> { /* system auction — command layer enforces admin */ }
         }
 
         val closed = auction.close()
         auctionRepository.save(closed)
+        // Revert a system-mass-auctioned stall (AUCTIONING + no owner) back to
+        // UNOWNED so the sign becomes buyable again after cancellation.
+        if (stall.state == StallState.AUCTIONING &&
+            stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+        ) {
+            stallRepository.save(stall.copy(state = StallState.UNOWNED))
+            fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+        }
         return AuctionResult.Success(closed)
     }
 
@@ -323,7 +345,7 @@ class AuctionLifecycleService(
                     val stall = stallRepository.findById(auction.stallId)
                     if (stall != null
                         && stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
-                        && stall.state == StallState.AUCTIONING
+                        && stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING)
                     ) {
                         stallRepository.save(stall.copy(state = StallState.UNOWNED))
                         // M3 — drop any lingering sell offer on the
@@ -414,7 +436,7 @@ class AuctionLifecycleService(
                 economy.deposit(bid.bidder, bid.amount)
                 // Mirror the limit-reject path: revert a system-auctioned stall to
                 // UNOWNED and close the auction so it stops re-settling.
-                if (stall.state == StallState.AUCTIONING &&
+                if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
                     stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
                 ) {
                     stallRepository.save(stall.copy(state = StallState.UNOWNED))
@@ -439,7 +461,7 @@ class AuctionLifecycleService(
         //     re-settle → no re-charge), stall best-effort reverted to UNOWNED
         //     so it can be re-auctioned later. The winner is made whole either
         //     way; no money is created or destroyed.
-        val awardAt = Instant.now()
+        val awardAt = clock.instant()
         val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
         auctionRepository.save(auction.close())
         try {
@@ -462,7 +484,8 @@ class AuctionLifecycleService(
                 )
             }
             try {
-                if (stall.state == StallState.AUCTIONING) {
+                if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
+                    stall.owner.type == OwnerType.NONE) {
                     stallRepository.save(stall.copy(state = StallState.UNOWNED))
                     fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
                 }
@@ -518,7 +541,9 @@ class AuctionLifecycleService(
      */
     private fun closeWithoutAward(auction: Auction, stall: Stall) {
         auctionRepository.save(auction.close())
-        if (stall.state == StallState.AUCTIONING &&
+        // Revert any system-auctioned stall (all auctioning states + no owner)
+        // back to UNOWNED so it returns to the buyable pool.
+        if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
             stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
         ) {
             try {

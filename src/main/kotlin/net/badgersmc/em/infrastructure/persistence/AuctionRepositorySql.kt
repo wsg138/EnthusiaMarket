@@ -82,6 +82,11 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
             setLong(1, Instant.now().toEpochMilli())
         }
 
+    override fun findMostRecentClosedByStall(stallId: StallId): Auction? =
+        queryOne("SELECT * FROM auctions WHERE stall_id = ? AND state = 'CLOSED' ORDER BY end_at DESC LIMIT 1") {
+            setString(1, stallId.value)
+        }
+
     override fun delete(id: AuctionId) {
         ds.connection.use { conn ->
             conn.prepareStatement("DELETE FROM auctions WHERE id = ?").use { ps ->

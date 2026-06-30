@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.application.StallRentExtensionService
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.StallRepository
@@ -10,6 +11,9 @@ import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.interaction.gui.PurchaseMethodMenu
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.i18n.LangService
+import net.kyori.adventure.text.Component as AdventureComponent
+import net.kyori.adventure.text.event.ClickEvent
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Material
 import org.bukkit.Tag
 import org.bukkit.event.EventHandler
@@ -42,6 +46,7 @@ import java.util.concurrent.ConcurrentHashMap
 open class PurchaseSignClickListener(
     private val signs: PurchaseSignRepository,
     private val stalls: StallRepository,
+    private val auctions: AuctionRepository,
     private val buyout: StallBuyoutService,
     private val rentExtension: StallRentExtensionService,
     private val config: EnthusiaMarketConfig,
@@ -84,10 +89,21 @@ open class PurchaseSignClickListener(
                 }
                 handleBuy(sign.stallId, sign.price, player)
             }
-            StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING ->
+            StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING -> {
                 player.sendMessage(
                     lang.msg("purchase_sign.msg.auction_live", "stall" to sign.stallId.value)
                 )
+                val auction = auctions.findOpenByStall(sign.stallId)
+                if (auction != null) {
+                    val cmd = "/em bid ${auction.id} "
+                    player.sendMessage(
+                        AdventureComponent.text("  /em bid ", NamedTextColor.GRAY)
+                            .append(AdventureComponent.text(auction.id.value, NamedTextColor.YELLOW)
+                                .clickEvent(ClickEvent.suggestCommand(cmd)))
+                            .append(AdventureComponent.text(" <amount>", NamedTextColor.GRAY))
+                    )
+                }
+            }
             StallState.OWNED, StallState.GRACE ->
                 handleExtension(player.uniqueId, sign.stallId, sign.locationKey, player)
         }

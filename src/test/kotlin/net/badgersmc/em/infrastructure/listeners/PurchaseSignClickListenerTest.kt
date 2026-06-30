@@ -6,6 +6,10 @@ import io.mockk.verify
 import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.application.StallRentExtensionService
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.auction.Auction
+import net.badgersmc.em.domain.auction.AuctionId
+import net.badgersmc.em.domain.auction.AuctionRepository
+import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.sign.PurchaseSign
 import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.Stall
@@ -25,8 +29,11 @@ import org.mockbukkit.mockbukkit.MockBukkit
 import org.mockbukkit.mockbukkit.ServerMock
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import net.kyori.adventure.text.Component
+import java.time.Duration
+import java.time.Instant
 
 class PurchaseSignClickListenerTest {
 
@@ -62,6 +69,24 @@ class PurchaseSignClickListenerTest {
         return stall
     }
 
+    private fun auctioningStall(state: StallState = StallState.AUCTIONING): Stall {
+        val stall = mockk<Stall>(relaxed = true)
+        every { stall.state } returns state
+        return stall
+    }
+
+    private fun openAuction(stallId: StallId, auctionId: AuctionId = AuctionId("auc_01")): Auction =
+        Auction(
+            id = auctionId,
+            stallId = stallId,
+            state = AuctionState.OPEN,
+            startAt = Instant.now(),
+            endAt = Instant.now().plus(Duration.ofHours(24)),
+            startingBid = 100L,
+            highBid = null,
+            antiSnipeWindow = Duration.ofMinutes(10),
+        )
+
     private fun purchaseSign(stallId: String = "stall_01", price: Long = 500): PurchaseSign {
         val sign = mockk<PurchaseSign>(relaxed = true)
         every { sign.stallId } returns StallId(stallId)
@@ -78,11 +103,13 @@ class PurchaseSignClickListenerTest {
         signs: PurchaseSignRepository,
         stalls: StallRepository,
         buyout: StallBuyoutService,
+        auctions: AuctionRepository = mockk(relaxed = true),
     ): Pair<PurchaseSignClickListener, MutableList<Pair<StallId, Long>>> {
         val menuCalls = mutableListOf<Pair<StallId, Long>>()
         val listener = object : PurchaseSignClickListener(
             signs,
             stalls,
+            auctions,
             buyout,
             mockk<StallRentExtensionService>(relaxed = true),
             mockk<EnthusiaMarketConfig>(relaxed = true),
@@ -158,5 +185,54 @@ class PurchaseSignClickListenerTest {
         listener.onClick(event)
 
         assertTrue(event.isCancelled, "Event should be cancelled to prevent vanilla sign editing")
+    }
+
+    @Test
+    fun `auctioning stall sign with open auction shows clickable bid suggestion`() {
+        val signs = mockk<PurchaseSignRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val buyout = mockk<StallBuyoutService>(relaxed = true)
+        val auctions = mockk<AuctionRepository>(relaxed = true)
+        val stallId = StallId("stall_01")
+        val block = signBlock(x = 10, y = 64, z = 20)
+
+        every { signs.findAt("world", 10, 64, 20) } returns purchaseSign("stall_01", 500)
+        every { stalls.findById(stallId) } returns auctioningStall(StallState.AUCTIONING)
+        every { auctions.findOpenByStall(stallId) } returns openAuction(stallId, AuctionId("auc_01"))
+
+        val player = mockk<Player>(relaxed = true)
+        every { player.uniqueId } returns UUID.randomUUID()
+
+        val (listener, _) = listenerWithRecording(signs, stalls, buyout, auctions)
+        listener.onClick(interactEvent(player, block))
+
+        verify { auctions.findOpenByStall(stallId) }
+        // Verifies the auction_live message + bid suggestion were sent
+        verify(atLeast = 2) { player.sendMessage(any<Component>()) }
+    }
+
+    @Test
+    fun `auctioning stall sign without open auction shows only informational message`() {
+        val signs = mockk<PurchaseSignRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val buyout = mockk<StallBuyoutService>(relaxed = true)
+        val auctions = mockk<AuctionRepository>(relaxed = true)
+        val stallId = StallId("stall_01")
+        val block = signBlock(x = 10, y = 64, z = 20)
+
+        every { signs.findAt("world", 10, 64, 20) } returns purchaseSign("stall_01", 500)
+        every { stalls.findById(stallId) } returns auctioningStall(StallState.AUCTIONING)
+        every { auctions.findOpenByStall(stallId) } returns null
+
+        val player = mockk<Player>(relaxed = true)
+        every { player.uniqueId } returns UUID.randomUUID()
+
+        val (listener, menuCalls) = listenerWithRecording(signs, stalls, buyout, auctions)
+        listener.onClick(interactEvent(player, block))
+
+        verify { auctions.findOpenByStall(stallId) }
+        // Only the auction_live message — no bid suggestion, no menu
+        verify(exactly = 1) { player.sendMessage(any<Component>()) }
+        assertTrue(menuCalls.isEmpty(), "Menu should not open for auctioning stalls")
     }
 }

@@ -160,6 +160,8 @@ class EnthusiaMarketConfig {
         var feePct: Double = 0.05
         @Comment("Minimum starting bid amount")
         var minStartingBid: Long = 1
+        @Comment("Seconds after auction end before direct sign purchase opens (0 = immediate)")
+        var directBuyDelaySeconds: Long = 0
     }
 
     class Shop {

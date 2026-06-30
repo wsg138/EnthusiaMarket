@@ -10,4 +10,6 @@ interface AuctionRepository {
     fun create(auction: Auction)
     fun save(auction: Auction)
     fun delete(id: AuctionId)
+    /** Most recent CLOSED auction for [stallId] by end_at desc, or null. */
+    fun findMostRecentClosedByStall(stallId: StallId): Auction?
 }
