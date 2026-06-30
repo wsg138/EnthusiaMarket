@@ -1,0 +1,76 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          gradle-version: "8.10.2"
+
+      # Bootstrap: build RoseChat (pre-hook) → LumaGuilds → RoseChat (master, hook)
+      - name: Build RoseChat (pre-hook) for LumaGuilds bootstrap
+        env:
+          ROSECHAT_PREHOOK_REF: 3fe078a
+        run: |
+          git clone https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-prehook"
+          cd "$RUNNER_TEMP/rosechat-prehook"
+          git checkout "$ROSECHAT_PREHOOK_REF"
+          chmod +x gradlew
+          ./gradlew shadowJar --no-daemon
+          ROSE_JAR=$(ls "$RUNNER_TEMP/rosechat-prehook/build/libs/"RoseChat-RC-2*.jar | grep -v '\-sources\|\-javadoc' | head -1)
+          mkdir -p "$RUNNER_TEMP/rosechat-out"
+          cp "$ROSE_JAR" "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar"
+
+      - name: Build LumaGuilds shadowJar
+        run: |
+          git clone --depth 1 https://github.com/BadgersMC/LumaGuilds.git "$RUNNER_TEMP/lumaguilds"
+          mkdir -p "$RUNNER_TEMP/lumaguilds/libs"
+          cp "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar" "$RUNNER_TEMP/lumaguilds/libs/RoseChat-RC-2.jar"
+          cd "$RUNNER_TEMP/lumaguilds"
+          chmod +x gradlew
+          ./gradlew shadowJar --no-daemon
+          mkdir -p "$RUNNER_TEMP/lumaguilds-out"
+          cp "$RUNNER_TEMP/lumaguilds/build/libs/"LumaGuilds-*.jar "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar"
+
+      - name: Build RoseChat (master, with hook)
+        run: |
+          git clone --depth 1 --branch master https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-master"
+          mkdir -p "$RUNNER_TEMP/rosechat-master/libs"
+          cp "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar" "$RUNNER_TEMP/rosechat-master/libs/LumaGuilds-2.1.0.jar"
+          cd "$RUNNER_TEMP/rosechat-master"
+          chmod +x gradlew
+          ./gradlew shadowJar --no-daemon
+
+      - name: Build shadowJar
+        run: ./gradlew shadowJar --no-daemon
+
+      - name: Read version
+        id: version
+        run: |
+          VER=$(grep '^version = ' build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef97c3cf6c42 # v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: EnthusiaMarket v${{ steps.version.outputs.version }}
+          files: build/libs/EnthusiaMarket-${{ steps.version.outputs.version }}.jar
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          make_latest: true
