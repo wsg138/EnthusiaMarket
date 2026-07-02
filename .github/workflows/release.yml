@@ -67,7 +67,7 @@ jobs:
         run: ./gradlew shadowJar --no-daemon -PreleaseVersion="$RELEASE_VERSION"
 
       - name: Create Release
-        uses: softprops/action-gh-release@c062c56c59f2f0e1e71e0b01860c94f45d72c030  # v2.2.2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: EnthusiaMarket v${{ steps.bump.outputs.version }}
