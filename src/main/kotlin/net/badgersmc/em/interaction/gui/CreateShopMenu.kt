@@ -13,6 +13,7 @@ import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Sign
@@ -190,20 +191,25 @@ class CreateShopMenu(
     }
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
-        // Cost item from hand button
-        pane.addItem(GuiItem(decorated(Material.CHEST, lang.msg("gui.shop.create.cost_item_set"))) { event ->
+        // Cost item slot — unrestricted, player can drag items from inventory
+        val costPreview = (costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)).let { item ->
+            val meta = item.itemMeta
+            if (meta != null) {
+                meta.displayName(lang.msg("gui.shop.create.cost_item_set"))
+                meta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
+                item.itemMeta = meta
+            }
+            item
+        }
+        pane.addItem(GuiItem(costPreview) { event ->
             event.isCancelled = true
-            val hand = player.inventory.itemInMainHand
-            if (hand.type != Material.AIR && hand.amount > 0) {
-                costItemB64 = ItemStackSerializer.serialize(hand.clone().apply { amount = 1 })
-                costItemAmount = hand.amount.coerceAtLeast(1)
+            val cursor = event.cursor
+            if (cursor != null && cursor.type != Material.AIR && cursor.amount > 0) {
+                costItemB64 = ItemStackSerializer.serialize(cursor.clone().apply { amount = 1 })
+                costItemAmount = cursor.amount.coerceAtLeast(1)
                 render(player)
             }
-        }, 0, 2)
-
-        // Show current cost item
-        val costPreview = costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)
-        pane.addItem(GuiItem(costPreview), 1, 2)
+        }, 1, 2)
 
         // Cost amount controls with step buttons
         addStepButtons(pane, 2, 2,
@@ -224,22 +230,29 @@ class CreateShopMenu(
         return item
     }
 
-    /** Write the shop's direction/amount/price onto the sign after creation. Returns true on success. */
+    /** Write the shop's direction/amount/price onto the sign after creation (matches ShopSignRenderer formatting). */
     private fun writeSignText(shop: Shop): Boolean {
         val world = signLoc.world ?: return false
         val block = world.getBlockAt(signLoc.blockX, signLoc.blockY, signLoc.blockZ)
         val sign = block.state as? Sign ?: return false
         val side = sign.getSide(Side.FRONT)
-        side.line(0, Component.text("[${shop.direction.name}]"))
-        side.line(1, Component.text("${shop.sellAmount}"))
+        val sellMatName = try { ItemStackSerializer.deserialize(sellItemBase64)?.type?.name?.lowercase()
+            ?: "?" } catch (_: Exception) { "?" }
+        val headerColor = when (shop.direction) {
+            SignDirection.BUY -> NamedTextColor.GOLD
+            SignDirection.TRADE -> NamedTextColor.LIGHT_PURPLE
+            else -> NamedTextColor.AQUA
+        }
+        side.line(0, Component.text("[${shop.direction.name}]", headerColor))
+        side.line(1, Component.text("${shop.sellAmount}x $sellMatName", NamedTextColor.WHITE))
         val costText = if (shop.direction == SignDirection.TRADE) {
             val costItem = try { ItemStackSerializer.deserialize(shop.costItem) } catch (_: Exception) { null }
             "${shop.costAmount} ${costItem?.type?.name?.lowercase() ?: "?"}"
         } else {
             "${shop.costAmount}"
         }
-        side.line(2, Component.text(costText))
-        side.line(3, Component.text("[Shop]"))
+        side.line(2, Component.text(costText, NamedTextColor.GOLD))
+        side.line(3, Component.text("[Shop]", NamedTextColor.GOLD))
         return sign.update(true, false)
     }
 }

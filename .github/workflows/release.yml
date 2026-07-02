@@ -8,73 +8,70 @@ jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # create release + upload asset
-    steps:
-      - uses: actions/checkout@v4
+      contents: write
+    env:
+      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds.jar
 
-      - uses: actions/setup-java@v4
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12  # v4.7.1
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
-        with:
-          gradle-version: "8.10.2"
+      - name: Bump version
+        id: bump
+        run: |
+          LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          if [ -z "$LATEST" ]; then
+            BASE=$(grep -oP 'version\s*=\s*findProperty.*\?\s*:\s*"\K[^"]+' build.gradle.kts)
+            MAJOR=$(echo "$BASE" | cut -d. -f1)
+            MINOR=$(echo "$BASE" | cut -d. -f2)
+            PATCH=$(echo "$BASE" | cut -d. -f3)
+          else
+            VER="${LATEST#v}"
+            MAJOR=$(echo "$VER" | cut -d. -f1)
+            MINOR=$(echo "$VER" | cut -d. -f2)
+            PATCH=$(echo "$VER" | cut -d. -f3)
+          fi
+          NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          echo "Latest tag: ${LATEST:-none}, bumping to v$NEXT"
+          echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
-      # Bootstrap: build RoseChat (pre-hook) → LumaGuilds → RoseChat (master, hook)
-      - name: Build RoseChat (pre-hook) for LumaGuilds bootstrap
+      - name: Download latest LumaGuilds release
         env:
-          ROSECHAT_PREHOOK_REF: 3fe078a
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git clone https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-prehook"
-          cd "$RUNNER_TEMP/rosechat-prehook"
-          git checkout "$ROSECHAT_PREHOOK_REF"
-          chmod +x gradlew
-          ./gradlew shadowJar --no-daemon
-          ROSE_JAR=$(ls "$RUNNER_TEMP/rosechat-prehook/build/libs/"RoseChat-RC-2*.jar | grep -v '\-sources\|\-javadoc' | head -1)
-          mkdir -p "$RUNNER_TEMP/rosechat-out"
-          cp "$ROSE_JAR" "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar"
-
-      - name: Build LumaGuilds shadowJar
-        id: lg
-        run: |
-          git clone --depth 1 https://github.com/BadgersMC/LumaGuilds.git "$RUNNER_TEMP/lumaguilds"
-          mkdir -p "$RUNNER_TEMP/lumaguilds/libs"
-          cp "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar" "$RUNNER_TEMP/lumaguilds/libs/RoseChat-RC-2.jar"
-          cd "$RUNNER_TEMP/lumaguilds"
-          chmod +x gradlew
-          ./gradlew shadowJar --no-daemon
-          JAR=$(ls "$RUNNER_TEMP/lumaguilds/build/libs/"LumaGuilds-*.jar | grep -v '\-sources\|\-javadoc' | head -1)
-          echo "jar=$JAR" >> "$GITHUB_OUTPUT"
-          mkdir -p "$RUNNER_TEMP/lumaguilds-out"
-          cp "$JAR" "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar"
-
-      - name: Build RoseChat (master, with hook)
-        run: |
-          git clone --depth 1 --branch master https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-master"
-          mkdir -p "$RUNNER_TEMP/rosechat-master/libs"
-          cp "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar" "$RUNNER_TEMP/rosechat-master/libs/LumaGuilds-2.1.0.jar"
-          cd "$RUNNER_TEMP/rosechat-master"
-          chmod +x gradlew
-          ./gradlew shadowJar --no-daemon
+          mkdir -p libs
+          LG_RELEASE=$(curl -sS -H "Authorization: token $GH_TOKEN" \
+            https://api.github.com/repos/BadgersMC/LumaGuilds/releases/latest)
+          LG_ASSET_URL=$(echo "$LG_RELEASE" | python3 -c "
+          import sys, json
+          r = json.load(sys.stdin)
+          if 'assets' not in r:
+              print(f'ERROR: bad API response: {json.dumps(r)[:200]}', file=sys.stderr)
+              sys.exit(1)
+          print(next(a['browser_download_url'] for a in r['assets'] if a['name'].endswith('.jar')))
+          ")
+          echo "Downloading LumaGuilds from $LG_ASSET_URL"
+          curl -sSL -o libs/LumaGuilds.jar "$LG_ASSET_URL"
+          ls -lh libs/LumaGuilds.jar
 
       - name: Build shadowJar
         env:
-          LUMAGUILDS_JAR: ${{ steps.lg.outputs.jar }}
-        run: ./gradlew shadowJar --no-daemon
-
-      - name: Read version
-        id: version
-        run: |
-          VER=$(grep '^version = ' build.gradle.kts | sed 's/.*"\(.*\)".*/\1/')
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          RELEASE_VERSION: ${{ steps.bump.outputs.version }}
+        run: ./gradlew shadowJar --no-daemon -PreleaseVersion="$RELEASE_VERSION"
 
       - name: Create Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@c062c56c59f2f0e1e71e0b01860c94f45d72c030  # v2.2.2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: EnthusiaMarket v${{ steps.version.outputs.version }}
-          files: build/libs/EnthusiaMarket-${{ steps.version.outputs.version }}.jar
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: EnthusiaMarket v${{ steps.bump.outputs.version }}
+          files: build/libs/EnthusiaMarket-${{ steps.bump.outputs.version }}.jar
           generate_release_notes: true
           fail_on_unmatched_files: true
           make_latest: true

@@ -26,10 +26,8 @@ Stalls in the `UNOWNED` state are available for purchase. The purchase sign's th
 ## Step 2: Buy the stall
 
 1. **Right-click** the purchase sign to buy it for yourself.
-2. Confirm the purchase when prompted.
-3. The price is withdrawn from your economy balance and the stall is now yours.
-
-> **For guilds:** Sneak + right-click the purchase sign to buy the stall for your guild instead of yourself. The guild bank is charged.
+2. A menu opens — choose **Personal** or **Guild**.
+3. The price is withdrawn from your economy balance (or guild bank for guild purchases) and the stall is now yours.
 
 ## Step 3: Understand rent
 

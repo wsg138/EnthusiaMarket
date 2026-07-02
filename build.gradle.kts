@@ -27,7 +27,7 @@ jacoco {
 }
 
 group = "net.badgersmc.em"
-version = "0.2.0"
+version = findProperty("releaseVersion")?.toString() ?: "0.2.0"
 
 repositories {
     mavenCentral()

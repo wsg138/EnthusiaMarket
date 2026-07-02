@@ -14,7 +14,7 @@ Guilds can own stalls and run shops. This page explains how guild stalls differ 
 
 ## Buying a stall for your guild
 
-Sneak + right-click a purchase sign on an UNOWNED stall. The guild bank is charged instead of your personal account.
+Right-click a purchase sign on an UNOWNED stall and select **Guild** from the menu. The guild bank is charged instead of your personal account.
 
 You must be in a guild to do this.
 
