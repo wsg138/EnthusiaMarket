@@ -4,7 +4,7 @@ audience: admin
 topic: troubleshooting
 summary: Common problems and their solutions.
 keywords: [troubleshooting, debug, errors, common issues]
-related: [installation, config, integration]
+related: [installation, config, integration, release-checklist]
 updated: 2026-06-25
 ---
 

@@ -4,7 +4,7 @@ audience: admin
 topic: installation
 summary: Install EnthusiaMarket on Paper 1.21.x, drop in dependencies, config overview.
 keywords: [installation, install, setup, config, config.yml, paper, dependencies]
-related: [config, permissions, integration]
+related: [config, permissions, integration, release-checklist]
 updated: 2026-06-25
 ---
 

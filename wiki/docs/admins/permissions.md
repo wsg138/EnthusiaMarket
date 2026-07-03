@@ -4,7 +4,7 @@ audience: admin
 topic: permissions
 summary: All permission nodes used by EnthusiaMarket, grouped by feature area.
 keywords: [permissions, nodes, admin, user]
-related: [installation, config]
+related: [installation, config, release-checklist]
 updated: 2026-06-25
 ---
 

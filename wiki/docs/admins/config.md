@@ -4,7 +4,7 @@ audience: admin
 topic: config
 summary: Every config key in enthusiamarket.yaml with defaults and descriptions.
 keywords: [config, reference, yaml, settings]
-related: [installation, permissions, integration]
+related: [installation, permissions, integration, release-checklist]
 updated: 2026-06-25
 ---
 
