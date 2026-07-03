@@ -191,15 +191,24 @@ class CreateShopMenu(
     }
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
-        // Cost item slot — unrestricted, player can drag items from inventory
-        val costPreview = (costItemB64?.let { ItemStackSerializer.deserialize(it) } ?: ItemStack(Material.EMERALD)).let { item ->
-            val meta = item.itemMeta
-            if (meta != null) {
-                meta.displayName(lang.msg("gui.shop.create.cost_item_set"))
-                meta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
-                item.itemMeta = meta
-            }
-            item
+        // Cost item slot — indicator when empty, set item when player clicks with cursor item
+        val costB64 = costItemB64
+        val costPreview = if (costB64 != null) {
+            ItemStackSerializer.deserialize(costB64)?.let { item ->
+                val meta = item.itemMeta
+                if (meta != null) {
+                    meta.displayName(lang.msg("gui.shop.create.cost_item_set"))
+                    meta.lore(listOf(lang.msg("gui.shop.create.cost_item_lore")))
+                    item.itemMeta = meta
+                }
+                item
+            } ?: ItemStack(Material.BARRIER)
+        } else {
+            // Empty indicator — gray glass pane hinting "drop item here"
+            decorated(Material.GRAY_STAINED_GLASS_PANE,
+                lang.msg("gui.shop.create.cost_item_empty"),
+                listOf(lang.msg("gui.shop.create.cost_item_empty_lore")),
+            )
         }
         pane.addItem(GuiItem(costPreview) { event ->
             event.isCancelled = true
@@ -209,10 +218,10 @@ class CreateShopMenu(
                 costItemAmount = cursor.amount.coerceAtLeast(1)
                 render(player)
             }
-        }, 1, 2)
+        }, 0, 2)
 
         // Cost amount controls with step buttons
-        addStepButtons(pane, 2, 2,
+        addStepButtons(pane, 1, 2,
             get = { costItemAmount.toLong() },
             set = { costItemAmount = it.toInt() },
             rerender = { render(player) },
