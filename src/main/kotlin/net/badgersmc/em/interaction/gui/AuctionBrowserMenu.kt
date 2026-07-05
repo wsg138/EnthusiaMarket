@@ -6,6 +6,7 @@ import com.github.stefvanschie.inventoryframework.pane.OutlinePane
 import com.github.stefvanschie.inventoryframework.pane.PaginatedPane
 import com.github.stefvanschie.inventoryframework.pane.Pane
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.Stall
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicReference
 class AuctionBrowserMenu(
     private val auctions: AuctionRepository,
     private val stalls: StallRepository,
+    private val auctionService: AuctionLifecycleService,
     scheduler: NexusScheduler,
     private val lang: LangService,
     private val nameCache: OfflinePlayerNameCache = OfflinePlayerNameCache()
@@ -118,6 +120,7 @@ class AuctionBrowserMenu(
         latest.set(Snapshot(entries))
     }
 
+    @Suppress("LongMethod")
     override fun render(gui: ChestGui) {
         // Anti-dupe: cancel raw item movement (collect-to-cursor / drag). The framework base
         // creates this gui, so we harden it here; re-applying each refresh is idempotent.
@@ -136,7 +139,11 @@ class AuctionBrowserMenu(
             val pagePane = OutlinePane(0, 0, 9, 5, Pane.Priority.LOWEST)
             val slice = sorted.drop(pageIdx * ITEMS_PER_PAGE).take(ITEMS_PER_PAGE)
             for (entry in slice) {
-                pagePane.addItem(GuiItem(entryIcon(entry, now)) { it.isCancelled = true })
+                pagePane.addItem(GuiItem(entryIcon(entry, now)) { event ->
+                    event.isCancelled = true
+                    val player = event.whoClicked as? Player ?: return@GuiItem
+                    AuctionBidMenu(entry.auction, auctionService, lang).open(player)
+                })
             }
             itemsPane.addPane(pageIdx, pagePane)
         }
@@ -149,54 +156,43 @@ class AuctionBrowserMenu(
     private fun buildControls(gui: ChestGui, pageCount: Int, total: Int): StaticPane {
         val pane = StaticPane(0, 5, 9, 1)
 
-        pane.addItem(GuiItem(itemStack(Material.ARROW) {
-            name(lang.msg("gui.auctions.prev"))
-        }) {
-            it.isCancelled = true
-            if (currentPage > 0) {
-                currentPage--
-                render(gui); gui.update()
-            }
-        }, 0, 0)
-
-        val sortName = lang.msg(
-            "gui.auctions.sort_name",
-            "mode" to lang.raw(sortMode.labelKey)
-        )
-        pane.addItem(GuiItem(itemStack(Material.HOPPER) {
-            name(sortName)
-            lore(lang.msg("gui.auctions.sort_lore_click"))
-        }) {
-            it.isCancelled = true
-            sortMode = sortMode.next()
-            currentPage = 0
-            render(gui); gui.update()
-        }, 2, 0)
-
-        pane.addItem(GuiItem(itemStack(Material.PAPER) {
-            name(lang.msg("gui.auctions.page_indicator", "current" to (currentPage + 1), "total" to pageCount))
-            lore(lang.msg("gui.auctions.page_lore_count", "count" to total))
-        }) { it.isCancelled = true }, 4, 0)
-
-        pane.addItem(GuiItem(itemStack(Material.ARROW) {
-            name(lang.msg("gui.auctions.next"))
-        }) {
-            it.isCancelled = true
-            if (currentPage < pageCount - 1) {
-                currentPage++
-                render(gui); gui.update()
-            }
-        }, 6, 0)
-
-        pane.addItem(GuiItem(itemStack(Material.BARRIER) {
-            name(lang.msg("gui.auctions.close"))
-        }) {
-            it.isCancelled = true
-            (it.whoClicked as? Player)?.closeInventory()
-        }, 8, 0)
+        pane.addItem(navButton(gui, "gui.auctions.prev", -1) { currentPage > 0 }, 0, 0)
+        pane.addItem(sortButton(gui), 2, 0)
+        pane.addItem(pageIndicator(pageCount, total), 4, 0)
+        pane.addItem(navButton(gui, "gui.auctions.next", +1) { currentPage < pageCount - 1 }, 6, 0)
+        pane.addItem(closeButton(), 8, 0)
 
         return pane
     }
+
+    private fun navButton(gui: ChestGui, langKey: String, delta: Int, enabled: () -> Boolean): GuiItem =
+        GuiItem(itemStack(Material.ARROW) { name(lang.msg(langKey)) }) {
+            it.isCancelled = true
+            if (enabled()) { currentPage += delta; render(gui); gui.update() }
+        }
+
+    private fun sortButton(gui: ChestGui): GuiItem {
+        val sortName = lang.msg("gui.auctions.sort_name", "mode" to lang.raw(sortMode.labelKey))
+        return GuiItem(itemStack(Material.HOPPER) {
+            name(sortName); lore(lang.msg("gui.auctions.sort_lore_click"))
+        }) {
+            it.isCancelled = true
+            sortMode = sortMode.next(); currentPage = 0
+            render(gui); gui.update()
+        }
+    }
+
+    private fun pageIndicator(pageCount: Int, total: Int): GuiItem =
+        GuiItem(itemStack(Material.PAPER) {
+            name(lang.msg("gui.auctions.page_indicator", "current" to (currentPage + 1), "total" to pageCount))
+            lore(lang.msg("gui.auctions.page_lore_count", "count" to total))
+        }) { it.isCancelled = true }
+
+    private fun closeButton(): GuiItem =
+        GuiItem(itemStack(Material.BARRIER) { name(lang.msg("gui.auctions.close")) }) {
+            it.isCancelled = true
+            (it.whoClicked as? Player)?.closeInventory()
+        }
 
     private fun entryComparator(mode: SortMode): Comparator<EntryView> = when (mode) {
         SortMode.HIGHEST_BID ->
@@ -236,7 +232,8 @@ class AuctionBrowserMenu(
                 bidLine,
                 lang.msg("gui.auctions.entry_lore_starting", KEY_AMOUNT to auction.startingBid),
                 lang.msg("gui.auctions.entry_lore_time_left", "time" to formatRemaining(remaining)),
-                lang.msg("gui.auctions.entry_lore_id", KEY_ID to auction.id.value)
+                lang.msg("gui.auctions.entry_lore_id", KEY_ID to auction.id.value),
+                lang.msg("gui.auctions.entry_lore_click")
             )
         }
     }

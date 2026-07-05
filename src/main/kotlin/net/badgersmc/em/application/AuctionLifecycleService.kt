@@ -20,6 +20,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.logging.Level
 import java.util.logging.Logger
 
 /**
@@ -258,20 +259,97 @@ class AuctionLifecycleService(
      */
     fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long): AuctionResult {
         val auction = auctionRepository.findById(auctionId)
+            ?: auctionRepository.findOpenByStall(StallId(auctionId.value))
             ?: return AuctionResult.NotFound
 
         if (auction.state != AuctionState.OPEN) {
             return AuctionResult.Failure("Auction is not open")
         }
 
-        return try {
-            val updated = auction.placeBid(playerUuid, amount, clock.instant())
-            auctionRepository.save(updated)
-            AuctionResult.Success(updated)
+        val updated = try {
+            auction.placeBid(playerUuid, amount, clock.instant())
         } catch (e: IllegalArgumentException) {
-            AuctionResult.Failure(e.message ?: "Bid rejected")
+            return AuctionResult.Failure(e.message ?: "Bid rejected")
         } catch (e: IllegalStateException) {
-            AuctionResult.Failure(e.message ?: "Bid rejected")
+            return AuctionResult.Failure(e.message ?: "Bid rejected")
+        }
+
+        return finalizeBid(auction, updated, playerUuid, amount)
+    }
+
+    /**
+     * Orchestrate the post-validation phases of a bid: compute the delta,
+     * charge the bidder, persist, and refund the previous high bidder.
+     * Extracted from [placeBid] to stay under detekt limits.
+     */
+    private fun finalizeBid(
+        original: Auction,
+        updated: Auction,
+        playerUuid: UUID,
+        amount: Long,
+    ): AuctionResult {
+        val previousBid = original.highBid
+        val charge = computeCharge(previousBid, playerUuid, amount)
+            ?: return AuctionResult.Failure("Bid must exceed current high bid")
+
+        if (!economy.withdraw(playerUuid, charge)) {
+            return AuctionResult.Failure("Could not withdraw $charge. Check your balance.")
+        }
+
+        persistBidWithRollback(playerUuid, charge, updated, original.id)?.let { return it }
+        refundPreviousBidderIfOutbid(previousBid, playerUuid, original.id)
+        return AuctionResult.Success(updated)
+    }
+
+    /**
+     * Compute the amount to charge the bidder. Returns `null` if the bid
+     * would not increase the current high bid (bid too low or rebid at
+     * the same level).
+     */
+    private fun computeCharge(
+        previousBid: Bid?,
+        playerUuid: UUID,
+        amount: Long,
+    ): Long? {
+        val charge = if (previousBid?.bidder == playerUuid) amount - previousBid.amount else amount
+        return charge.takeIf { it > 0L }
+    }
+
+    /**
+     * Persist the updated auction and roll back the charge on failure.
+     * Returns `null` on success, or a [AuctionResult.Failure] that the
+     * caller should propagate.
+     */
+    private fun persistBidWithRollback(
+        playerUuid: UUID,
+        charge: Long,
+        updated: Auction,
+        auctionId: AuctionId,
+    ): AuctionResult.Failure? {
+        try {
+            auctionRepository.save(updated)
+            return null
+        } catch (e: Exception) {
+            refundOrLog(playerUuid, charge, "placeBid rollback after auction save failed for $auctionId")
+            return AuctionResult.Failure(e.message ?: "Bid rejected")
+        }
+    }
+
+    /**
+     * Refund the previous high bidder if they were outbid by a different
+     * player.
+     */
+    private fun refundPreviousBidderIfOutbid(
+        previousBid: Bid?,
+        playerUuid: UUID,
+        auctionId: AuctionId,
+    ) {
+        if (previousBid != null && previousBid.bidder != playerUuid) {
+            refundOrLog(
+                previousBid.bidder,
+                previousBid.amount,
+                "previous high-bidder refund after outbid on auction $auctionId",
+            )
         }
     }
 
@@ -304,6 +382,9 @@ class AuctionLifecycleService(
 
         val closed = auction.close()
         auctionRepository.save(closed)
+        auction.highBid?.let {
+            refundOrLog(it.bidder, it.amount, "cancelAuction refund for auction ${auction.id}")
+        }
         // Revert a system-mass-auctioned stall (AUCTIONING + no owner) back to
         // UNOWNED so the sign becomes buyable again after cancellation.
         if (stall.state == StallState.AUCTIONING &&
@@ -313,6 +394,54 @@ class AuctionLifecycleService(
             fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
         }
         return AuctionResult.Success(closed)
+    }
+
+    /**
+     * Emergency mass-cancel all open auctions and refund any held high bids.
+     *
+     * Errors for individual auctions are logged and counted but do not abort
+     * the batch.
+     *
+     * @return number of auctions cancelled
+     */
+    @Suppress("LongMethod")
+    fun cancelAllAuctions(): Int {
+        val open = auctionRepository.allOpen()
+        var count = 0
+        var errors = 0
+        val auctioningStates = setOf(
+            StallState.AUCTIONING,
+            StallState.RE_AUCTIONING,
+            StallState.EMERGENCY_AUCTIONING,
+        )
+        for (auction in open) {
+            if (cancelOneAuction(auction, auctioningStates)) count++ else errors++
+        }
+        if (errors > 0) logger.warning("cancelAllAuctions: $errors error(s) during batch cancel")
+        return count
+    }
+
+    private fun cancelOneAuction(auction: Auction, auctioningStates: Set<StallState>): Boolean {
+        return try {
+            val cancelled = auction.copy(state = AuctionState.CANCELLED)
+            auctionRepository.save(cancelled)
+            auction.highBid?.let {
+                refundOrLog(it.bidder, it.amount, "cancelAllAuctions refund for auction ${auction.id}")
+            }
+            revertSystemAuctionedStall(auction, auctioningStates)
+            true
+        } catch (e: Exception) {
+            logger.warning("cancelAllAuctions: failed to cancel auction ${auction.id}: ${e.message}")
+            false
+        }
+    }
+
+    private fun revertSystemAuctionedStall(auction: Auction, auctioningStates: Set<StallState>) {
+        val stall = stallRepository.findById(auction.stallId)
+        if (stall != null && stall.state in auctioningStates && stall.owner.type == OwnerType.NONE) {
+            stallRepository.save(stall.copy(state = StallState.UNOWNED))
+            fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
+        }
     }
 
     /**
@@ -382,9 +511,8 @@ class AuctionLifecycleService(
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
 
-        // REQ-212 — limit gate. Runs BEFORE economy.withdraw so a winner
-        // at their cap is never charged. Uses the stall's real kind and
-        // StallOwnershipCounter for SOLO-only counts.
+        // REQ-212 — limit gate. The winner already paid at bid time, so close
+        // the auction first to avoid retry/double-refund loops, then refund.
         val counts = ownership.counts(bid.bidder)
         val decision = limits.canClaim(
             player = bid.bidder,
@@ -393,32 +521,16 @@ class AuctionLifecycleService(
             currentForKind = counts.byKind[stall.kind] ?: 0,
         )
         if (decision is LimitResolutionService.ClaimDecision.Rejected) {
-            // Treat as no-bid: revert system-mass-auctioned stall to
-            // UNOWNED, close the auction so it stops appearing in
-            // findExpired(). Winner is never charged. A future event
-            // hook can notify the winner; for now, log + drop.
             logger.info(
                 "Auction ${auction.id} winner ${bid.bidder} over limit " +
-                    "($decision); reverting without payment."
+                    "($decision); refunding and reverting without award."
             )
             closeWithoutAward(auction, stall)
+            refundOrLog(bid.bidder, bid.amount, "limit rejection refund for auction ${auction.id}")
             return
         }
 
-        // 0. Withdraw from winner FIRST (before any state changes).
-        // M-2 (audit 2026-06-09): a failed withdraw must NOT throw — that left
-        // the auction OPEN-and-expired, so the scheduler re-attempted (and
-        // logged an error) every tick forever while the stall sat wedged in
-        // AUCTIONING. An insolvent winner forfeits: same outcome as the
-        // limit-reject path above.
-        if (!economy.withdraw(bid.bidder, bid.amount)) {
-            logger.warning(
-                "Auction ${auction.id} winner ${bid.bidder} could not pay ${bid.amount}; " +
-                    "closing without award."
-            )
-            closeWithoutAward(auction, stall)
-            return
-        }
+        // Winner already paid at bid time. Settlement must not charge again.
 
         // 0.5 REQ-270/273/274 — snapshot the stall geometry BEFORE finalising
         // ownership. On failure: log, refund the winner, abort the transition,
@@ -433,16 +545,8 @@ class AuctionLifecycleService(
                     "settleWithWinner: schematic capture failed for stall ${stall.id.value}; " +
                         "aborting award and refunding ${bid.bidder}. cause=${capture.cause.message}"
                 )
-                economy.deposit(bid.bidder, bid.amount)
-                // Mirror the limit-reject path: revert a system-auctioned stall to
-                // UNOWNED and close the auction so it stops re-settling.
-                if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
-                    stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
-                ) {
-                    stallRepository.save(stall.copy(state = StallState.UNOWNED))
-                    fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
-                }
-                auctionRepository.save(auction.close())
+                closeWithoutAward(auction, stall)
+                refundOrLog(bid.bidder, bid.amount, "schematic failure refund for auction ${auction.id}")
                 fireCaptureFailed(stall.id.value, stall.world, stall.regionId, capture.cause)
                 return
             }
@@ -476,7 +580,7 @@ class AuctionLifecycleService(
                     "refunding winner ${bid.bidder} (${bid.amount}) and leaving the auction closed. " +
                     "cause=${e.message}"
             )
-            if (!economy.deposit(bid.bidder, bid.amount)) {
+            if (!refundOrLog(bid.bidder, bid.amount, "stall-save failure refund for auction ${auction.id}")) {
                 logger.severe(
                     "settleWithWinner: REFUND FAILED for winner ${bid.bidder} (${bid.amount}) on auction " +
                         "${auction.id} after stall-save failure — winner is charged with no stall and no " +
@@ -556,6 +660,20 @@ class AuctionLifecycleService(
                         "cause=${e.message}"
                 )
             }
+        }
+    }
+
+    @Suppress("LongMethod")
+    private fun refundOrLog(player: UUID, amount: Long, context: String): Boolean {
+        if (amount <= 0L) return true
+        return try {
+            if (economy.deposit(player, amount)) true else {
+                logger.severe("REFUND FAILED: player=$player amount=$amount context=$context; manual intervention required.")
+                false
+            }
+        } catch (e: Exception) {
+            logger.log(Level.SEVERE, "REFUND FAILED: player=$player amount=$amount context=$context; manual intervention required.", e)
+            false
         }
     }
 

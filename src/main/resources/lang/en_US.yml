@@ -35,6 +35,8 @@ admin:
     startall:
       result: "<prefix><green>mass auction:</green> created=<green><created></green> skipped=<yellow><skipped></yellow> errors=<red><errors></red>"
       failure: "<prefix><red>mass auction failed: <reason>"
+    cancelall:
+      done: "<prefix><green><count> auction(s) cancelled.</green> Current high bidders refunded."
   bid:
     success: "<prefix><green>Bid placed:</green> <gold><amount></gold> <gray>on auction</gray> <id>"
     failure: "<prefix><red>Bid rejected: <reason>"
@@ -437,11 +439,20 @@ gui:
     entry_lore_starting: "<gray>Starting bid: <white><amount>"
     entry_lore_time_left: "<gray>Time left: <white><time>"
     entry_lore_id: "<dark_gray><id>"
+    entry_lore_click: "<green>Click to bid"
     sort_highest_bid: "Highest Bid"
     sort_lowest_bid: "Lowest Bid"
     sort_ending_soon: "Ending Soon"
     sort_ending_latest: "Ending Latest"
     time_ended: "ended"
+  auction_bid:
+    title: "<dark_gray>Bid on <stall>"
+    summary: "<green><stall>"
+    current: "<gray>Current bid: <gold><amount>"
+    auction_id: "<dark_gray><id>"
+    amount: "<gold>Bid <amount>"
+    close: "<red>Close"
+    no_permission: "<red>You do not have permission to bid in auctions."
 
 bedrock:
   unavailable: "<red>Bedrock forms are not available on this server"

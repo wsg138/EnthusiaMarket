@@ -36,7 +36,7 @@ import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
 
 @Command(name = "em", description = "EnthusiaMarket administrative commands", aliases = ["enthusiamarket"])
-@Suppress("LongParameterList", "TooManyFunctions")
+@Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
 class AdminCommands(
     private val service: ImportStallsService,
     private val stalls: StallRepository,
@@ -216,7 +216,7 @@ class AdminCommands(
             sender.sendMessage(lang.msg("command.players_only"))
             return
         }
-        AuctionBrowserMenu(auctions, stalls, nexusScheduler, lang).open(sender)
+        AuctionBrowserMenu(auctions, stalls, auctionService, nexusScheduler, lang).open(sender)
     }
 
     @Subcommand("auction cancel")
@@ -232,6 +232,13 @@ class AdminCommands(
             is AuctionResult.NotFound -> lang.msg("admin.auction.cancel.not_found")
         }
         sender.sendMessage(component)
+    }
+
+    @Subcommand("auction cancelall")
+    @Permission("enthusiamarket.admin")
+    fun auctionCancelAll(@Context sender: CommandSender) {
+        val count = auctionService.cancelAllAuctions()
+        sender.sendMessage(lang.msg("admin.auction.cancelall.done", "count" to count))
     }
 
     @Subcommand("stall members add")

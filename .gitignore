@@ -1,5 +1,7 @@
 .gradle/
 build/
+build-local/
+.jdk/
 .idea/
 *.iml
 out/
