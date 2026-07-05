@@ -56,6 +56,141 @@ commands:
     aliases: [em]
 
 permissions:
-  enthusiamarket.shop.help:
-    description: Allows viewing the /em help menu
+  enthusiamarket.*:
+    default: op
+    description: All EnthusiaMarket permissions
+    children:
+    - enthusiamarket.admin
+    - enthusiamarket.player
+  enthusiamarket.*.admin:
+    default: op
+  enthusiamarket.*.player:
+    default: op
+  enthusiamarket.admin:
+    default: op
+    description: Administrative commands
+    children:
+    - enthusiamarket.admin.evict
+    - enthusiamarket.admin.import
+    - enthusiamarket.admin.list
+    - enthusiamarket.admin.refund
+    - enthusiamarket.admin.reload
+    - enthusiamarket.admin.setowner
+    - enthusiamarket.admin.bypasslimit
+    - enthusiamarket.admin.shop
+  enthusiamarket.admin.bypasslimit:
+    default: op
+    description: Bypass all stall-ownership limits
+  enthusiamarket.admin.evict:
+    default: op
+  enthusiamarket.admin.import:
+    default: op
+  enthusiamarket.admin.list:
+    default: op
+  enthusiamarket.admin.refund:
+    default: op
+  enthusiamarket.admin.reload:
+    default: op
+  enthusiamarket.admin.setowner:
+    default: op
+  enthusiamarket.admin.shop:
+    default: op
+    description: Admin shop tooling (/shop admin view/info/remove/fix/breakothers +
+      search teleport)
+  enthusiamarket.auction.bid:
     default: true
+    description: Bid in an auction
+  enthusiamarket.auction.cancel:
+    default: true
+    description: Cancel own auction
+  enthusiamarket.auction.cancel.force:
+    default: op
+    description: Force-cancel any auction
+  enthusiamarket.auction.list:
+    default: true
+    description: List auctions
+  enthusiamarket.auction.start:
+    default: true
+    description: Start an auction
+  enthusiamarket.bedrock.form:
+    default: op
+    description: Use Bedrock forms
+  enthusiamarket.guild.policy:
+    default: op
+    description: Open /em guild policy to manage guild tariffs/embargoes (MANAGE_SHOPS
+      still required in-guild)
+  enthusiamarket.player:
+    default: true
+    description: Player-facing commands
+  enthusiamarket.shop.break:
+    default: true
+    description: Break a shop sign
+  enthusiamarket.shop.buy:
+    default: true
+    description: Buy from a shop
+  enthusiamarket.shop.create:
+    default: true
+    description: Create a shop
+  enthusiamarket.shop.delete.all:
+    default: op
+    description: Delete all of a player's shops
+  enthusiamarket.shop.help:
+    default: op
+    description: Show the shop tutorial via /shophelp
+  enthusiamarket.shop.sell:
+    default: true
+    description: Sell to a shop
+  enthusiamarket.shop.store:
+    default: op
+    description: Open the store link via /store
+  enthusiamarket.shop.use:
+    default: true
+    description: Use /shop commands
+  enthusiamarket.shop.vault:
+    default: op
+    description: Open /shopvault to withdraw barter payments
+  enthusiamarket.stall.bid:
+    default: true
+    description: Bid on a stall auction
+  enthusiamarket.stall.buy:
+    default: true
+    description: Buy a stall via sell offer
+  enthusiamarket.stall.buyout:
+    default: true
+    description: Buy an unowned stall via its purchase sign
+  enthusiamarket.stall.entitylimit:
+    default: op
+    description: Set per-stall entity-limit override
+  enthusiamarket.stall.favorite:
+    default: op
+    description: Favorite a stall
+  enthusiamarket.stall.info:
+    default: op
+    description: View stall info card
+  enthusiamarket.stall.manage.guild:
+    default: op
+    description: Manage guild-owned stalls
+  enthusiamarket.stall.manage.own:
+    default: op
+    description: Manage own stalls
+  enthusiamarket.stall.members:
+    default: op
+    description: Manage stall members
+  enthusiamarket.stall.offer:
+    default: true
+    description: Create/cancel a sell offer
+  enthusiamarket.stall.outline:
+    default: op
+    description: View stall particle outline
+  enthusiamarket.stall.recount:
+    default: op
+    description: Force entity-count rescan for a stall
+  enthusiamarket.stall.rent:
+    default: true
+    description: Rent a stall
+  enthusiamarket.stall.sellback:
+    default: true
+    description: Voluntarily relinquish a stall
+  enthusiamarket.stall.setkind:
+    default: op
+    description: Set a stall's region kind
