@@ -37,11 +37,7 @@ class PurchaseMenu(
 ) : Menu {
 
     private val sellStack: ItemStack? by lazy { ItemStackSerializer.deserialize(shop.sellItem) }
-    private val costStack: ItemStack? by lazy {
-        if (shop.direction == SignDirection.TRADE) ItemStackSerializer.deserialize(shop.costItem) else null
-    }
     private val sellName: String by lazy { sellStack?.type?.name?.lowercase()?.replace('_', ' ') ?: "?" }
-    private val costName: String by lazy { costStack?.type?.name?.lowercase()?.replace('_', ' ') ?: "currency" }
     private val ownerName: String by lazy { Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown" }
 
     override fun open(player: Player) {
@@ -70,13 +66,25 @@ class PurchaseMenu(
         val giveLabel = lang.msg("gui.shop.give_label")
         pane.addItem(GuiItem(decorated(Material.GREEN_STAINED_GLASS_PANE, receiveLabel)), 2, 0)
         pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, 0)
-        pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
+        if (shop.direction == SignDirection.TRADE) {
+            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel, listOf(
+                lang.msg("gui.shop.trade_drop_hint")
+            ))), 6, 0)
+        } else {
+            pane.addItem(GuiItem(decorated(Material.RED_STAINED_GLASS_PANE, giveLabel)), 6, 0)
+        }
 
         // --- Row 1: the actual items ---
         val row = buildRowItems()
         pane.addItem(GuiItem(decorated(row.receiveItem, row.receiveName, row.receiveLore)), 2, 1)
         pane.addItem(GuiItem(decorated(Material.ARROW, Component.text("→"))), 4, 1)
-        pane.addItem(GuiItem(decorated(row.giveItem, row.giveName, row.giveLore)), 6, 1)
+        if (shop.direction == SignDirection.TRADE) {
+            // Leave slot 15 empty — GuiItem blocks native item placement.
+            // Visual border indicates the drop zone (LumaGuilds GuildBannerMenu pattern).
+            addPlacementSlotBorder(pane)
+        } else {
+            pane.addItem(GuiItem(decorated(row.giveItem, row.giveName, row.giveLore)), 6, 1)
+        }
 
         // --- Row 2: multiplier controls + confirm ---
         buildMultiplierControls(pane, player)
@@ -291,6 +299,17 @@ class PurchaseMenu(
         }, 8, 0)
     }
 
+    /** Visual border around the empty placement slot 15 for TRADE shops. */
+    private fun addPlacementSlotBorder(pane: StaticPane) {
+        val borderItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
+            .apply { itemMeta = itemMeta?.apply { displayName(Component.text(" ")) } ?: return }
+        // Left, right, and bottom border around slot 15 (position 6,1).
+        // Row 0 col 6 already holds the YOU GIVE label framing the top.
+        listOf(Pair(5, 1), Pair(7, 1), Pair(6, 2)).forEach { (x, y) ->
+            pane.addItem(GuiItem(borderItem.clone()), x, y)
+        }
+    }
+
     private data class RowItems(
         val receiveItem: ItemStack,
         val receiveName: Component,
@@ -333,12 +352,9 @@ class PurchaseMenu(
                 receiveLore = listOf(
                     lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                 ),
-                giveItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE),
-                giveName = lang.msg("gui.shop.trade_place_item", "amount" to totalCost, "item" to costName),
-                giveLore = listOf(
-                    lang.msg("gui.shop.trade_place_lore", "amount" to totalCost),
-                    lang.msg("gui.shop.trade_place_lore2")
-                ),
+                giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
+                giveName = Component.empty(),
+                giveLore = emptyList(),
             )
         }
     }

@@ -326,6 +326,7 @@ gui:
     trade_place_item: "<red>Place <amount>x <item> here"
     trade_place_lore: "<gray>Drop <amount>x <item> into this slot"
     trade_place_lore2: "<gray>Item will be sent to the shop owner"
+    trade_drop_hint: "<yellow>▼ Drop item below ▼"
     confirm_buy: "<green>BUY"
     confirm_sell: "<yellow>SELL"
     confirm_trade: "<light_purple>TRADE"
