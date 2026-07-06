@@ -1,7 +1,6 @@
 package net.badgersmc.em.interaction
 
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
-import org.bukkit.event.inventory.ClickType
 
 /**
  * Block all raw item movement in a menu (anti-dupe).
@@ -29,22 +28,16 @@ fun ChestGui.blockItemTheft() {
  * player can drop an item into the menu (e.g. banner slot, barter trade cost slot).
  *
  * - All top-inventory clicks are cancelled EXCEPT on [placementSlots].
- * - All drags (global) are cancelled.
- * - Bottom-inventory shift-clicks are cancelled (prevents quick-moving into menu).
- * - Bottom-inventory DOUBLE_CLICK is cancelled (prevents collect-to-cursor sweep
- *   from pulling items out of the menu).
+ *
+ * Bottom inventory is left untouched — setOnBottomClick in IFramework 0.11.6
+ * interferes with normal inventory interaction even when the handler only cancels
+ * shift-clicks.  Top-inventory-only blocking is sufficient: double-click
+ * collect-to-cursor targets the clicked slot (top inventory, already cancelled),
+ * and shift-click into the menu only populates virtual slots that get re-rendered.
  */
 fun ChestGui.blockTopInventoryExcept(vararg placementSlots: Int) {
     val openSlots = placementSlots.toSet()
     setOnTopClick { event ->
         if (event.slot !in openSlots) event.isCancelled = true
     }
-    setOnBottomClick { event ->
-        if (event.click == ClickType.SHIFT_LEFT || event.click == ClickType.SHIFT_RIGHT ||
-            event.click == ClickType.DOUBLE_CLICK
-        ) {
-            event.isCancelled = true
-        }
-    }
-    setOnGlobalDrag { it.isCancelled = true }
 }
