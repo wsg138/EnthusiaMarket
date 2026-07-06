@@ -12,6 +12,7 @@ import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.blockItemTheft
+import net.badgersmc.em.interaction.blockTopInventoryExcept
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
@@ -85,8 +86,19 @@ class PurchaseMenu(
         addShulkerPreview(pane, player)
 
         gui.addPane(pane)
-        gui.blockItemTheft()
+        if (shop.direction == SignDirection.TRADE) {
+            gui.blockTopInventoryExcept(15) // slot 15 = cost placement slot
+        } else {
+            gui.blockItemTheft()
+        }
+        // Save the placement slot item before the old inventory is destroyed,
+        // then restore it once the new inventory is visible (CR: render wipes slot 15).
+        val savedSlot15 = if (shop.direction == SignDirection.TRADE)
+            player.openInventory?.topInventory?.getItem(15)?.clone() else null
         gui.show(player)
+        if (savedSlot15 != null) {
+            player.openInventory.topInventory.setItem(15, savedSlot15)
+        }
     }
 
     private fun buildMultiplierControls(pane: StaticPane, player: Player) {
@@ -128,6 +140,10 @@ class PurchaseMenu(
     }
 
     private fun executeTrade(player: Player) {
+        if (shop.direction == SignDirection.TRADE) {
+            executeTradeFromSlot(player)
+            return
+        }
         var lastResult: ContainerTradeResult = ContainerTradeResult.Success("")
         var completed = 0
         var remaining = multiplier
@@ -135,7 +151,7 @@ class PurchaseMenu(
             val result = when (shop.direction) {
                 SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
                 SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
-                SignDirection.TRADE -> tradeService.executeTrade(shop, player.uniqueId)
+                else -> break // TRADE handled above
             }
             lastResult = result
             if (result is ContainerTradeResult.Success) {
@@ -146,6 +162,53 @@ class PurchaseMenu(
             }
         }
         reportTradeResult(player, completed, multiplier, lastResult)
+    }
+
+    private fun executeTradeFromSlot(player: Player) {
+        val slotItem = readAndValidateSlot15(player) ?: return
+        val needed = shop.costAmount * multiplier
+        if (slotItem.amount < needed) {
+            player.sendMessage(
+                lang.msg("shop.trade.failure", "reason" to "Need $needed, only ${slotItem.amount} placed"),
+            )
+            return
+        }
+        val result = tradeService.executeTradeWithItem(shop, player.uniqueId, slotItem, multiplier)
+        if (result is ContainerTradeResult.Success) {
+            updateSlot15AfterTrade(player, slotItem, needed)
+            player.sendMessage(lang.msg("shop.trade.success", "message" to result.message))
+        } else {
+            reportTotalFailure(player, result)
+        }
+        multiplier = 1
+        render(player)
+    }
+
+    private fun readAndValidateSlot15(player: Player): ItemStack? {
+        val slotItem = player.openInventory.topInventory.getItem(15)
+        if (slotItem == null || slotItem.type.isAir) {
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Place your trade item in the slot"))
+            return null
+        }
+        val costStack = ItemStackSerializer.deserialize(shop.costItem)
+        if (costStack == null || !slotItem.isSimilar(costStack)) {
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to
+                "Wrong item — expected ${costStack?.type?.name?.lowercase()?.replace('_', ' ')}"),
+            )
+            return null
+        }
+        return slotItem
+    }
+
+    private fun updateSlot15AfterTrade(player: Player, slotItem: ItemStack, needed: Int) {
+        val topInv = player.openInventory.topInventory
+        val remaining = slotItem.amount - needed
+        if (remaining > 0) {
+            slotItem.amount = remaining
+            topInv.setItem(15, slotItem)
+        } else {
+            topInv.setItem(15, null)
+        }
     }
 
     private fun reportTradeResult(
@@ -270,9 +333,12 @@ class PurchaseMenu(
                 receiveLore = listOf(
                     lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                 ),
-                giveItem = costStack?.clone() ?: ItemStack(Material.BARRIER),
-                giveName = lang.msg("gui.shop.give_trade_item", "amount" to totalCost, "item" to costName),
-                giveLore = listOf(lang.msg("gui.shop.give_trade_item_lore", "amount" to totalCost)),
+                giveItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE),
+                giveName = lang.msg("gui.shop.trade_place_item", "amount" to totalCost, "item" to costName),
+                giveLore = listOf(
+                    lang.msg("gui.shop.trade_place_lore", "amount" to totalCost),
+                    lang.msg("gui.shop.trade_place_lore2")
+                ),
             )
         }
     }

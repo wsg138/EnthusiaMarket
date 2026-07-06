@@ -226,4 +226,54 @@ class ContainerTradeServiceTradeTest {
         verify(exactly = 0) { playerInv.removeItem(any()) }
         verify(exactly = 0) { containerInv.removeItem(any()) }
     }
+
+    @Test
+    fun `executeTrade fails when player cost removal partially fails`() {
+        val shop = testShop(sellAmount = 2, costAmount = 5)
+        val stallRepo = mockk<StallRepository>(relaxed = true)
+        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+
+        val playerInv = mockk<PlayerInventory>(relaxed = true)
+        every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+        // Simulate partial failure: removeItem returns map with 2 leftover (only 3 of 5 removed)
+        val leftover = hashMapOf(0 to mockk<ItemStack>(relaxed = true))
+        every { leftover[0]!!.amount } returns 2
+        every { playerInv.removeItem(any()) } returns leftover
+        every { playerInv.addItem(any()) } returns hashMapOf()
+
+        val player = mockk<Player>(relaxed = true)
+        every { player.inventory } returns playerInv
+        every { player.uniqueId } returns playerUuid
+
+        mockkStatic(Bukkit::class)
+        every { Bukkit.getPlayer(playerUuid) } returns player
+        every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
+
+        val containerInv = mockk<Inventory>(relaxed = true)
+        every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+        val container = mockk<Container>(relaxed = true)
+        every { container.inventory } returns containerInv
+
+        val costStack = mockk<ItemStack>(relaxed = true)
+        every { costStack.amount } returns 5
+
+        val vaultService = mockk<ShopVaultService>(relaxed = true)
+
+        val service = object : ContainerTradeService(stallRepo, mockk(relaxed = true), null, shopVault = vaultService) {
+            override fun deserializeStack(base64: String): ItemStack? =
+                if (base64 == "costBase64") costStack else mockk(relaxed = true)
+            override fun getContainer(shop: Shop): Container? = container
+            override fun inventoryHasAtLeast(inventory: Inventory, template: ItemStack, amount: Int) = true
+        }
+
+        val result = service.executeTrade(shop, playerUuid)
+        assertTrue(result is ContainerTradeResult.Failure, "Expected Failure but got $result")
+        assertTrue((result as ContainerTradeResult.Failure).reason.contains("cost", ignoreCase = true))
+        // Verify cost items that WERE removed are returned to player.
+        // (MockK relaxed-mock clone() does not propagate property values, so
+        // we verify the call happened without asserting the exact restored amount.)
+        verify(atLeast = 1) { playerInv.addItem(any()) }
+        // Verify nothing was deposited to vault
+        verify(exactly = 0) { vaultService.deposit(any(), any(), any()) }
+    }
 }
