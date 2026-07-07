@@ -36,6 +36,8 @@ class EnthusiaMarketConfig {
     var shopAudit: ShopAudit = ShopAudit()
     @Comment("Store URL for /store command (IS2-15, REQ-301)")
     var store: Store = Store()
+    @Comment("IP-based fairness limits: one active auction bid and/or one owned stall per IP")
+    var ipLimiter: IpLimiter = IpLimiter()
 
     class Particles {
         @Comment("Master switch for stall boundary particle outlines.")
@@ -166,6 +168,13 @@ class EnthusiaMarketConfig {
         var minStartingBid: Long = 1
         @Comment("Seconds after auction end before direct sign purchase opens (0 = immediate)")
         var directBuyDelaySeconds: Long = 0
+    }
+
+    class IpLimiter {
+        @Comment("If true, an IP can only bid on one auction at a time")
+        var oneAuctionPerIp: Boolean = true
+        @Comment("If true, an IP can only own one stall")
+        var oneStallPerIp: Boolean = true
     }
 
     class Shop {

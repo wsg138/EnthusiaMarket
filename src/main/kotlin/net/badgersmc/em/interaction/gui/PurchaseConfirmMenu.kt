@@ -44,10 +44,11 @@ class PurchaseConfirmMenu(
         pane.addItem(
             GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("purchase_sign.msg.confirm_yes"))) { event ->
                 event.isCancelled = true
+                val ip = player.address.address.hostAddress ?: "unknown"
                 val result = if (isGuild) {
-                    buyout.buyForGuild(stallId, player.uniqueId, price)
+                    buyout.buyForGuild(stallId, player.uniqueId, price, ip)
                 } else {
-                    buyout.buy(stallId, player.uniqueId, price)
+                    buyout.buy(stallId, player.uniqueId, price, ip)
                 }
                 val msg = when (result) {
                     is StallBuyoutService.Result.Purchased -> {

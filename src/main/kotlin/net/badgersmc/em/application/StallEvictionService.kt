@@ -27,6 +27,7 @@ class StallEvictionService(
     private val regionMembers: RegionMemberSync,
     private val config: EnthusiaMarketConfig,
     private val schematics: SchematicService = SchematicService.Disabled,
+    private val ipLimiter: IpLimiter,
 ) {
     private val log = Logger.getLogger(StallEvictionService::class.java.name)
 
@@ -55,6 +56,7 @@ class StallEvictionService(
                 nextRentAt = null,
             )
         )
+        ipLimiter.releaseStallByOwnerId(stall.owner.id)
         // M-4 — wipe shops bound to the stall (parity with sellback) so the
         // next buyer never inherits the evicted owner's live shops.
         for (shop in shops.findByStall(stall.id.value)) {

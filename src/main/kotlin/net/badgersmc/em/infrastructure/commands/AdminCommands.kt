@@ -178,7 +178,8 @@ class AdminCommands(
         @Arg("amount") amount: Long
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
-        val component = when (val result = auctionService.placeBid(AuctionId(auction), player.uniqueId, amount)) {
+        val component = when (val result = auctionService.placeBid(AuctionId(auction), player.uniqueId, amount,
+            player.address.address.hostAddress ?: "unknown")) {
             is AuctionResult.Success -> lang.msg(
                 "admin.bid.success",
                 "amount" to (result.auction.highBid?.amount ?: amount),

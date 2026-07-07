@@ -139,8 +139,8 @@ class PurchaseSignClickListenerTest {
         val (listener, menuCalls) = listenerWithRecording(signs, stalls, buyout)
         listener.onClick(interactEvent(player, block))
 
-        verify(exactly = 0) { buyout.buy(any(), any(), any()) }
-        verify(exactly = 0) { buyout.buyForGuild(any(), any(), any()) }
+        verify(exactly = 0) { buyout.buy(any(), any(), any(), any()) }
+        verify(exactly = 0) { buyout.buyForGuild(any(), any(), any(), any()) }
         assertTrue(menuCalls.isEmpty(), "Menu should not open when player lacks buyout permission")
         verify { player.sendMessage(any<Component>()) }
     }
@@ -164,8 +164,8 @@ class PurchaseSignClickListenerTest {
         // Verify the menu was opened (recorded), not a direct buyout call
         assertTrue(menuCalls.isNotEmpty(), "Menu should open when player has buyout permission")
         assertTrue(menuCalls.any { it.first.value == "stall_01" && it.second == 500L }, "Menu should receive correct stall and price")
-        verify(exactly = 0) { buyout.buy(any(), any(), any()) }
-        verify(exactly = 0) { buyout.buyForGuild(any(), any(), any()) }
+        verify(exactly = 0) { buyout.buy(any(), any(), any(), any()) }
+        verify(exactly = 0) { buyout.buyForGuild(any(), any(), any(), any()) }
     }
 
     @Test

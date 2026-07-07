@@ -3,6 +3,7 @@ package net.badgersmc.em.application
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import net.badgersmc.em.application.IpLimiter
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -71,6 +72,7 @@ class StallBuyoutServiceTest {
             regionMembers = mockk(relaxed = true),
             limits = limits,
             ownership = ownership,
+            ipLimiter = mockk<IpLimiter>(relaxed = true).also { every { it.tryClaimStall(any(), any()) } returns true },
         )
         return ServiceWithMocks(svc, economy)
     }
@@ -80,7 +82,7 @@ class StallBuyoutServiceTest {
         val (svc, economy) = buildService(
             claimDecision = LimitResolutionService.ClaimDecision.Rejected.TotalCapReached(3),
         )
-        val result = svc.buy(stallId, player, 100L)
+        val result = svc.buy(stallId, player, 100L, "1.2.3.4")
         assertIs<StallBuyoutService.Result.Rejected>(result)
         assertTrue(result.reason.contains("limit reached", ignoreCase = true))
         verify(exactly = 0) { economy.withdraw(any(), any()) }
@@ -91,7 +93,7 @@ class StallBuyoutServiceTest {
         val (svc, economy) = buildService(
             claimDecision = LimitResolutionService.ClaimDecision.Rejected.KindCapReached("default", 2),
         )
-        val result = svc.buy(stallId, player, 100L)
+        val result = svc.buy(stallId, player, 100L, "1.2.3.4")
         assertIs<StallBuyoutService.Result.Rejected>(result)
         assertTrue(result.reason.contains("default", ignoreCase = true))
         verify(exactly = 0) { economy.withdraw(any(), any()) }
@@ -103,7 +105,7 @@ class StallBuyoutServiceTest {
             claimDecision = LimitResolutionService.ClaimDecision.Allowed,
             economyWithdrawOk = true,
         )
-        val result = svc.buy(stallId, player, 100L)
+        val result = svc.buy(stallId, player, 100L, "1.2.3.4")
         assertIs<StallBuyoutService.Result.Purchased>(result)
         verify { economy.withdraw(player, 100L) }
     }
@@ -136,11 +138,12 @@ class StallBuyoutServiceTest {
             economy = economy, config = EnthusiaMarketConfig(),
             guildProvider = guildProvider, regionMembers = mockk(relaxed = true),
             limits = limits, ownership = ownership,
+            ipLimiter = mockk<IpLimiter>(relaxed = true).also { every { it.tryClaimStall(any(), any()) } returns true },
         )
 
         // claimDecision is TotalCapReached(0), but the guild buy (owner.type == GUILD) skips the
         // SOLO-only limit gate entirely — with the happy-path mocks it proceeds to Purchased.
-        val result = svc.buyForGuild(stallId, player, 100L)
+        val result = svc.buyForGuild(stallId, player, 100L, "1.2.3.4")
         assertIs<StallBuyoutService.Result.Purchased>(result)
     }
 }

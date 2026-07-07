@@ -37,7 +37,7 @@ class StallEvictionServiceTest {
         val schem = mockk<EnthusiaMarketConfig.Schematics>()
         every { schem.enabled } returns false
         every { config.schematics } returns schem
-        return StallEvictionService(repo, shops, regions, config)
+        return StallEvictionService(repo, shops, regions, config, ipLimiter = mockk<IpLimiter>(relaxed = true))
     }
 
     @Test fun `evict resets an owned stall to UNOWNED and clears WG`() {

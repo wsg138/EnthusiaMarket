@@ -104,6 +104,7 @@ class SchematicRestoreTest {
         val regionMembers = mockk<RegionMemberSync>(relaxed = true)
         return StallSellbackService(
             stalls, shops, mockk<SellOfferRepository>(relaxed = true), economy, guilds, config(enabled = enabled), regionMembers, schematics,
+            ipLimiter = mockk<IpLimiter>(relaxed = true),
         )
     }
 

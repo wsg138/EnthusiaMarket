@@ -49,6 +49,7 @@ class StallSellbackService(
     private val config: EnthusiaMarketConfig,
     private val regionMembers: RegionMemberSync,
     private val schematics: SchematicService = SchematicService.Disabled,
+    private val ipLimiter: IpLimiter,
 ) {
 
     private val log = Logger.getLogger(StallSellbackService::class.java.name)
@@ -111,6 +112,7 @@ class StallSellbackService(
                 nextRentAt = null,
             )
             stalls.save(cleared)
+            ipLimiter.releaseStallByOwnerId(stall.owner.id)
             // M3 — drop any lingering sell offer on the now-UNOWNED
             // stall so a follow-up click doesn't trip the
             // offer-mutex check (matches StallBuyoutService cleanup

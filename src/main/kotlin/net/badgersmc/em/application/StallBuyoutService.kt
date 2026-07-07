@@ -34,6 +34,7 @@ import java.util.logging.Logger
  * If withdraw fails the buyer is untouched and no state moves.
  */
 @Service
+@Suppress("LongParameterList")
 class StallBuyoutService(
     private val stalls: StallRepository,
     private val offers: SellOfferRepository,
@@ -44,6 +45,7 @@ class StallBuyoutService(
     private val regionMembers: RegionMemberSync,
     private val limits: LimitResolutionService,
     private val ownership: StallOwnershipCounter,
+    private val ipLimiter: IpLimiter,
 ) {
 
     private val log = Logger.getLogger(StallBuyoutService::class.java.name)
@@ -65,8 +67,8 @@ class StallBuyoutService(
      * Buy the stall for [buyer] personally. Charges + awards to a SOLO
      * owner ref. Convenience overload over [buyForOwner].
      */
-    fun buy(stallId: StallId, buyer: UUID, price: Long): Result =
-        buyForOwner(stallId, payer = buyer, owner = OwnerRef.solo(buyer), price = price)
+    fun buy(stallId: StallId, buyer: UUID, price: Long, ip: String): Result =
+        buyForOwner(stallId, payer = buyer, owner = OwnerRef.solo(buyer), price = price, ip = ip)
 
     /**
      * Buy the stall on behalf of [actor]'s current guild. [actor] is
@@ -76,7 +78,7 @@ class StallBuyoutService(
      * member with the MANAGE_SHOPS permission so randoms can't bind
      * a stall to a guild they don't have authority over.
      */
-    fun buyForGuild(stallId: StallId, actor: UUID, price: Long): Result {
+    fun buyForGuild(stallId: StallId, actor: UUID, price: Long, ip: String): Result {
         val guild = guildProvider.guildOf(actor) ?: return Result.NotInGuild
         if (!guildProvider.hasShopPermission(
                 actor,
@@ -87,7 +89,7 @@ class StallBuyoutService(
             return Result.NoGuildPermission
         }
         // WG owner sync (including the GUILD skip) is handled inside buyForOwner.
-        return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price)
+        return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price, ip = ip)
     }
 
     /**
@@ -138,25 +140,27 @@ class StallBuyoutService(
         stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) ||
             auctions.findOpenByStall(stallId) != null
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
-    private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Result {
+    /**
+     * Run all validation gates before committing a purchase. Returns a rejecting
+     * [Result] if any gate fails, or null when the purchase is allowed to proceed.
+     * Extracted from [buyForOwner] to keep complexity within static analysis limits.
+     */
+    private fun validatePurchase(
+        stall: Stall,
+        stallId: StallId,
+        owner: OwnerRef,
+        payer: UUID,
+        price: Long,
+        ip: String,
+    ): Result? {
         if (price <= 0) return Result.Rejected("Sign price is invalid")
 
-        val stall = stalls.findById(stallId) ?: return Result.NotFound
-
-        // Reject on AUCTIONING — the one-shot initial auction is using the
-        // stall right now; click-to-buy is for the post-auction lifecycle.
         if (isAuctionLive(stall, stallId)) return Result.AuctionLive
 
         if (stall.state != StallState.UNOWNED) {
             return Result.AlreadyOwned
         }
 
-        // REQ-XXX: direct-buy delay gate. If a recent closed auction exists
-        // and its end time + config delay has not yet passed, block direct
-        // purchase so the release plan's "auction-only window" is enforced.
-        // This runs AFTER the ownership check so owned stalls short-circuit
-        // correctly with AlreadyOwned.
         if (config.auction.directBuyDelaySeconds > 0) {
             val recentClosed = auctions.findMostRecentClosedByStall(stallId)
             if (recentClosed != null) {
@@ -168,6 +172,19 @@ class StallBuyoutService(
         }
 
         enforceLimit(owner, payer, stall)?.let { return it }
+
+        if (!ipLimiter.tryClaimStall(ip, owner.id)) {
+            return Result.Rejected("Your IP already owns a stall.")
+        }
+
+        return null
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
+        val stall = stalls.findById(stallId) ?: return Result.NotFound
+
+        validatePurchase(stall, stallId, owner, payer, price, ip)?.let { return it }
 
         if (!economy.withdraw(payer, price)) {
             return Result.Rejected("Insufficient funds: $price required")

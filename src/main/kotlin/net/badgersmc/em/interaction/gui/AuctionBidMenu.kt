@@ -66,7 +66,8 @@ class AuctionBidMenu(
             return
         }
 
-        val message = when (val result = auctionService.placeBid(auction.id, player.uniqueId, amount)) {
+        val message = when (val result = auctionService.placeBid(auction.id, player.uniqueId, amount,
+            player.address.address.hostAddress ?: "unknown")) {
             is AuctionResult.Success -> lang.msg(
                 "admin.bid.success",
                 "amount" to (result.auction.highBid?.amount ?: amount),

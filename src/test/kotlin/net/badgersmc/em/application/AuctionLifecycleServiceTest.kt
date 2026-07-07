@@ -17,6 +17,7 @@ import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.application.IpLimiter
 import net.badgersmc.em.domain.stall.StallState
 import java.time.Duration
 import java.time.Instant
@@ -124,7 +125,7 @@ class AuctionLifecycleServiceTest {
         every { sellOffers.findByStall(any()) } returns null
 
         return ServiceWithMocks(
-            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, limits, sellOffers, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk(relaxed = true)),
+            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, limits, sellOffers, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.tryBindAuction(any(), any()) } returns true }, mockk(relaxed = true)),
             auctionRepo = auctionRepo,
             stallRepo = stallRepo,
             economy = economy,
@@ -159,7 +160,7 @@ class AuctionLifecycleServiceTest {
         val auctionRepo = mockk<AuctionRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk(relaxed = true))
+val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.tryBindAuction(any(), any()) } returns true }, mockk(relaxed = true))
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
 
@@ -213,6 +214,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
             sellOffers,
             mockk(relaxed = true),
             mockk<StallOwnershipCounter>(relaxed = true),
+            mockk<IpLimiter>(relaxed = true).also { every { it.tryBindAuction(any(), any()) } returns true },
         )
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
@@ -230,7 +232,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val stallRepo = mockk<StallRepository>()
         every { stallRepo.findById(stallId) } returns sampleStall
         val economy = mockk<EconomyProvider>()
-val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk(relaxed = true))
+val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.tryBindAuction(any(), any()) } returns true }, mockk(relaxed = true))
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
 
@@ -265,7 +267,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val openingBid = sampleAuction.copy(highBid = null)
         val svc = buildService(auction = openingBid)
 
-        val result = svc.service.placeBid(auctionId, otherPlayer, 200L)
+        val result = svc.service.placeBid(auctionId, otherPlayer, 200L, "1.2.3.4")
 
         val success = assertIs<AuctionResult.Success>(result)
         assertEquals(200L, success.auction.highBid?.amount)
@@ -279,7 +281,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val svc = buildService(auction = null, openAuctionByStall = sampleAuction)
         every { svc.auctionRepo.findById(AuctionId(stallId.value)) } returns null
 
-        val result = svc.service.placeBid(AuctionId(stallId.value), otherPlayer, 200L)
+        val result = svc.service.placeBid(AuctionId(stallId.value), otherPlayer, 200L, "1.2.3.4")
 
         val success = assertIs<AuctionResult.Success>(result)
         assertEquals(200L, success.auction.highBid?.amount)
@@ -295,9 +297,9 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk(relaxed = true))
+val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.tryBindAuction(any(), any()) } returns true }, mockk(relaxed = true))
 
-        val result = svc.placeBid(auctionId, otherPlayer, 200L)
+        val result = svc.placeBid(auctionId, otherPlayer, 200L, "1.2.3.4")
 
         assertIs<AuctionResult.NotFound>(result)
     }
@@ -307,7 +309,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val closed = sampleAuction.copy(state = AuctionState.CLOSED)
         val svc = buildService(auction = closed)
 
-        val result = svc.service.placeBid(auctionId, otherPlayer, 200L)
+        val result = svc.service.placeBid(auctionId, otherPlayer, 200L, "1.2.3.4")
 
         val failure = assertIs<AuctionResult.Failure>(result)
         assertTrue { failure.reason.contains("not open", ignoreCase = true) }
@@ -317,7 +319,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
     fun `placeBid with insufficient amount returns Failure`() {
         val svc = buildService(auction = sampleAuction)
 
-        val result = svc.service.placeBid(auctionId, otherPlayer, 50L)
+        val result = svc.service.placeBid(auctionId, otherPlayer, 50L, "1.2.3.4")
 
         val failure = assertIs<AuctionResult.Failure>(result)
         assertTrue { failure.reason.contains("starting bid", ignoreCase = true) }
@@ -330,7 +332,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val existing = sampleAuction.copy(highBid = Bid(otherPlayer, 150L, now))
         val svc = buildService(auction = existing)
 
-        val result = svc.service.placeBid(auctionId, otherPlayer, 225L)
+        val result = svc.service.placeBid(auctionId, otherPlayer, 225L, "1.2.3.4")
 
         val success = assertIs<AuctionResult.Success>(result)
         assertEquals(225L, success.auction.highBid?.amount)
@@ -345,7 +347,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val existing = sampleAuction.copy(highBid = Bid(playerUuid, 150L, now))
         val svc = buildService(auction = existing)
 
-        val result = svc.service.placeBid(auctionId, otherPlayer, 225L)
+        val result = svc.service.placeBid(auctionId, otherPlayer, 225L, "1.2.3.4")
 
         val success = assertIs<AuctionResult.Success>(result)
         assertEquals(otherPlayer, success.auction.highBid?.bidder)
@@ -360,7 +362,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val svc = buildService(auction = existing)
         every { svc.economy.deposit(playerUuid, 150L) } returns false
 
-        val result = svc.service.placeBid(auctionId, otherPlayer, 225L)
+        val result = svc.service.placeBid(auctionId, otherPlayer, 225L, "1.2.3.4")
 
         val success = assertIs<AuctionResult.Success>(result)
         assertEquals(otherPlayer, success.auction.highBid?.bidder)
@@ -425,7 +427,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk(relaxed = true))
+val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.tryBindAuction(any(), any()) } returns true }, mockk(relaxed = true))
 
         val result = svc.cancelAuction(auctionId, playerUuid)
 
