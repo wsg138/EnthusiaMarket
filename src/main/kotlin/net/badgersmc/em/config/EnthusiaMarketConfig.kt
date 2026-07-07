@@ -154,8 +154,12 @@ class EnthusiaMarketConfig {
         var minDuration: String = "PT15M"
         @Comment("Maximum auction duration (ISO-8601)")
         var maxDuration: String = "P7D"
-        @Comment("Anti-snipe window in seconds")
+        @Comment("Anti-snipe trigger window in seconds — bid within this many seconds of endAt extends the auction")
         var antiSnipeSec: Int = 30
+        @Comment("Anti-snipe extension in seconds — how much time to add when a bid triggers the window")
+        var antiSnipeExtendSec: Int = 30
+        val antiSnipeWindowDuration: java.time.Duration get() = java.time.Duration.ofSeconds(antiSnipeSec.toLong())
+        val antiSnipeExtensionDuration: java.time.Duration get() = java.time.Duration.ofSeconds(antiSnipeExtendSec.toLong())
         @Comment("Fee percentage deducted from seller (decimal)")
         var feePct: Double = 0.05
         @Comment("Minimum starting bid amount")

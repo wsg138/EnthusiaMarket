@@ -59,6 +59,7 @@ class AuctionLifecycleSchematicTest {
         startingBid = 100L,
         highBid = Bid(winner, 150L, now.minus(Duration.ofHours(2))),
         antiSnipeWindow = Duration.ofMinutes(10),
+        antiSnipeExtension = Duration.ofMinutes(10),
     )
 
     private fun config(enabled: Boolean = true): EnthusiaMarketConfig =

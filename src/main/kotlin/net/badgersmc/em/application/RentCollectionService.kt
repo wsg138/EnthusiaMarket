@@ -162,7 +162,8 @@ class RentCollectionService(
             endAt = now.plus(auctionDuration()),
             startingBid = startingBid,
             highBid = null,
-            antiSnipeWindow = Duration.ofSeconds(config.auction.antiSnipeSec.toLong()),
+            antiSnipeWindow = config.auction.antiSnipeWindowDuration,
+            antiSnipeExtension = config.auction.antiSnipeExtensionDuration,
         )
         // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
         // (admin must manually create one). This prevents duplicate auctions on retry — the stall

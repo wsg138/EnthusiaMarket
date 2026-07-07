@@ -39,7 +39,8 @@ Defines every config key the plugin reads, its type, default, source REQ, and wh
 | `auction.default-duration` | duration | `PT24H` | REQ-007 | `AuctionLifecycleService.start` |
 | `auction.min-duration` | duration | `PT15M` | REQ-007 | validation |
 | `auction.max-duration` | duration | `P7D` | REQ-007 | validation |
-| `auction.anti-snipe-sec` | integer (seconds) | `30` | REQ-008 | `Auction.antiSnipeWindow` |
+| `auction.anti-snipe-sec` | integer (seconds) | `30` | Trigger window — bid within this of endAt | `Auction.antiSnipeWindow` |
+| `auction.anti-snipe-extend-sec` | integer (seconds) | `30` | Extension duration added when triggered | `Auction.antiSnipeExtension` |
 | `auction.fee-pct` | decimal | `0.05` (5% to system) | REQ-009 | settlement payout calc |
 | `auction.min-starting-bid` | integer | `1` | REQ-007 | validation |
 

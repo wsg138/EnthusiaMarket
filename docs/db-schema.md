@@ -40,7 +40,7 @@ Unique: `(world, region_id)`. Index: `state`.
 
 ### `auctions` — timed sale lots
 
-A stall hosts at most one OPEN auction at a time. Anti-snipe: when a winning bid lands within `anti_snipe_sec` of `end_at`, `end_at` shifts forward by that window.
+A stall hosts at most one OPEN auction at a time. Anti-snipe: when a bid lands within `anti_snipe_sec` of `end_at`, `end_at` shifts forward by `anti_snipe_extend_sec`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -53,7 +53,8 @@ A stall hosts at most one OPEN auction at a time. Anti-snipe: when a winning bid
 | `high_bid_amount` | INTEGER NULL | |
 | `high_bidder` | TEXT NULL | uuid |
 | `high_placed_at` | INTEGER NULL | epoch millis |
-| `anti_snipe_sec` | INTEGER | snapshot of `auction.anti-snipe-sec` at start |
+| `anti_snipe_sec` | INTEGER | trigger window — bid within this of end_at |
+| `anti_snipe_extend_sec` | INTEGER | extension amount added when triggered |
 
 Index: `(stall_id, state)`.
 

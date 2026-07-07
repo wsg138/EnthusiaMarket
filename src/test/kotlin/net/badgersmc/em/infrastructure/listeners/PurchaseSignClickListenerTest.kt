@@ -85,6 +85,7 @@ class PurchaseSignClickListenerTest {
             startingBid = 100L,
             highBid = null,
             antiSnipeWindow = Duration.ofMinutes(10),
+            antiSnipeExtension = Duration.ofMinutes(10),
         )
 
     private fun purchaseSign(stallId: String = "stall_01", price: Long = 500): PurchaseSign {

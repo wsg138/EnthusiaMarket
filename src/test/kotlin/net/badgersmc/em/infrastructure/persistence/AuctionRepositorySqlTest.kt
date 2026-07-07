@@ -40,7 +40,8 @@ class AuctionRepositorySqlTest {
         highBid: Bid? = null,
         startAt: Instant = Instant.parse("2026-01-01T00:00:00Z"),
         endAt: Instant = Instant.parse("2026-01-02T00:00:00Z"),
-        antiSnipeWindow: Duration = Duration.ofMinutes(1)
+        antiSnipeWindow: Duration = Duration.ofMinutes(1),
+        antiSnipeExtension: Duration = Duration.ofMinutes(1)
     ) = Auction(
         id = AuctionId(id),
         stallId = StallId(stallId),
@@ -49,7 +50,8 @@ class AuctionRepositorySqlTest {
         endAt = endAt,
         startingBid = startingBid,
         highBid = highBid,
-        antiSnipeWindow = antiSnipeWindow
+        antiSnipeWindow = antiSnipeWindow,
+        antiSnipeExtension = antiSnipeExtension
     )
 
     @Test fun `findById returns null for unknown id`() {
@@ -69,6 +71,7 @@ class AuctionRepositorySqlTest {
         assertEquals(a.startingBid, found.startingBid)
         assertEquals(a.highBid, found.highBid)
         assertEquals(a.antiSnipeWindow, found.antiSnipeWindow)
+        assertEquals(a.antiSnipeExtension, found.antiSnipeExtension)
     }
 
     @Test fun `create then findById with a high bid`() {

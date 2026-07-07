@@ -54,7 +54,8 @@ class AuctionLifecycleServiceTest {
         endAt = later,
         startingBid = 100L,
         highBid = null,
-        antiSnipeWindow = Duration.ofMinutes(10)
+        antiSnipeWindow = Duration.ofMinutes(10),
+        antiSnipeExtension = Duration.ofMinutes(10)
     )
 
     private fun config(
@@ -62,6 +63,7 @@ class AuctionLifecycleServiceTest {
         minDuration: String = "PT15M",
         maxDuration: String = "P7D",
         antiSnipeSec: Int = 30,
+        antiSnipeExtendSec: Int = 30,
         feePct: Double = 0.05,
         minStartingBid: Long = 1
     ): EnthusiaMarketConfig {
@@ -70,6 +72,7 @@ class AuctionLifecycleServiceTest {
         cfg.auction.minDuration = minDuration
         cfg.auction.maxDuration = maxDuration
         cfg.auction.antiSnipeSec = antiSnipeSec
+        cfg.auction.antiSnipeExtendSec = antiSnipeExtendSec
         cfg.auction.feePct = feePct
         cfg.auction.minStartingBid = minStartingBid
         return cfg

@@ -13,7 +13,8 @@ data class Auction(
     val endAt: Instant,
     val startingBid: Long,
     val highBid: Bid?,
-    val antiSnipeWindow: Duration
+    val antiSnipeWindow: Duration,
+    val antiSnipeExtension: Duration
 ) {
     init {
         require(startingBid > 0) { "startingBid must be positive, was $startingBid" }
@@ -26,7 +27,9 @@ data class Auction(
         require(amount > current) { "Bid must exceed current high bid of $current" }
 
         val newEnd =
-            if (Duration.between(at, endAt) <= antiSnipeWindow) at.plus(antiSnipeWindow)
+            if (Duration.between(at, endAt) <= antiSnipeWindow) {
+                maxOf(endAt, at.plus(antiSnipeExtension))
+            }
             else endAt
 
         return copy(
