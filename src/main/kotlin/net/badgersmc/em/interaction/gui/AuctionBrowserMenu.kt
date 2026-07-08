@@ -85,7 +85,6 @@ class AuctionBrowserMenu(
         // lang.msg() map key constants — extracted to avoid StringLiteralDuplication
         private const val KEY_AMOUNT = "amount"
         private const val KEY_STALL = "stall"
-        private const val KEY_ID = "id"
     }
 
     @Volatile
@@ -272,8 +271,6 @@ class AuctionBrowserMenu(
                 lang.msg("gui.auctions.entry_lore_starting", KEY_AMOUNT to auction.startingBid)
                     .decoration(TextDecoration.ITALIC, false),
                 lang.msg("gui.auctions.entry_lore_time_left", "time" to formatRemaining(remaining))
-                    .decoration(TextDecoration.ITALIC, false),
-                lang.msg("gui.auctions.entry_lore_id", KEY_ID to auction.id.value)
                     .decoration(TextDecoration.ITALIC, false),
                 lang.msg("gui.auctions.entry_lore_click")
                     .decoration(TextDecoration.ITALIC, false)

@@ -25,11 +25,11 @@ admin:
     result: "<prefix>WG resync: fixed=<green><fixed></green> skipped=<yellow><skipped></yellow> errors=<red><errors>"
   auction:
     start:
-      success: "<prefix><green>Auction created:</green> <id> <gray>for stall</gray> <stall> <gray>starting at</gray> <gold><starting_bid>"
+      success: "<prefix><green>Auction created:</green> <gray>for stall</gray> <stall> <gray>starting at</gray> <gold><starting_bid>"
       failure: "<prefix><red>Failed to create auction: <reason>"
       not_found: "<prefix><red>Stall not found"
     cancel:
-      success: "<prefix><green>Auction cancelled:</green> <id>"
+      success: "<prefix><green>Auction cancelled:</green> <stall>"
       failure: "<prefix><red>Failed to cancel auction: <reason>"
       not_found: "<prefix><red>Auction not found"
     startall:
@@ -38,7 +38,7 @@ admin:
     cancelall:
       done: "<prefix><green><count> auction(s) cancelled.</green> Current high bidders refunded."
   bid:
-    success: "<prefix><green>Bid placed:</green> <gold><amount></gold> <gray>on auction</gray> <id>"
+    success: "<prefix><green>Bid placed:</green> <gold><amount></gold> <gray>on</gray> <stall>"
     failure: "<prefix><red>Bid rejected: <reason>"
     not_found: "<prefix><red>Auction not found"
   evict:
@@ -454,10 +454,20 @@ gui:
     title: "<dark_gray>Bid on <stall>"
     summary: "<green><stall>"
     current: "<gray>Current bid: <gold><amount>"
-    auction_id: "<dark_gray><id>"
     amount: "<gold>Bid <amount>"
     close: "<red>Close"
     no_permission: "<red>You do not have permission to bid in auctions."
+    custom: "<gold>Custom amount..."
+    custom_prompt: "<prefix><yellow>Type your bid amount in chat for</yellow> <aqua><stall>"
+    custom_invalid: "<prefix><red>Invalid bid amount: <input> — must be a positive whole number"
+    custom_timeout: "<prefix><gray>Bid prompt for</gray> <aqua><stall></aqua> <gray>expired — open the menu again to bid."
+
+auction:
+  outbid: "<prefix><yellow>You have been outbid on</yellow> <aqua><stall></aqua><yellow>! New bid: <gold><amount></gold> <gray>by</gray> <white><bidder>"
+  won: "<prefix><green>You won the auction for</green> <aqua><stall></aqua><green>!</green> <gray>Final bid: <gold><amount>"
+  lost: "<prefix><gray>Auction for</gray> <aqua><stall></aqua> <gray>ended. You did not win."
+  no_bids: "<prefix><gray>Auction for</gray> <aqua><stall></aqua> <gray>ended with no bids."
+  ending_soon: "<prefix><yellow>Auction for</yellow> <aqua><stall></aqua> <yellow>ends in <time>!</yellow> <gray>Current: <gold><amount>"
 
 bedrock:
   unavailable: "<red>Bedrock forms are not available on this server"

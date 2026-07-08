@@ -50,7 +50,6 @@ class TrustManageMenu(
                 ?: lang.raw("common.unknown_player")
             meta?.displayName(lang.msg("gui.trust.member_name", "name" to name))
             meta?.lore(listOf(
-                lang.msg("gui.trust.member_lore_uuid", "uuid" to trustedUuid),
                 Component.empty(),
                 lang.msg("gui.trust.member_lore_remove")
             ))

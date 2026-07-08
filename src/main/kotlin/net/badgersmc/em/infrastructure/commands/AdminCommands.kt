@@ -160,7 +160,6 @@ class AdminCommands(
         )) {
             is AuctionResult.Success -> lang.msg(
                 "admin.auction.start.success",
-                "id" to result.auction.id,
                 "stall" to result.auction.stallId,
                 "starting_bid" to result.auction.startingBid
             )
@@ -183,7 +182,7 @@ class AdminCommands(
             is AuctionResult.Success -> lang.msg(
                 "admin.bid.success",
                 "amount" to (result.auction.highBid?.amount ?: amount),
-                "id" to result.auction.id
+                "stall" to result.auction.stallId.value
             )
             is AuctionResult.Failure -> lang.msg("admin.bid.failure", "reason" to result.reason)
             is AuctionResult.NotFound -> lang.msg("admin.bid.not_found")
@@ -228,7 +227,7 @@ class AdminCommands(
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("command.players_only")); return }
         val component = when (val result = auctionService.cancelAuction(AuctionId(auction), player.uniqueId)) {
-            is AuctionResult.Success -> lang.msg("admin.auction.cancel.success", "id" to result.auction.id)
+            is AuctionResult.Success -> lang.msg("admin.auction.cancel.success", "stall" to result.auction.stallId.value)
             is AuctionResult.Failure -> lang.msg("admin.auction.cancel.failure", "reason" to result.reason)
             is AuctionResult.NotFound -> lang.msg("admin.auction.cancel.not_found")
         }
