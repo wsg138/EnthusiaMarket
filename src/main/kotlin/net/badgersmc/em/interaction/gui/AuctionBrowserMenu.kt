@@ -12,11 +12,11 @@ import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.nexus.i18n.LangService
-import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.paper.gui.LivePollingMenu
 import net.badgersmc.nexus.paper.gui.itemStack
 import net.badgersmc.nexus.scheduler.NexusScheduler
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -50,6 +50,7 @@ class AuctionBrowserMenu(
 ) : LivePollingMenu(scheduler, rows = ROWS, refreshTicks = REFRESH_TICKS) {
 
     enum class SortMode(val labelKey: String) {
+        STALL_NAME("gui.auctions.sort_stall_name"),
         HIGHEST_BID("gui.auctions.sort_highest_bid"),
         LOWEST_BID("gui.auctions.sort_lowest_bid"),
         ENDING_SOON("gui.auctions.sort_ending_soon"),
@@ -88,7 +89,7 @@ class AuctionBrowserMenu(
     }
 
     @Volatile
-    private var sortMode: SortMode = SortMode.HIGHEST_BID
+    private var sortMode: SortMode = SortMode.STALL_NAME
 
     @Volatile
     private var currentPage: Int = 0
@@ -122,9 +123,16 @@ class AuctionBrowserMenu(
 
     @Suppress("LongMethod")
     override fun render(gui: ChestGui) {
-        // Anti-dupe: cancel raw item movement (collect-to-cursor / drag). The framework base
-        // creates this gui, so we harden it here; re-applying each refresh is idempotent.
-        gui.blockItemTheft()
+        // Block raw item theft (shift/double-click/drag/drop) while letting single
+        // left/right clicks reach GuiItem handlers so controls function.
+        gui.setOnGlobalClick { event ->
+            if (event.click != org.bukkit.event.inventory.ClickType.LEFT &&
+                event.click != org.bukkit.event.inventory.ClickType.RIGHT
+            ) {
+                event.isCancelled = true
+            }
+        }
+        gui.setOnGlobalDrag { it.isCancelled = true }
         val snapshot = latest.get()
         val now = Instant.now()
         val sorted = snapshot.entries.sortedWith(entryComparator(sortMode))
@@ -195,6 +203,8 @@ class AuctionBrowserMenu(
         }
 
     private fun entryComparator(mode: SortMode): Comparator<EntryView> = when (mode) {
+        SortMode.STALL_NAME ->
+            compareBy<EntryView, String>(naturalStallName) { it.auction.stallId.value }.thenBy { it.auction.endAt }
         SortMode.HIGHEST_BID ->
             compareByDescending { it.auction.highBid?.amount ?: it.auction.startingBid }
         SortMode.LOWEST_BID ->
@@ -203,6 +213,27 @@ class AuctionBrowserMenu(
             compareBy { it.auction.endAt }
         SortMode.ENDING_LATEST ->
             compareByDescending { it.auction.endAt }
+    }
+
+    /**
+     * Natural alphanumeric comparator: splits names into text/number chunks,
+     * compares text lexicographically and numbers numerically.
+     * "stall1" < "stall2" < "stall10" < "vip1".
+     */
+    private val naturalStallName: Comparator<String> = Comparator { a, b ->
+        val re = Regex("(?<=\\D)(?=\\d)|(?<=\\d)(?=\\D)")
+        val aParts = a.split(re)
+        val bParts = b.split(re)
+        for (i in 0 until minOf(aParts.size, bParts.size)) {
+            val aInt = aParts[i].toIntOrNull()
+            val bInt = bParts[i].toIntOrNull()
+            val cmp = when {
+                aInt != null && bInt != null -> aInt.compareTo(bInt)
+                else -> aParts[i].compareTo(bParts[i])
+            }
+            if (cmp != 0) return@Comparator cmp
+        }
+        aParts.size.compareTo(bParts.size)
     }
 
     private fun entryIcon(entry: EntryView, now: Instant): ItemStack {
@@ -216,24 +247,36 @@ class AuctionBrowserMenu(
                 "gui.auctions.entry_lore_current_with_bidder",
                 KEY_AMOUNT to currentBid,
                 "bidder" to bidder
-            )
+            ).decoration(TextDecoration.ITALIC, false)
         } else {
             lang.msg("gui.auctions.entry_lore_current_no_bids", KEY_AMOUNT to currentBid)
+                .decoration(TextDecoration.ITALIC, false)
         }
 
-        return itemStack(Material.EMERALD) {
-            name(lang.msg("gui.auctions.entry_name", KEY_STALL to auction.stallId.value))
+        val material = when {
+            auction.highBid == null -> Material.GRAY_DYE
+            remaining <= auction.antiSnipeWindow -> Material.RED_DYE
+            else -> Material.CYAN_DYE
+        }
+
+        return itemStack(material) {
+            name(lang.msg("gui.auctions.entry_name", KEY_STALL to auction.stallId.value)
+                .decoration(TextDecoration.ITALIC, false))
             lore(
                 lang.msg(
                     "gui.auctions.entry_lore_region",
                     "world" to (entry.stallWorld ?: "?"),
                     "region" to (entry.stallRegion ?: "?")
-                ),
+                ).decoration(TextDecoration.ITALIC, false),
                 bidLine,
-                lang.msg("gui.auctions.entry_lore_starting", KEY_AMOUNT to auction.startingBid),
-                lang.msg("gui.auctions.entry_lore_time_left", "time" to formatRemaining(remaining)),
-                lang.msg("gui.auctions.entry_lore_id", KEY_ID to auction.id.value),
+                lang.msg("gui.auctions.entry_lore_starting", KEY_AMOUNT to auction.startingBid)
+                    .decoration(TextDecoration.ITALIC, false),
+                lang.msg("gui.auctions.entry_lore_time_left", "time" to formatRemaining(remaining))
+                    .decoration(TextDecoration.ITALIC, false),
+                lang.msg("gui.auctions.entry_lore_id", KEY_ID to auction.id.value)
+                    .decoration(TextDecoration.ITALIC, false),
                 lang.msg("gui.auctions.entry_lore_click")
+                    .decoration(TextDecoration.ITALIC, false)
             )
         }
     }

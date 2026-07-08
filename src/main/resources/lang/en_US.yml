@@ -448,6 +448,7 @@ gui:
     sort_lowest_bid: "Lowest Bid"
     sort_ending_soon: "Ending Soon"
     sort_ending_latest: "Ending Latest"
+    sort_stall_name: "Stall Number"
     time_ended: "ended"
   auction_bid:
     title: "<dark_gray>Bid on <stall>"
