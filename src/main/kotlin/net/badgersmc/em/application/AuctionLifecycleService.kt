@@ -268,14 +268,14 @@ class AuctionLifecycleService(
      *         or [AuctionResult.NotFound]
      */
     fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult {
-        if (!ipLimiter.tryBindAuction(ip, auctionId.value)) {
-            return AuctionResult.Failure("You already have an active bid on another auction.")
-        }
-
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
 
         if (auction.state != AuctionState.OPEN) {
             return AuctionResult.Failure("Auction is not open")
+        }
+
+        if (!ipLimiter.tryBindAuction(ip, auction.id.value)) {
+            return AuctionResult.Failure("You already have an active bid on another auction.")
         }
 
         val updated = try {
