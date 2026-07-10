@@ -4,8 +4,6 @@ import io.mockk.*
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import org.bukkit.Location
-import org.bukkit.block.Block
-import org.bukkit.block.Container
 import org.bukkit.event.inventory.InventoryMoveItemEvent
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
@@ -25,20 +23,17 @@ class HopperControlListenerTest {
             hopperAllowOut = false, hopperAllowIn = true
         )
 
-        val containerBlock = mockk<Block>(relaxed = true)
         val loc = mockk<Location>(relaxed = true)
         every { loc.world?.name } returns "world"
         every { loc.blockX } returns 10
         every { loc.blockY } returns 64
         every { loc.blockZ } returns 20
-        every { containerBlock.location } returns loc
-        val container = mockk<Container>(relaxed = true)
-        every { container.block } returns containerBlock
 
         val sourceInv = mockk<Inventory>(relaxed = true)
-        every { sourceInv.holder } returns container
+        every { sourceInv.location } returns loc
         val destInv = mockk<Inventory>(relaxed = true)
-        every { destInv.holder } returns mockk<org.bukkit.entity.HumanEntity>(relaxed = true) // not a container
+        // Non-container destination: location is null → fallback holder check
+        every { destInv.holder } returns mockk<org.bukkit.entity.HumanEntity>(relaxed = true)
 
         every { repo.findByContainer("world", 10, 64, 20) } returns listOf(shop)
 
@@ -61,20 +56,17 @@ class HopperControlListenerTest {
             hopperAllowIn = false, hopperAllowOut = true
         )
 
-        val containerBlock = mockk<Block>(relaxed = true)
         val loc = mockk<Location>(relaxed = true)
         every { loc.world?.name } returns "world"
         every { loc.blockX } returns 10
         every { loc.blockY } returns 64
         every { loc.blockZ } returns 20
-        every { containerBlock.location } returns loc
-        val container = mockk<Container>(relaxed = true)
-        every { container.block } returns containerBlock
 
         val sourceInv = mockk<Inventory>(relaxed = true)
-        every { sourceInv.holder } returns mockk<org.bukkit.block.Hopper>(relaxed = true) // hopper source
+        // Hopper source: location is null → fallback holder check
+        every { sourceInv.holder } returns mockk<org.bukkit.block.Hopper>(relaxed = true)
         val destInv = mockk<Inventory>(relaxed = true)
-        every { destInv.holder } returns container
+        every { destInv.location } returns loc
 
         every { repo.findByContainer("world", 10, 64, 20) } returns listOf(shop)
 
@@ -92,9 +84,9 @@ class HopperControlListenerTest {
         every { repo.findByContainer(any(), any(), any(), any()) } returns emptyList()
 
         val sourceInv = mockk<Inventory>(relaxed = true)
-        every { sourceInv.holder } returns mockk<Container>(relaxed = true)
+        every { sourceInv.location } returns mockk<Location>(relaxed = true)
         val destInv = mockk<Inventory>(relaxed = true)
-        every { destInv.holder } returns mockk<Container>(relaxed = true)
+        every { destInv.location } returns mockk<Location>(relaxed = true)
 
         val event = InventoryMoveItemEvent(sourceInv, mockk<ItemStack>(relaxed = true), destInv, true)
         val listener = HopperControlListener(repo)

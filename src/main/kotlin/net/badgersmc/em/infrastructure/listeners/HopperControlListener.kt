@@ -3,7 +3,6 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.nexus.annotations.Component
-import org.bukkit.block.Container
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
@@ -45,18 +44,19 @@ class HopperControlListener(
     }
 
     private fun getShopsForInventory(inv: Inventory): List<Shop>? {
-        val holder = inv.holder ?: return null
-        val block = when (holder) {
-            is Container -> holder.block
-            is org.bukkit.block.DoubleChest -> {
-                // Check both halves of the double chest
-                val leftBlock = (holder.leftSide as? Container)?.block
-                val rightBlock = (holder.rightSide as? Container)?.block
-                leftBlock ?: rightBlock ?: return null
-            }
-            else -> return null
+        // Use Paper's Inventory.getLocation() to avoid the expensive
+        // Inventory.getHolder() → BlockEntityState snapshot path that
+        // triggers NBT deserialization on every hopper tick (7%+ CPU).
+        val loc = inv.location ?: run {
+            // Fallback for DoubleChest (getLocation() returns null).
+            // DoubleChestHolder check avoids the costly Container→block path for
+            // single containers, which are already handled by inv.location above.
+            val holder = inv.holder ?: return null
+            if (holder !is org.bukkit.block.DoubleChest) return null
+            (holder.leftSide as? org.bukkit.block.Container)?.block?.location
+                ?: (holder.rightSide as? org.bukkit.block.Container)?.block?.location
+                ?: return null
         }
-        val loc = block.location
         return shopRepository.findByContainer(
             loc.world?.name ?: "world",
             loc.blockX, loc.blockY, loc.blockZ

@@ -8,8 +8,6 @@ import net.badgersmc.em.application.InMemoryShopLocationIndex
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import org.bukkit.Location
-import org.bukkit.block.Block
-import org.bukkit.block.Container
 import org.bukkit.event.inventory.InventoryMoveItemEvent
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
@@ -40,17 +38,13 @@ class HopperControlListenerIndexTest {
     }
 
     private fun containerInv(cx: Int): Inventory {
-        val block = mockk<Block>(relaxed = true)
         val loc = mockk<Location>(relaxed = true)
         every { loc.world?.name } returns "world"
         every { loc.blockX } returns cx
         every { loc.blockY } returns 64
         every { loc.blockZ } returns 20
-        every { block.location } returns loc
-        val container = mockk<Container>(relaxed = true)
-        every { container.block } returns block
         val inv = mockk<Inventory>(relaxed = true)
-        every { inv.holder } returns container
+        every { inv.location } returns loc
         return inv
     }
 
