@@ -156,4 +156,20 @@ class AuctionRepositorySqlTest {
         repo.delete(AuctionId("auc-0001"))
         assertNull(repo.findById(AuctionId("auc-0001")))
     }
+
+    @Test fun `findByStall returns all auctions for a stall regardless of state`() {
+        val future = Instant.parse("2030-01-01T00:00:00Z")
+        repo.create(sampleAuction(id = "auc-001", stallId = "stall_01", endAt = future))
+        repo.create(sampleAuction(id = "auc-002", stallId = "stall_01", state = AuctionState.CLOSED, endAt = future))
+        repo.create(sampleAuction(id = "auc-003", stallId = "stall_01", state = AuctionState.CANCELLED, endAt = future))
+        repo.create(sampleAuction(id = "auc-004", stallId = "stall_02", endAt = future)) // different stall
+
+        val results = repo.findByStall(StallId("stall_01"))
+        assertEquals(3, results.size)
+        assertEquals(setOf("auc-001", "auc-002", "auc-003"), results.map { it.id.value }.toSet())
+    }
+
+    @Test fun `findByStall returns empty for unknown stall`() {
+        assertEquals(0, repo.findByStall(StallId("nope")).size)
+    }
 }

@@ -29,6 +29,7 @@ import net.badgersmc.nexus.commands.annotations.Context
 import net.badgersmc.nexus.config.ConfigManager
 import net.badgersmc.nexus.paper.commands.annotations.Permission
 import net.badgersmc.nexus.paper.commands.annotations.Subcommand
+import net.badgersmc.nexus.paper.commands.annotations.Suggests
 import org.bukkit.command.CommandSender
 import org.bukkit.entity.Player
 import net.badgersmc.nexus.scheduler.NexusScheduler
@@ -239,6 +240,36 @@ class AdminCommands(
     fun auctionCancelAll(@Context sender: CommandSender) {
         val count = auctionService.cancelAllAuctions()
         sender.sendMessage(lang.msg("admin.auction.cancelall.done", "count" to count))
+    }
+
+    @Subcommand("auction extend")
+    @Permission("enthusiamarket.admin")
+    fun auctionExtend(
+        @Context sender: CommandSender,
+        @Arg("auction") @Suggests("openAuctionIds") auction: String,
+        @Arg("duration") duration: String,
+    ) {
+        val component = when (val result = auctionService.extendAuction(AuctionId(auction), duration)) {
+            is AuctionResult.Success -> lang.msg(
+                "admin.auction.extend.success",
+                "id" to result.auction.id,
+                "stall" to result.auction.stallId,
+                "end_at" to result.auction.endAt.toString()
+            )
+            is AuctionResult.Failure -> lang.msg("admin.auction.extend.failure", "reason" to result.reason)
+            is AuctionResult.NotFound -> lang.msg("admin.auction.extend.not_found")
+        }
+        sender.sendMessage(component)
+    }
+
+    @Subcommand("auction clear")
+    @Permission("enthusiamarket.admin")
+    fun auctionClear(
+        @Context sender: CommandSender,
+        @Arg("stall") stall: String,
+    ) {
+        val cleared = auctionService.clearStaleBidData(StallId(stall))
+        sender.sendMessage(lang.msg("admin.auction.clear.done", "stall" to stall, "count" to cleared))
     }
 
     @Subcommand("stall members add")

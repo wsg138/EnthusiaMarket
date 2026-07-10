@@ -425,6 +425,68 @@ class AuctionLifecycleService(
     }
 
     /**
+     * Extend an open auction's end time by the given duration.
+     *
+     * @param auctionId the auction to extend
+     * @param extensionStr ISO-8601 duration string (e.g. "PT6H", "P1D")
+     * @return [AuctionResult.Success] with the updated auction, or [AuctionResult.Failure]/[AuctionResult.NotFound]
+     */
+    fun extendAuction(auctionId: AuctionId, extensionStr: String): AuctionResult {
+        val auction = auctionRepository.findById(auctionId)
+            ?: auctionRepository.findOpenByStall(StallId(auctionId.value))
+            ?: return AuctionResult.NotFound
+
+        if (auction.state != AuctionState.OPEN) {
+            return AuctionResult.Failure("Only open auctions can be extended")
+        }
+
+        val extension = try {
+            Duration.parse(extensionStr)
+        } catch (e: Exception) {
+            return AuctionResult.Failure("Invalid duration format: '$extensionStr'. Use ISO-8601 (e.g. PT6H, P1D)")
+        }
+
+        if (extension.isNegative || extension.isZero) {
+            return AuctionResult.Failure("Extension must be a positive duration")
+        }
+
+        val newEndAt = auction.endAt.plus(extension)
+        val maxEnd = clock.instant().plus(Duration.parse(config.auction.maxDuration))
+        if (newEndAt.isAfter(maxEnd)) {
+            return AuctionResult.Failure(
+                "Extension would exceed maximum auction duration (${config.auction.maxDuration} from now)"
+            )
+        }
+
+        val extended = auction.copy(endAt = newEndAt)
+        auctionRepository.save(extended)
+        return AuctionResult.Success(extended)
+    }
+
+    /**
+     * Clear stale high-bid data from all CANCELLED and CLOSED auctions for a stall.
+     *
+     * This surgically releases bidder state that can interfere with new auctions on the
+     * same stall (e.g. IP limiter bindings, "already has active bid" checks). Only
+     * touches non-OPEN auctions — running auctions are never affected.
+     *
+     * @param stallId the stall whose stale auctions should be cleared
+     * @return number of auctions whose bid data was cleared
+     */
+    fun clearStaleBidData(stallId: StallId): Int {
+        val auctions = auctionRepository.findByStall(stallId)
+        var cleared = 0
+        for (auction in auctions) {
+            if (auction.state == AuctionState.OPEN) continue
+            if (auction.highBid == null) continue
+            val clearedAuction = auction.copy(highBid = null)
+            auctionRepository.save(clearedAuction)
+            cleared++
+        }
+        return cleared
+    }
+
+    /**
      * Emergency mass-cancel all open auctions and refund any held high bids.
      *
      * Errors for individual auctions are logged and counted but do not abort

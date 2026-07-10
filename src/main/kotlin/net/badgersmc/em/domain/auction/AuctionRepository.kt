@@ -12,4 +12,6 @@ interface AuctionRepository {
     fun delete(id: AuctionId)
     /** Most recent CLOSED auction for [stallId] by end_at desc, or null. */
     fun findMostRecentClosedByStall(stallId: StallId): Auction?
+    /** All auctions for [stallId] regardless of state. */
+    fun findByStall(stallId: StallId): List<Auction>
 }

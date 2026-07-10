@@ -94,16 +94,19 @@ class AuctionLifecycleServiceTest {
         openAuctionByStall: Auction? = null,
         openAuctions: List<Auction> = emptyList(),
         expiredAuctions: List<Auction> = emptyList(),
+        auctionsByStall: List<Auction> = emptyList(),
         economyWithdrawOk: Boolean = true,
         economyDepositOk: Boolean = true,
         ownedByWinner: List<Stall> = emptyList(),
         claimDecision: LimitResolutionService.ClaimDecision = LimitResolutionService.ClaimDecision.Allowed,
+        overriddenConfig: EnthusiaMarketConfig? = null,
     ): ServiceWithMocks {
         val auctionRepo = mockk<AuctionRepository>(relaxUnitFun = true)
         every { auctionRepo.findById(auctionId) } returns auction
         every { auctionRepo.findOpenByStall(stallId) } returns openAuctionByStall
         every { auctionRepo.allOpen() } returns openAuctions
         every { auctionRepo.findExpired() } returns expiredAuctions
+        every { auctionRepo.findByStall(stallId) } returns auctionsByStall
 
         val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
         every { stallRepo.findById(stallId) } returns stall
@@ -113,7 +116,7 @@ class AuctionLifecycleServiceTest {
         every { economy.withdraw(any(), any()) } returns economyWithdrawOk
         every { economy.deposit(any(), any()) } returns economyDepositOk
 
-        val cfg = config()
+        val cfg = overriddenConfig ?: config()
 
         val limits = mockk<LimitResolutionService>(relaxed = true)
         every { limits.canClaim(any(), any(), any(), any()) } returns claimDecision
@@ -672,5 +675,119 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         verify {
             svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) && it.state == StallState.OWNED })
         }
+    }
+
+    // ===== extendAuction =====
+
+    @Test
+    fun `extendAuction succeeds with valid duration`() {
+        val svc = buildService(auction = sampleAuction)
+        svc.service.clock = java.time.Clock.fixed(now, java.time.ZoneOffset.UTC)
+
+        val result = svc.service.extendAuction(auctionId, "PT6H")
+
+        assertIs<AuctionResult.Success>(result)
+        val extended = (result as AuctionResult.Success).auction
+        assertEquals(now.plus(Duration.ofHours(30)), extended.endAt) // 24h + 6h
+        verify { svc.auctionRepo.save(any()) }
+    }
+
+    @Test
+    fun `extendAuction returns NotFound for missing auction`() {
+        val svc = buildService(auction = null)
+        every { svc.auctionRepo.findOpenByStall(StallId(auctionId.value)) } returns null
+        assertIs<AuctionResult.NotFound>(svc.service.extendAuction(auctionId, "PT6H"))
+    }
+
+    @Test
+    fun `extendAuction fails for non-OPEN auction`() {
+        val closed = sampleAuction.copy(state = AuctionState.CLOSED)
+        val svc = buildService(auction = closed)
+
+        val result = svc.service.extendAuction(auctionId, "PT6H")
+        assertIs<AuctionResult.Failure>(result)
+        assertEquals("Only open auctions can be extended", (result as AuctionResult.Failure).reason)
+    }
+
+    @Test
+    fun `extendAuction fails for invalid duration format`() {
+        val svc = buildService(auction = sampleAuction)
+
+        val result = svc.service.extendAuction(auctionId, "banana")
+        assertIs<AuctionResult.Failure>(result)
+        assertTrue((result as AuctionResult.Failure).reason.contains("Invalid duration"))
+    }
+
+    @Test
+    fun `extendAuction fails for zero or negative duration`() {
+        val svc = buildService(auction = sampleAuction)
+
+        val result = svc.service.extendAuction(auctionId, "PT0S")
+        assertIs<AuctionResult.Failure>(result)
+        assertEquals("Extension must be a positive duration", (result as AuctionResult.Failure).reason)
+    }
+
+    @Test
+    fun `extendAuction fails when extension exceeds max duration`() {
+        val svc = buildService(auction = sampleAuction, overriddenConfig = config(maxDuration = "PT30H"))
+        svc.service.clock = java.time.Clock.fixed(now, java.time.ZoneOffset.UTC)
+
+        // End is now + 24h, max from now is 30h, extension of 20h → 44h > 30h max
+        val result = svc.service.extendAuction(auctionId, "PT20H")
+        assertIs<AuctionResult.Failure>(result)
+        assertTrue((result as AuctionResult.Failure).reason.contains("exceed maximum"))
+    }
+
+    // ===== clearStaleBidData =====
+
+    @Test
+    fun `clearStaleBidData clears high bid from cancelled auction`() {
+        val cancelled = sampleAuction.copy(
+            state = AuctionState.CANCELLED,
+            highBid = Bid(otherPlayer, 500L, now)
+        )
+        val svc = buildService(auctionsByStall = listOf(cancelled))
+
+        val cleared = svc.service.clearStaleBidData(stallId)
+        assertEquals(1, cleared)
+        verify {
+            svc.auctionRepo.save(match { it.highBid == null && it.state == AuctionState.CANCELLED })
+        }
+    }
+
+    @Test
+    fun `clearStaleBidData skips OPEN auctions`() {
+        val open = sampleAuction.copy(highBid = Bid(otherPlayer, 500L, now))
+        val svc = buildService(auctionsByStall = listOf(open))
+
+        val cleared = svc.service.clearStaleBidData(stallId)
+        assertEquals(0, cleared)
+        verify(exactly = 0) { svc.auctionRepo.save(any()) }
+    }
+
+    @Test
+    fun `clearStaleBidData skips auctions without high bid`() {
+        val closedNoBid = sampleAuction.copy(state = AuctionState.CLOSED, highBid = null)
+        val svc = buildService(auctionsByStall = listOf(closedNoBid))
+
+        val cleared = svc.service.clearStaleBidData(stallId)
+        assertEquals(0, cleared)
+        verify(exactly = 0) { svc.auctionRepo.save(any()) }
+    }
+
+    @Test
+    fun `clearStaleBidData clears multiple stale auctions`() {
+        val bid = Bid(otherPlayer, 500L, now)
+        val cancelled = sampleAuction.copy(state = AuctionState.CANCELLED, highBid = bid)
+        val closed = sampleAuction.copy(
+            id = AuctionId("00000000-0000-0000-0000-000000000020"),
+            state = AuctionState.CLOSED,
+            highBid = bid
+        )
+        val open = sampleAuction.copy(highBid = bid) // should be skipped
+        val svc = buildService(auctionsByStall = listOf(cancelled, closed, open))
+
+        val cleared = svc.service.clearStaleBidData(stallId)
+        assertEquals(2, cleared)
     }
 }

@@ -37,6 +37,12 @@ admin:
       failure: "<prefix><red>mass auction failed: <reason>"
     cancelall:
       done: "<prefix><green><count> auction(s) cancelled.</green> Current high bidders refunded."
+    extend:
+      success: "<prefix><green>Auction extended:</green> <id> <gray>on stall</gray> <stall> <gray>now ends at</gray> <white><end_at>"
+      failure: "<prefix><red>Failed to extend auction: <reason>"
+      not_found: "<prefix><red>Auction not found"
+    clear:
+      done: "<prefix><green>Cleared stale bid data</green> <gray>for</gray> <aqua><stall></aqua><gray>:</gray> <white><count></white> <gray>auction(s) cleaned</gray>"
   bid:
     success: "<prefix><green>Bid placed:</green> <gold><amount></gold> <gray>on</gray> <stall>"
     failure: "<prefix><red>Bid rejected: <reason>"

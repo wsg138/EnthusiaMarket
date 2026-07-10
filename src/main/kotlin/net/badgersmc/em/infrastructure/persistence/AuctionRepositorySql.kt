@@ -89,6 +89,11 @@ class AuctionRepositorySql(private val ds: DataSource) : AuctionRepository {
             setString(1, stallId.value)
         }
 
+    override fun findByStall(stallId: StallId): List<Auction> =
+        queryMany("SELECT * FROM auctions WHERE stall_id = ? ORDER BY end_at DESC") {
+            setString(1, stallId.value)
+        }
+
     override fun delete(id: AuctionId) {
         ds.connection.use { conn ->
             conn.prepareStatement("DELETE FROM auctions WHERE id = ?").use { ps ->

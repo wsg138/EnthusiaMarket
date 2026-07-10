@@ -146,6 +146,11 @@ open class EnthusiaMarket : JavaPlugin() {
                         .forEach(builder::suggest)
                     builder.buildFuture()
                 },
+                "openAuctionIds" to com.mojang.brigadier.suggestion.SuggestionProvider { _, builder ->
+                    val repo = ctx.getBean(net.badgersmc.em.domain.auction.AuctionRepository::class)
+                    repo.allOpen().map { it.id.value }.forEach(builder::suggest)
+                    builder.buildFuture()
+                },
             ),
         )
 
