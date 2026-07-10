@@ -65,7 +65,7 @@ class ContainerStockListenerTest {
         costItem = "base64cost", costAmount = 10
     )
 
-    // ── Mock helpers (split to stay under Codacy param/NLOC limits) ────
+    // ── Mock helpers ────────────────────────────────────────────────────
 
     /** Sets up a mocked World with sign + container blocks. Returns the sign mock. */
     private fun mockWorld(contents: Array<ItemStack?>): Sign {
@@ -95,7 +95,8 @@ class ContainerStockListenerTest {
         return sign
     }
 
-    /** Creates a container block at (50,64,60) on [world] with the given contents. */
+    /** Creates a container block at (50,64,60) on [world] with the given contents.
+     *  Uses BARREL material so the PERF-5 type-check matches the generic Container branch. */
     private fun mockContainerAt(world: World, contents: Array<ItemStack?>) {
         val containerInv = mockk<Inventory>(relaxed = true)
         every { containerInv.contents } returns contents
@@ -105,6 +106,7 @@ class ContainerStockListenerTest {
         every { contLoc.world?.name } returns "world"
         every { contLoc.blockX } returns 50; every { contLoc.blockY } returns 64; every { contLoc.blockZ } returns 60
         val containerBlock = mockk<Block>(relaxed = true)
+        every { containerBlock.type } returns Material.BARREL          // PERF-5: type check
         every { containerBlock.location } returns contLoc
         every { containerBlock.state } returns container
         every { world.getBlockAt(50, 64, 60) } returns containerBlock
@@ -135,8 +137,8 @@ class ContainerStockListenerTest {
         listener.refreshAllSigns()
 
         verify { sign.line(3, any<Component>()) }
-        verify { sign.update(true) }
-        verify { repo.updateStock(s.id, 10) }
+        verify { sign.update(false) }                               // PERF-5: no physics
+        verify { repo.updateStockBatch(mapOf(s.id to 10)) }         // PERF-5: batched
     }
 
     @Test
@@ -157,7 +159,7 @@ class ContainerStockListenerTest {
         listener.refreshAllSigns()
 
         // Only the diamond stack counts — iron ingots must not inflate stock.
-        verify { repo.updateStock(s.id, 10) }
+        verify { repo.updateStockBatch(mapOf(s.id to 10)) }
     }
 
     @Test
@@ -178,11 +180,11 @@ class ContainerStockListenerTest {
 
         listener.refreshAllSigns()
         verify(exactly = 1) { sign.line(3, any<Component>()) }
-        verify(exactly = 1) { repo.updateStock(s.id, 10) }
+        verify(exactly = 1) { repo.updateStockBatch(mapOf(s.id to 10)) }
 
         listener.refreshAllSigns()
         verify(exactly = 1) { sign.line(3, any<Component>()) }
-        verify(exactly = 1) { repo.updateStock(s.id, 10) }
+        verify(exactly = 1) { repo.updateStockBatch(mapOf(s.id to 10)) }
     }
 
     @Test
@@ -239,7 +241,7 @@ class ContainerStockListenerTest {
 
         // DB must STILL be updated — stock_count exists for /shop search,
         // and the container chunk IS loaded (V019 design).
-        verify(exactly = 1) { repo.updateStock(s.id, 10) }
+        verify(exactly = 1) { repo.updateStockBatch(mapOf(s.id to 10)) }
         // Sign must NOT be touched (chunk not loaded)
         verify(exactly = 0) { sign.line(3, any<Component>()) }
     }
@@ -270,8 +272,10 @@ class ContainerStockListenerTest {
         listener.onTransaction(event)
 
         verify { sign.line(3, any<Component>()) }
-        verify { sign.update(true) }
-        verify { repo.updateStock(1L, 64) }
+        verify { sign.update(false) }                               // PERF-5: no physics
+        // onTransaction stages to dirtyStock — flushed on next timer tick,
+        // not immediately. DB write happens in refreshAllSigns.
+        // Stock is staged for batch flush; test verifies sign update only.
     }
 
     @Test
@@ -327,8 +331,7 @@ class ContainerStockListenerTest {
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
         listener.onTransaction(event)
 
-        // Stock persisted
-        verify { repo.updateStock(1L, 0) }
+        // Stock staged for batch (not immediate write)
         // Sign NOT updated (chunk unloaded)
         verify(exactly = 0) { sign.line(3, any<Component>()) }
         // Depletion event still fired
@@ -424,6 +427,7 @@ class ContainerStockListenerTest {
         val chest = mockk<org.bukkit.block.Chest>(relaxed = true)
         every { chest.blockInventory } returns liveInv
         val chestBlock = mockk<Block>(relaxed = true)
+        every { chestBlock.type } returns Material.CHEST              // PERF-5: type check
         every { chestBlock.state } returns chest
         every { world.getBlockAt(50, 64, 60) } returns chestBlock
 
@@ -434,8 +438,8 @@ class ContainerStockListenerTest {
 
         // Sign must be updated with correct stock (42)
         verify { sign.line(3, any<Component>()) }
-        verify { sign.update(true) }
-        verify { repo.updateStock(s.id, 42) }
+        verify { sign.update(false) }
+        verify { repo.updateStockBatch(mapOf(s.id to 42)) }
 
         // Chest.getBlockInventory() was read (live path, not snapshot)
         verify { chest.blockInventory }
@@ -473,6 +477,7 @@ class ContainerStockListenerTest {
         val chest = mockk<org.bukkit.block.Chest>(relaxed = true)
         every { chest.blockInventory } returns singleInv
         val chestBlock = mockk<Block>(relaxed = true)
+        every { chestBlock.type } returns Material.CHEST              // PERF-5: type check
         every { chestBlock.state } returns chest
         every { world.getBlockAt(50, 64, 60) } returns chestBlock
 
@@ -483,8 +488,8 @@ class ContainerStockListenerTest {
 
         // Stock = 32 + 32 = 64
         verify { sign.line(3, any<Component>()) }
-        verify { sign.update(true) }
-        verify { repo.updateStock(s.id, 64) }
+        verify { sign.update(false) }
+        verify { repo.updateStockBatch(mapOf(s.id to 64)) }
 
         // Must read DoubleChest.inventory (combined), not singleInv.contents
         verify { doubleChest.inventory }

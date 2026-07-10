@@ -10,6 +10,7 @@ import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.paper.listeners.Listener
 import org.bukkit.Bukkit
+import org.bukkit.Material
 import org.bukkit.block.Chest
 import org.bukkit.block.Container
 import org.bukkit.block.DoubleChest
@@ -17,19 +18,19 @@ import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.inventory.Inventory
-import org.bukkit.inventory.InventoryHolder
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Keeps shop sign stock text in sync with linked container inventories.
  *
  * **Trade path** — [onTransaction] fires after every successful [PostShopTransactionEvent]:
- * recomputes raw stock, persists [ShopRepository.updateStock], and updates the sign.
+ * recomputes raw stock, stages the DB write for the next timer flush, and updates the sign.
  *
  * **Timer path** — [refreshAllSigns] is called every 20 ticks from [EnthusiaMarket.onEnable].
  * Iterates all shops, reads the live container inventory for loaded chunks only (never
- * force-loads), and updates sign + denormalized stock_count when the raw stock changes.
- * This catches stock drift from shift-click, hopper, or other-plugin inventory mutations
- * without needing per-event listeners.
+ * force-loads), flushes batched stock writes to SQLite, and updates sign text when the
+ * raw stock changes. This catches stock drift from shift-click, hopper, or other-plugin
+ * inventory mutations without needing per-event listeners.
  */
 @Listener
 @Component
@@ -42,6 +43,9 @@ class ContainerStockListener(
     private val lastRawStock: MutableMap<Long, Int> = mutableMapOf()
     private var previouslyDepletedShops: MutableSet<Long> = mutableSetOf()
 
+    /** shopId → pending raw stock to flush to DB on next timer tick. */
+    private val dirtyStock: ConcurrentHashMap<Long, Int> = ConcurrentHashMap()
+
     // ── Trade path ──────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -51,19 +55,23 @@ class ContainerStockListener(
         val rawStock = rawStockOf(inventory, shop)
         val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
         lastRawStock[shop.id] = rawStock
-        shopRepository.updateStock(shop.id, rawStock)
+        // Defer DB write — flushed in batch on the next timer tick (PERF-5).
+        dirtyStock[shop.id] = rawStock
         trackDepletion(shop, trades)
         loadedSign(shop)?.let { updateSignStock(it, trades) }
     }
 
     // ── Timer path (called from EnthusiaMarket.onEnable every 20t) ─────
 
-    /** Recompute stock for every shop whose container chunk is loaded. */
+    /** Recompute stock for every shop whose container chunk is loaded,
+     *  then flush all batched stock writes to DB in one pass. */
     fun refreshAllSigns() {
         for (shop in shopRepository.all()) {
             val inventory = liveContainerInventory(shop) ?: continue
             refreshOne(shop, inventory)
         }
+        // Flush batched stock writes from both trade + timer paths (PERF-5).
+        flushDirtyStock()
     }
 
     /** Recompute + persist + sign-update for a single shop whose inventory is known to be loaded. */
@@ -77,7 +85,7 @@ class ContainerStockListener(
         // accurate even when the sign chunk happens to be unloaded.
         lastRawStock[shop.id] = rawStock
         val trades = rawStock / shop.sellAmount.coerceAtLeast(1)
-        shopRepository.updateStock(shop.id, rawStock)
+        dirtyStock[shop.id] = rawStock
         trackDepletion(shop, trades)
 
         // Best-effort sign update — if the sign chunk isn't loaded,
@@ -85,25 +93,45 @@ class ContainerStockListener(
         loadedSign(shop)?.let { updateSignStock(it, trades) }
     }
 
+    /** Flush all batched [dirtyStock] writes to SQLite in a single batch (PERF-5). */
+    private fun flushDirtyStock() {
+        if (dirtyStock.isEmpty()) return
+        val batch = HashMap(dirtyStock)
+        dirtyStock.clear()
+        shopRepository.updateStockBatch(batch)
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     /** Returns the LIVE inventory of the shop's container, bypassing the
-     *  [Block.getState] snapshot cache. Shift-click, hopper, and other
-     *  inventory mutations update the underlying NMS tile entity but not
-     *  the Bukkit [BlockState] cache, causing the timer path to read stale
-     *  contents. [Chest.getBlockInventory] (Paper API) returns the live
-     *  inventory directly from the tile entity. */
+     *  [org.bukkit.block.Block.getState] snapshot cache. Shift-click, hopper,
+     *  and other inventory mutations update the underlying NMS tile entity
+     *  but not the Bukkit [org.bukkit.block.BlockState] cache, causing the
+     *  timer path to read stale contents.
+     *
+     *  PERF-5: material check before [block.state] avoids unnecessary
+     *  snapshot creation for non-container block types. */
     private fun liveContainerInventory(shop: Shop): Inventory? {
         val world = Bukkit.getWorld(shop.containerWorld) ?: return null
         if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
         val block = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
-        return when (val state = block.state) {
-            is Chest -> {
-                val singleInv = state.blockInventory       // Paper API — live for this half
-                val holder = singleInv.holder
-                if (holder is DoubleChest) holder.inventory else singleInv
+
+        // Material pre-check avoids snapshot for non-container blocks.
+        return when (block.type) {
+            Material.CHEST, Material.TRAPPED_CHEST -> {
+                val state = block.state
+                if (state is Chest) {
+                    val singleInv = state.blockInventory       // Paper API — live
+                    val holder = singleInv.holder
+                    if (holder is DoubleChest) holder.inventory else singleInv
+                } else null
             }
-            is Container -> state.inventory
+            Material.BARREL, Material.HOPPER, Material.DROPPER,
+            Material.DISPENSER, Material.FURNACE, Material.BLAST_FURNACE,
+            Material.SMOKER, Material.BREWING_STAND -> {
+                val state = block.state
+                (state as? Container)?.inventory
+            }
             else -> null
         }
     }
@@ -114,7 +142,7 @@ class ContainerStockListener(
     }
 
     /** The shop's sign block state, or null if the sign chunk isn't loaded.
-     *  The [isChunkLoaded] guard is mandatory — [World.getBlockAt] force-loads. */
+     *  The [isChunkLoaded] guard is mandatory — [org.bukkit.World.getBlockAt] force-loads. */
     private fun loadedSign(shop: Shop): Sign? {
         val world = Bukkit.getWorld(shop.signWorld) ?: return null
         if (!world.isChunkLoaded(shop.signX shr 4, shop.signZ shr 4)) return null
@@ -122,9 +150,10 @@ class ContainerStockListener(
             .state as? Sign
     }
 
+    /** PERF-5: no-physics update — sign text change doesn't need block physics recalculation. */
     private fun updateSignStock(state: Sign, trades: Int) {
         state.line(3, lang.msg("container_sign.stock_line", "trades" to trades))
-        state.update(true)
+        state.update(false)
     }
 
     private fun trackDepletion(shop: Shop, trades: Int) {

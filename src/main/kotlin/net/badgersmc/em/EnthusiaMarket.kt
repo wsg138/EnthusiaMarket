@@ -213,7 +213,7 @@ open class EnthusiaMarket : JavaPlugin() {
             override fun run() {
                 signRefresh.refreshLoaded()
             }
-        }.runTaskTimer(this, 20L, 20L)
+        }.runTaskTimer(this, 20L, 60L)
 
         // Container stock sign refresh every 20 ticks — catches stock drift from shift-click,
         // hopper, or other-plugin inventory mutations. Only touches loaded chunks; deduplicates

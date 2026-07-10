@@ -41,6 +41,7 @@ open class PurchaseSignRefreshListener(
      * refresh naturally on their next state change or when their chunk loads.
      */
     fun refreshLoaded() {
+        renderer.refreshAuctionCache()
         for (sign in signs.all()) {
             val world = Bukkit.getWorld(sign.world) ?: continue
             if (!world.isChunkLoaded(sign.x shr 4, sign.z shr 4)) continue

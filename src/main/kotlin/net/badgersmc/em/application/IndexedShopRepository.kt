@@ -55,6 +55,8 @@ class IndexedShopRepository(
 
     override fun updateStock(id: Long, stockCount: Int) = delegate.updateStock(id, stockCount)
 
+    override fun updateStockBatch(batch: Map<Long, Int>) = delegate.updateStockBatch(batch)
+
     override fun freezeByStall(stallId: String, frozen: Boolean) {
         delegate.freezeByStall(stallId, frozen)
         // Reindex every shop under this stall so findByContainer sees the current frozen state.

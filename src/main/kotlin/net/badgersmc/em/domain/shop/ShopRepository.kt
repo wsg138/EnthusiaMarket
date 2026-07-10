@@ -22,6 +22,8 @@ interface ShopRepository {
     fun backfillSellMaterials(): Int
     /** Set the denormalized container stock for [id]. */
     fun updateStock(id: Long, stockCount: Int)
+    /** Batch-update stock_count for many shops in one transaction (PERF-5). */
+    fun updateStockBatch(batch: Map<Long, Int>)
 
     /** Freeze or unfreeze all shops on a stall (bulk, single UPDATE). */
     fun freezeByStall(stallId: String, frozen: Boolean)

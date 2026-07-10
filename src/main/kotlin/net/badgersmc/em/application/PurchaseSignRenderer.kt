@@ -1,9 +1,11 @@
 package net.badgersmc.em.application
 
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.sign.PurchaseSign
 import net.badgersmc.em.domain.stall.Stall
+import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
@@ -36,6 +38,18 @@ class PurchaseSignRenderer(
     private val lang: LangService,
 ) {
 
+    @Volatile
+    private var openAuctionCache: Map<StallId, Auction> = emptyMap()
+
+    /**
+     * Pre-load all open auctions into memory so the timer-driven refresh loop
+     * avoids N separate DB round-trips (one per AUCTIONING sign). Call from
+     * [PurchaseSignRefreshListener.refreshLoaded] before the render loop.
+     */
+    fun refreshAuctionCache() {
+        openAuctionCache = auctions.allOpen().associateBy { it.stallId }
+    }
+
     fun render(sign: PurchaseSign): List<Component> {
         val stall = stalls.findById(sign.stallId)
             ?: return missing(sign)
@@ -56,7 +70,7 @@ class PurchaseSignRenderer(
     )
 
     private fun auctionLive(sign: PurchaseSign): List<Component> {
-        val auction = auctions.findOpenByStall(sign.stallId)
+        val auction = openAuctionCache[sign.stallId] ?: auctions.findOpenByStall(sign.stallId)
         val currentBid = auction?.highBid?.amount ?: auction?.startingBid ?: 0L
         return listOf(
             lang.msg("purchase_sign.auction.line1"),

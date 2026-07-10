@@ -135,6 +135,22 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         }
     }
 
+    override fun updateStockBatch(batch: Map<Long, Int>) {
+        if (batch.isEmpty()) return
+        ds.connection.use { conn ->
+            conn.autoCommit = false
+            conn.prepareStatement("UPDATE shop_items SET stock_count = ? WHERE id = ?").use { ps ->
+                for ((id, stock) in batch) {
+                    ps.setInt(1, stock)
+                    ps.setLong(2, id)
+                    ps.addBatch()
+                }
+                ps.executeBatch()
+            }
+            conn.commit()
+        }
+    }
+
     override fun freezeByStall(stallId: String, frozen: Boolean) {
         ds.connection.use { conn ->
             conn.prepareStatement("UPDATE shop_items SET frozen = ? WHERE stall_id = ?").use { ps ->
