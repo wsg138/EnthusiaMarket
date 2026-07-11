@@ -270,6 +270,23 @@ class ShopCommands(
         sign.update()
     }
 
+    @Subcommand("admin fixall")
+    @Permission("enthusiamarket.admin.shop")
+    fun adminFixAll(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shops = shopRepository.all()
+        var fixed = 0; var skipped = 0; var errors = 0
+        for (shop in shops) {
+            val world = org.bukkit.Bukkit.getWorld(shop.signWorld)
+            if (world == null) { errors++; continue }
+            val sign = world.getBlockAt(shop.signX, shop.signY, shop.signZ).state as? org.bukkit.block.Sign
+            if (sign == null) { skipped++; continue }
+            reRenderShopSign(shop, sign)
+            fixed++
+        }
+        player.sendMessage(lang.msg("shop.admin.fixall.result", "fixed" to fixed, "skipped" to skipped, "errors" to errors))
+    }
+
     @Subcommand("admin breakothers")
     @Permission("enthusiamarket.admin.shop")
     fun adminBreakOthers(

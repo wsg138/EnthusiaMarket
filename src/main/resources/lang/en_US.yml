@@ -260,6 +260,8 @@ shop:
       done: "<green>Sign re-rendered; container OK."
       container_missing: "<yellow>Sign re-rendered, but the linked container is gone — use /shop admin remove."
       not_a_sign: "<red>The stored sign block isn't a sign anymore — use /shop admin remove."
+    fixall:
+      result: "<prefix>Sign fixall: fixed=<green><fixed></green> skipped=<yellow><skipped></yellow> errors=<red><errors></red>"
     breakothers:
       enabled: "<green>Break-others mode ON for <gold><minutes></gold> minute(s). Break any shop sign to delete it."
       disabled: "<gray>Break-others mode disabled."
