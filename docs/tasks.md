@@ -7,9 +7,15 @@
 Tags: `TDD` (failing test before code), `DOC` (markdown / template authoring), `INFRA` (manifests, CI, repo plumbing).
 State legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[!]` blocked.
 
-Each task carries `References:` (REQ-IDs + spec sections consulted) and `Evidence:` (sources consulted as work proceeds — an empty block blocks advancement past `spec-done` per REQ-030).
+## Sign item display names & truncation (REQ-299)
 
-Tasks are ordered to honour state-machine and architectural dependencies. Independent tasks within a milestone may be parallelised.
+Reported: Netherite_Ingot (15 chars) doesn't show on sign. Custom anvil names lost.
+
+- [ ] **TDD-299** — Sign renderer uses custom display name with truncation
+  References: REQ-299
+  Tag: TDD
+  Description: Modify `ShopSignRenderer.lines()` to accept `displayName: Component?` — when non-null, use the custom display name with color preserved; otherwise fall back to `sellMaterialName`. Truncate plain text to 14 chars + "…" when longer, preserving the original Component's style. Update `SignPlaceListener` (pass `held.itemMeta?.displayName()`) and `CreateShopMenu.writeSignText()` (pass deserialized ItemStack's display name) to supply the custom name. Failing test first: custom name shown on sign line 1; long name truncated with "…" retaining color; no custom name falls back to Material.name.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/ShopSignRenderer.kt`, `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/SignPlaceListener.kt:130-200`, `src/main/kotlin/net/badgersmc/em/interaction/gui/CreateShopMenu.kt:248-264`, `src/main/kotlin/net/badgersmc/em/application/ItemStackSerializer.kt`, `net.kyori.adventure.text.Component`, `net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer`, `net.kyori.adventure.text.format.NamedTextColor`
 
 ---
 

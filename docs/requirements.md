@@ -403,6 +403,10 @@ return the stall to UNOWNED.
 
 **Event-driven.** WHEN a pull request touches `wiki/**` THE SYSTEM SHALL run in CI: frontmatter validation, help-topic parity check, markdown lint, and a strict mkdocs build — blocking merge on any failure.
 
+### REQ-299 — Sign item display name with custom-name support
+
+**Ubiquitous.** THE SYSTEM SHALL display the traded item's custom display name (from an anvil rename) on shop signs when one exists, preserving its color formatting, and fall back to the Material name when no custom name is set. Item names longer than 14 characters SHALL be truncated to 14 characters followed by an ellipsis ("…") in plain text while preserving the original Component style (color, decorations).
+
 ---
 
 ## Acceptance

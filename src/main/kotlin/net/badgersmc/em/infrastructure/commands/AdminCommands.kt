@@ -694,13 +694,13 @@ class AdminCommands(
     }
 
     @Subcommand("help")
-    @Permission("enthusiamarket.shop.help")
     fun help(
         @Context sender: CommandSender,
         @Arg("topic") topicSlug: String? = null,
     ) {
         if (topicSlug == null) {
-            sender.sendMessage(net.badgersmc.em.interaction.help.HelpTopicsRenderer.renderTopicMenu())
+            val menu = net.badgersmc.em.interaction.help.HelpTopicsRenderer.renderTopicMenu()
+            sender.sendMessage(menu)
             return
         }
         val topic = net.badgersmc.em.interaction.help.HelpTopics.bySlug(topicSlug)

@@ -18,6 +18,8 @@ interface ShopRepository {
     fun deleteByOwner(owner: UUID): Int
     /** Search-enabled shops whose sell item is [material] (UPPERCASE Material name). */
     fun findBySellMaterial(material: String): List<Shop>
+    /** Search-enabled shops whose sell material starts with [prefix] (LIKE). */
+    fun findBySellMaterialPrefix(prefix: String): List<Shop>
     /** Populate sell_material for rows missing it (one-time after V018). Returns rows updated. */
     fun backfillSellMaterials(): Int
     /** Set the denormalized container stock for [id]. */

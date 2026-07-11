@@ -197,7 +197,8 @@ open class SignPlaceListener(
         shopRepository.upsert(shop)
 
         // Render sign lines with the shared formatter.
-        val signLines = signRenderer.lines(direction, held.type.name.lowercase(), amount, costDisplay)
+        val displayName = held.itemMeta?.displayName()
+        val signLines = signRenderer.lines(direction, held.type.name.lowercase(), amount, costDisplay, displayName)
         for ((i, component) in signLines.withIndex()) {
             event.line(i, component)
         }

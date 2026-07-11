@@ -87,12 +87,13 @@ data class Stall(
     /**
      * Checks whether [playerUuid] has management authority over this stall.
      *
-     * - **SOLO**: the player must match the owner UUID.
-     * - **GUILD**: the player must be a guild member with MANAGE_SHOPS permission.
+     * - **SOLO**: the player must match the owner UUID or be in the member set.
+     * - **GUILD**: the player must be a guild member. Any guild member can
+     *   manage (MANAGE_SHOPS is not required — shop creation is gated separately).
      * - **NONE** (unowned): always returns false.
      *
      * @param playerUuid  the actor requesting management.
-     * @param guildProvider  port used to resolve guild membership & permissions.
+     * @param guildProvider  port used to resolve guild membership.
      * @return `true` if the player is authorised, `false` otherwise.
      */
     fun canManage(playerUuid: UUID, guildProvider: GuildProvider): Boolean {
@@ -100,18 +101,13 @@ data class Stall(
             OwnerType.NONE -> false
             OwnerType.SOLO -> {
                 try {
-                    UUID.fromString(owner.id) == playerUuid
+                    UUID.fromString(owner.id) == playerUuid || playerUuid in members
                 } catch (_: IllegalArgumentException) {
                     false
                 }
             }
             OwnerType.GUILD -> {
-                guildProvider.isMember(playerUuid, owner.id) &&
-                    guildProvider.hasShopPermission(
-                        playerUuid,
-                        owner.id,
-                        GuildProvider.GuildPermission.MANAGE_SHOPS
-                    )
+                guildProvider.isMember(playerUuid, owner.id)
             }
         }
     }

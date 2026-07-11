@@ -5,7 +5,6 @@ import net.badgersmc.em.application.AdminBreakMode
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.LookAtShopResolver
 import net.badgersmc.em.application.ShopManagementService
-import net.badgersmc.em.application.ShopSearchService
 import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.application.ShopVaultService
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -146,6 +145,7 @@ class ShopCommands(
 
     @Subcommand("search")
     @Permission("enthusiamarket.shop.use")
+    @Suppress("UnusedParameter")
     fun search(
         @Context sender: CommandSender,
         @net.badgersmc.nexus.commands.annotations.Arg("query")
@@ -157,19 +157,23 @@ class ShopCommands(
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
         if (query == null) { player.sendMessage(lang.msg("shop.cmd.search.usage")); return }
         val material = org.bukkit.Material.matchMaterial(query)
-        if (material == null) { player.sendMessage(lang.msg("shop.cmd.search.unknown_item", "query" to query)); return }
-        val mode = when (modeArg.lowercase()) {
-            "sell" -> ShopSearchService.SearchMode.SELL
-            "buy" -> ShopSearchService.SearchMode.BUY
-            else -> ShopSearchService.SearchMode.ANY
+        // Exact match first, then prefix fallback for partial queries (2+ chars)
+        if (material != null) {
+            val results = shopRepository.findBySellMaterial(material.name)
+            if (results.isNotEmpty()) {
+                net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
+                return
+            }
         }
-        if (mode == ShopSearchService.SearchMode.BUY) {
-            player.sendMessage(lang.msg("shop.cmd.search.buy_unavailable")); return
+        // Prefix fallback
+        if (query.length >= 2) {
+            val prefixResults = shopRepository.findBySellMaterialPrefix(query.uppercase())
+            if (prefixResults.isNotEmpty()) {
+                net.badgersmc.em.interaction.gui.SearchResultsMenu(prefixResults, query, pageArg.coerceAtLeast(1), lang).open(player)
+                return
+            }
         }
-        // SELL/ANY both match the sell item today (BUY is rejected above). SQL-filtered, no full scan.
-        val results = shopRepository.findBySellMaterial(material.name)
-        if (results.isEmpty()) { player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query)); return }
-        net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
+        player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
     }
 
     @Subcommand("history")
@@ -251,7 +255,9 @@ class ShopCommands(
 
     /** Re-apply the four sign lines from stored shop data onto the live sign block. */
     private fun reRenderShopSign(shop: net.badgersmc.em.domain.shop.Shop, sign: org.bukkit.block.Sign) {
-        val sell = ItemStackSerializer.deserialize(shop.sellItem)?.type?.name?.lowercase() ?: "?"
+        val deserialized = ItemStackSerializer.deserialize(shop.sellItem)
+        val sell = deserialized?.type?.name?.lowercase() ?: "?"
+        val displayName = deserialized?.itemMeta?.displayName()
         val costDisplay = if (shop.direction == SignDirection.TRADE) {
             val costMat = ItemStackSerializer.deserialize(shop.costItem)?.type?.name?.lowercase() ?: "?"
             "${shop.costAmount}x $costMat"
@@ -259,7 +265,7 @@ class ShopCommands(
             "${shop.costAmount}"
         }
         val side = sign.getSide(org.bukkit.block.sign.Side.FRONT)
-        signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay)
+        signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay, displayName)
             .forEachIndexed { i, c -> side.line(i, c) }
         sign.update()
     }

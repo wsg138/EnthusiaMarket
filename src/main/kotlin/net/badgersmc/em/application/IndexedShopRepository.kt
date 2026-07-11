@@ -75,5 +75,6 @@ class IndexedShopRepository(
     override fun countAll(): Int = delegate.countAll()
     override fun countByOwner(owner: UUID): Int = delegate.countByOwner(owner)
     override fun findBySellMaterial(material: String): List<Shop> = delegate.findBySellMaterial(material)
+    override fun findBySellMaterialPrefix(prefix: String): List<Shop> = delegate.findBySellMaterialPrefix(prefix)
     override fun backfillSellMaterials(): Int = delegate.backfillSellMaterials()
 }
