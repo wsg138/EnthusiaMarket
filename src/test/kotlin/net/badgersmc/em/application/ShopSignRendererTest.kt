@@ -35,8 +35,8 @@ class ShopSignRendererTest {
     @Test fun `custom display name shown on sign line 1`() {
         val customName = Component.text("Legendary Sword", NamedTextColor.GOLD)
         val lines = r.lines(SignDirection.SELL, "diamond_sword", 1, "500", displayName = customName)
-        // "Legendary Sword" is 15 chars → truncated to 14 + "…"
-        assertEquals("1x Legendary Swor…", plain.serialize(lines[1]))
+        // "Legendary Sword" is 15 chars → truncated to 11 + "…"
+        assertEquals("1x Legendary S…", plain.serialize(lines[1]))
         val childColor = lines[1].children().firstOrNull()?.color()
         assertEquals(NamedTextColor.GOLD, childColor)
     }
@@ -44,7 +44,7 @@ class ShopSignRendererTest {
     @Test fun `long custom name truncated with ellipsis preserving color`() {
         val customName = Component.text("Super Long Epic Diamond Sword of Doom", NamedTextColor.RED)
         val lines = r.lines(SignDirection.SELL, "diamond_sword", 1, "500", displayName = customName)
-        assertEquals("1x Super Long Epi…", plain.serialize(lines[1]))
+        assertEquals("1x Super Long …", plain.serialize(lines[1]))
         val childColor = lines[1].children().firstOrNull()?.color()
         assertEquals(NamedTextColor.RED, childColor)
     }
@@ -56,6 +56,6 @@ class ShopSignRendererTest {
 
     @Test fun `long material name truncated`() {
         val lines = r.lines(SignDirection.SELL, "netherite_ingot", 1, "1000")
-        assertEquals("1x netherite_ingo…", plain.serialize(lines[1]))
+        assertEquals("1x netherite_i…", plain.serialize(lines[1]))
     }
 }

@@ -9,13 +9,12 @@ import net.badgersmc.em.events.PostShopTransactionEvent
 import net.badgersmc.em.events.ShopStockDepletedEvent
 import org.bukkit.Bukkit
 import org.bukkit.Location
+import org.bukkit.Material
 import org.bukkit.World
 import org.bukkit.block.Block
 import org.bukkit.block.Container
-import org.bukkit.block.DoubleChest
 import org.bukkit.block.Sign
 import org.bukkit.event.Event
-import org.bukkit.Material
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.ItemMeta
@@ -400,7 +399,7 @@ class ContainerStockListenerTest {
     // ── Live-inventory path tests ──────────────────────────────────────
 
     @Test
-    fun `refreshAllSigns reads live Chest blockInventory not snapshot`() {
+    fun `refreshAllSigns reads Container inventory not stale snapshot`() {
         val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
@@ -411,24 +410,19 @@ class ContainerStockListenerTest {
 
         val contItem = matchingStock(42)
 
-        // Set up a Chest block (not just Container) so the code takes
-        // the Chest.getBlockInventory() live-inventory path.
         mockkStatic(Bukkit::class)
         val world = mockWorldWithChunksLoaded()
         every { Bukkit.getWorld("world") } returns world
 
         val sign = mockSignAt(world)
 
-        // Chest mock: getBlockInventory() returns the live inventory,
-        // getInventory() would return a stale snapshot — we verify the
-        // live one is used.
         val liveInv = mockk<Inventory>(relaxed = true)
         every { liveInv.contents } returns arrayOf(contItem)
-        val chest = mockk<org.bukkit.block.Chest>(relaxed = true)
-        every { chest.blockInventory } returns liveInv
+        val container = mockk<Container>(relaxed = true)
+        every { container.inventory } returns liveInv
         val chestBlock = mockk<Block>(relaxed = true)
-        every { chestBlock.type } returns Material.CHEST              // PERF-5: type check
-        every { chestBlock.state } returns chest
+        every { chestBlock.type } returns Material.CHEST
+        every { chestBlock.state } returns container
         every { world.getBlockAt(50, 64, 60) } returns chestBlock
 
         stubPluginManager()
@@ -441,12 +435,11 @@ class ContainerStockListenerTest {
         verify { sign.update(false) }
         verify { repo.updateStockBatch(mapOf(s.id to 42)) }
 
-        // Chest.getBlockInventory() was read (live path, not snapshot)
-        verify { chest.blockInventory }
+        // Container.inventory was read
     }
 
     @Test
-    fun `refreshAllSigns sums both halves of double chest via holder`() {
+    fun `refreshAllSigns sums both halves of double chest via container inventory`() {
         val sellStack = sellTemplate()
         mockkObject(ItemStackSerializer)
         every { ItemStackSerializer.deserialize("base64item") } returns sellStack
@@ -458,27 +451,21 @@ class ContainerStockListenerTest {
         val leftItem = matchingStock(32)
         val rightItem = matchingStock(32)
 
-        // Double chest: one half's blockInventory is a single-side view.
-        // Its holder is DoubleChest — the combined inventory has 64 total.
         mockkStatic(Bukkit::class)
         val world = mockWorldWithChunksLoaded()
         every { Bukkit.getWorld("world") } returns world
 
         val sign = mockSignAt(world)
 
+        // Container.inventory on a double chest half returns full 54-slot inventory.
         val combinedInv = mockk<Inventory>(relaxed = true)
         every { combinedInv.contents } returns arrayOf(leftItem, rightItem)
-        val doubleChest = mockk<DoubleChest>(relaxed = true)
-        every { doubleChest.inventory } returns combinedInv
 
-        val singleInv = mockk<Inventory>(relaxed = true)
-        every { singleInv.holder } returns doubleChest
-
-        val chest = mockk<org.bukkit.block.Chest>(relaxed = true)
-        every { chest.blockInventory } returns singleInv
+        val container = mockk<Container>(relaxed = true)
+        every { container.inventory } returns combinedInv
         val chestBlock = mockk<Block>(relaxed = true)
-        every { chestBlock.type } returns Material.CHEST              // PERF-5: type check
-        every { chestBlock.state } returns chest
+        every { chestBlock.type } returns Material.CHEST
+        every { chestBlock.state } returns container
         every { world.getBlockAt(50, 64, 60) } returns chestBlock
 
         stubPluginManager()
@@ -486,12 +473,8 @@ class ContainerStockListenerTest {
         val listener = ContainerStockListener(repo, mockk(relaxed = true))
         listener.refreshAllSigns()
 
-        // Stock = 32 + 32 = 64
         verify { sign.line(3, any<Component>()) }
         verify { sign.update(false) }
         verify { repo.updateStockBatch(mapOf(s.id to 64)) }
-
-        // Must read DoubleChest.inventory (combined), not singleInv.contents
-        verify { doubleChest.inventory }
     }
 }

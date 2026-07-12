@@ -56,6 +56,8 @@ admin:
     total: "<gray>Total: <white><used></white> / <yellow><cap>"
     kind: "<gray>  <white><kind></white>: <white><used></white> / <yellow><cap>"
     unlimited: "<green>∞"
+  refreshsigns:
+    result: "<prefix>Sign refresh: fixed=<green><fixed></green> skipped=<yellow><skipped></yellow> errors=<red><errors></red>"
 
 # REQ-250..253 — physical purchase signs. Four lines max per Bukkit sign.
 # Render templates are state-driven by PurchaseSignRenderer.

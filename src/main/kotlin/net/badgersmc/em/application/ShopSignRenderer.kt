@@ -25,8 +25,8 @@ class ShopSignRenderer {
         val itemName: Component = if (displayName != null) {
             truncate(displayName)
         } else {
-            // Truncate material name too — e.g. "netherite_ingot" (15 chars) → "netherite_ing…"
-            val truncated = if (sellMaterialName.length > 14) sellMaterialName.take(14) + "…" else sellMaterialName
+            // Truncate material name — "totem_of_undying" → "totem_of_un…" (fits after "1x " prefix)
+            val truncated = if (sellMaterialName.length > 11) sellMaterialName.take(11) + "…" else sellMaterialName
             Component.text(truncated, NamedTextColor.WHITE)
         }
         val headerColor = when (direction) {
@@ -54,7 +54,7 @@ class ShopSignRenderer {
      * Callers with rich nested styling should truncate at a higher level before
      * constructing the multi-style component.
      */
-    private fun truncate(display: Component, maxLen: Int = 14): Component {
+    private fun truncate(display: Component, maxLen: Int = 11): Component {
         val plain = PlainTextComponentSerializer.plainText().serialize(display)
         if (plain.length <= maxLen) return display
         return Component.text(plain.take(maxLen) + "…", display.style())

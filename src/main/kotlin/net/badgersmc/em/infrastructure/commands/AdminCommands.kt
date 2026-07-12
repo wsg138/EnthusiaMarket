@@ -6,6 +6,7 @@ import net.badgersmc.em.application.ImportStallsService
 import net.badgersmc.em.application.LimitResolutionService
 import net.badgersmc.em.application.MassAuctionResult
 import net.badgersmc.em.application.SellOfferService
+import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.application.StallEvictionService
 import net.badgersmc.em.application.StallMemberService
 import net.badgersmc.em.application.StallOwnershipCounter
@@ -18,6 +19,7 @@ import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.application.GuildTradePolicyService
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -62,6 +64,8 @@ class AdminCommands(
     private val policyService: GuildTradePolicyService,
     private val guildProvider: GuildProvider,
     private val rentResync: net.badgersmc.em.application.RentTermsResyncService,
+    private val shopRepository: ShopRepository,
+    private val signRenderer: ShopSignRenderer,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -709,6 +713,28 @@ class AdminCommands(
             return
         }
         sender.sendMessage(net.badgersmc.em.interaction.help.HelpTopicsRenderer.renderTopicPage(topic))
+    }
+
+    /** Re-render all shop signs from the database. */
+    @Subcommand("refreshsigns")
+    @Permission("enthusiamarket.admin.shop")
+    fun refreshSigns(@Context sender: CommandSender) {
+        val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
+        val shops = shopRepository.all()
+        var fixed = 0; var skipped = 0; var errors = 0
+        for (shop in shops) {
+            try {
+                val world = org.bukkit.Bukkit.getWorld(shop.signWorld)
+                if (world == null) { errors++; continue }
+                val sign = world.getBlockAt(shop.signX, shop.signY, shop.signZ).state as? org.bukkit.block.Sign
+                if (sign == null) { skipped++; continue }
+                SignRenderHelper.renderToSign(signRenderer, sign, shop)
+                fixed++
+            } catch (_: Exception) {
+                errors++
+            }
+        }
+        player.sendMessage(lang.msg("admin.refreshsigns.result", "fixed" to fixed, "skipped" to skipped, "errors" to errors))
     }
 
     /**
