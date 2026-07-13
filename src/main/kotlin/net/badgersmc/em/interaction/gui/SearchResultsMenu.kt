@@ -48,20 +48,21 @@ class SearchResultsMenu(
         val pane = StaticPane(9, ROWS)
 
         pageItems.forEachIndexed { idx, shop ->
-            val icon = ItemStackSerializer.deserialize(shop.sellItem) ?: ItemStack(Material.CHEST)
-            val meta = icon.itemMeta
-            if (meta != null) {
-                val owner = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
-                val dirLabel = ShopDisplay.directionLabel(shop.direction)
-                val stallName = stallNames[StallId(shop.stallId)] ?: "Unknown"
-                meta.displayName(lang.msg(
-                    "gui.shop.search.result",
-                    "sell_amt" to shop.sellAmount, "cost" to shop.costAmount,
-                    "trades" to ShopDisplay.tradesAvailable(shop), "owner" to owner,
-                    "direction" to dirLabel, "stall" to stallName,
-                ))
-                icon.itemMeta = meta
-            }
+            val template = ItemStackSerializer.deserialize(shop.sellItem)
+            // Use a clean stack from the material so the original display name and
+            // enchantment lore don't overlay the search-result metadata
+            val icon = ItemStack(template?.type ?: Material.CHEST)
+            val meta = icon.itemMeta ?: return@forEachIndexed
+            val owner = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
+            val dirLabel = ShopDisplay.directionLabel(shop.direction)
+            val stallName = stallNames[StallId(shop.stallId)] ?: "Unknown"
+            meta.displayName(lang.msg(
+                "gui.shop.search.result",
+                "sell_amt" to shop.sellAmount, "cost" to shop.costAmount,
+                "trades" to ShopDisplay.tradesAvailable(shop), "owner" to owner,
+                "direction" to dirLabel, "stall" to stallName,
+            ))
+            icon.itemMeta = meta
             pane.addItem(GuiItem(icon) {
                 it.isCancelled = true
                 player.closeInventory()
