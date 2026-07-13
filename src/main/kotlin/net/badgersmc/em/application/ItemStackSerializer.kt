@@ -19,13 +19,17 @@ object ItemStackSerializer {
             log.warning("ItemStack deserialization: bad base64: ${e.message}")
             return null
         }
-        runCatching { ItemStack.deserializeBytes(bytes) }.getOrNull()?.let { return it }
-        runCatching {
-            ByteArrayInputStream(bytes).let { bais ->
-                BukkitObjectInputStream(bais).use { it.readObject() as ItemStack }
-            }
-        }.getOrNull()?.let { return it }
-        log.warning("ItemStack deserialization failed: neither NBT nor legacy format parsed.")
-        return null
+        val item = runCatching { ItemStack.deserializeBytes(bytes) }.getOrNull()
+            ?: runCatching {
+                ByteArrayInputStream(bytes).let { bais ->
+                    BukkitObjectInputStream(bais).use { it.readObject() as ItemStack }
+                }
+            }.getOrNull()
+            ?: return null
+        // Round-trip through serialize/deserialize to normalize data version.
+        // Items stored before a Minecraft/Paper update carry an old data version
+        // that won't match current player-inventory items via equals/hashCode.
+        // No-op if the round-trip fails — use original.
+        return runCatching { ItemStack.deserialize(item.serialize()) }.getOrDefault(item)
     }
 }

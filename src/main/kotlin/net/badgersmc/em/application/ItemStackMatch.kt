@@ -24,8 +24,20 @@ object ItemStackMatch {
             .filter { bytesMatch(it, templateBytes) }
             .sumOf { it.amount }
 
+    /** Counts inventory items matching [template] via [ItemStack.isSimilar],
+     *  which compares material, damage, and ItemMeta (enchantments, name, lore)
+     *  but ignores repair cost. Use for enchanted items where users may have
+     *  anvilled/merged stacks with different repair costs on the same item. */
+    fun countSimilar(inventory: Inventory, template: ItemStack): Int =
+        inventory.contents.filterNotNull()
+            .filter { it.isSimilar(template) }
+            .sumOf { it.amount }
+
     fun containsAtLeast(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
         countIn(inventory, template) >= amount
+
+    fun containsAtLeastSimilar(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
+        countSimilar(inventory, template) >= amount
 
     fun canFit(inventory: Inventory, template: ItemStack, amount: Int): Boolean {
         if (amount <= 0) return false
@@ -37,6 +49,23 @@ object ItemStackMatch {
             remaining -= freeSpaceInSlot(slot, templateBytes, maxStack)
         }
         return remaining <= 0
+    }
+
+    fun canFitSimilar(inventory: Inventory, template: ItemStack, amount: Int): Boolean {
+        if (amount <= 0) return false
+        val templateCopy = template.clone()
+        var remaining = amount
+        val maxStack = template.maxStackSize
+        for (slot in inventory.storageContents) {
+            if (remaining <= 0) break
+            remaining -= freeSpaceSimilar(slot, templateCopy, maxStack)
+        }
+        return remaining <= 0
+    }
+
+    private fun freeSpaceSimilar(slot: ItemStack?, template: ItemStack, maxStack: Int): Int {
+        if (slot == null || slot.type.isAir) return maxStack
+        return if (slot.isSimilar(template)) (maxStack - slot.amount).coerceAtLeast(0) else 0
     }
 
     private fun freeSpaceInSlot(slot: ItemStack?, templateBytes: ByteArray, maxStack: Int): Int {

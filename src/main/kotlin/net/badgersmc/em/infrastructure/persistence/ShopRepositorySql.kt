@@ -194,10 +194,113 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
     private fun extractMaterial(base64: String): String? {
         return try {
             val bytes = java.util.Base64.getDecoder().decode(base64)
-            val stream = java.io.ByteArrayInputStream(bytes)
-            val item = org.bukkit.util.io.BukkitObjectInputStream(stream).readObject() as org.bukkit.inventory.ItemStack
-            item.type.name
+            // Try modern Paper data-component format first (serializeAsBytes output)
+            runCatching { org.bukkit.inventory.ItemStack.deserializeBytes(bytes) }
+                .getOrNull()?.type?.name?.let { return it }
+            // Fall back to legacy Java-serialized format (pre-Paper 1.20.5)
+            java.io.ByteArrayInputStream(bytes).use { stream ->
+                runCatching {
+                    org.bukkit.util.io.BukkitObjectInputStream(stream).use { ois ->
+                        (ois.readObject() as org.bukkit.inventory.ItemStack).type.name
+                    }
+                }.getOrNull()
+            }?.let { return it }
+            // Last resort: gzip-compressed NBT (oldest format, still in live DBs)
+            extractMaterialFromNBT(bytes)
         } catch (_: Exception) { null }
+    }
+
+    /** Extracts the item id ("minecraft:diamond" → "DIAMOND") from gzip-compressed NBT. */
+    @Suppress("CyclomaticComplexMethod")
+    private fun extractMaterialFromNBT(raw: ByteArray): String? {
+        val data = try {
+            java.util.zip.GZIPInputStream(java.io.ByteArrayInputStream(raw)).readBytes()
+        } catch (_: Exception) { return null }
+        if (data.size < 3 || data[0] != 0x0A.toByte()) return null
+        var pos = 3 // skip TAG_Compound header (type + 2-byte empty name)
+        while (pos < data.size) {
+            val tagId = data[pos++].toInt() and 0xFF
+            if (tagId == 0x00) break // TAG_End
+            val nameLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
+            pos += 2
+            val name = if (nameLen > 0) String(data, pos, nameLen, Charsets.UTF_8) else ""
+            pos += nameLen
+            when (tagId) {
+                0x08 -> { // TAG_String
+                    val valLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
+                    pos += 2
+                    val value = String(data, pos, valLen, Charsets.UTF_8)
+                    pos += valLen
+                    if (name == "id") {
+                        return if (value.startsWith("minecraft:")) value.removePrefix("minecraft:").uppercase()
+                        else value.uppercase()
+                    }
+                }
+                0x01 -> pos += 1                     // TAG_Byte
+                0x02 -> pos += 2                     // TAG_Short
+                0x03, 0x05 -> pos += 4               // TAG_Int, TAG_Float
+                0x04, 0x06 -> pos += 8               // TAG_Long, TAG_Double
+                0x07 -> pos += 4 + readIntBigEndian(data, pos)
+                0x0A -> { /* TAG_Compound — skip compound body by recursing to TAG_End */ pos = skipCompound(data, pos) }
+                0x0B -> pos += 4 + (4 * readIntBigEndian(data, pos))
+                0x0C -> pos += 4 + (8 * readIntBigEndian(data, pos))
+                0x09 -> { // TAG_List
+                    val childType = data[pos++].toInt() and 0xFF
+                    val count = readIntBigEndian(data, pos)
+                    pos += 4
+                    // Skip list entries by size
+                    repeat(count) { pos = skipSimpleNbt(data, pos, childType) }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun readIntBigEndian(data: ByteArray, offset: Int): Int {
+        return ((data[offset].toInt() and 0xFF) shl 24) or
+            ((data[offset + 1].toInt() and 0xFF) shl 16) or
+            ((data[offset + 2].toInt() and 0xFF) shl 8) or
+            (data[offset + 3].toInt() and 0xFF)
+    }
+
+    private fun skipSimpleNbt(data: ByteArray, pos: Int, tagId: Int): Int {
+        return when (tagId) {
+            0x01 -> pos + 1
+            0x02 -> pos + 2
+            0x03, 0x05 -> pos + 4
+            0x04, 0x06 -> pos + 8
+            0x08 -> {
+                val len = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
+                pos + 2 + len
+            }
+            0x07 -> pos + 4 + readIntBigEndian(data, pos)
+            0x0B -> pos + 4 + (4 * readIntBigEndian(data, pos))
+            0x0C -> pos + 4 + (8 * readIntBigEndian(data, pos))
+            0x0A -> skipCompound(data, pos)
+            0x09 -> { // TAG_List
+                val childType = data[pos].toInt() and 0xFF
+                val count = readIntBigEndian(data, pos + 1)
+                var skipPos = pos + 5
+                @Suppress("UNUSED_VARIABLE")
+                for (i in 0 until count) {
+                    skipPos = skipSimpleNbt(data, skipPos, childType)
+                }
+                skipPos
+            }
+            else -> pos
+        }
+    }
+
+    private fun skipCompound(data: ByteArray, start: Int): Int {
+        var pos = start
+        while (pos < data.size) {
+            val tagId = data[pos++].toInt() and 0xFF
+            if (tagId == 0x00) return pos
+            val nameLen = ((data[pos].toInt() and 0xFF) shl 8) or (data[pos + 1].toInt() and 0xFF)
+            pos += 2 + nameLen
+            pos = skipSimpleNbt(data, pos, tagId)
+        }
+        return pos
     }
 
     private fun updateSellMaterial(conn: java.sql.Connection, id: Long, material: String) {

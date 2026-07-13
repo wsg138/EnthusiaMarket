@@ -8,7 +8,6 @@ import net.badgersmc.em.interaction.ShopInfoCard
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.MenuFactory
 import net.badgersmc.em.interaction.gui.PurchaseMenu
-import java.util.Base64
 import net.badgersmc.nexus.annotations.Component
 import org.bukkit.Bukkit
 import org.bukkit.block.Sign
@@ -92,12 +91,8 @@ open class ShopInteractListener(
         val world = Bukkit.getWorld(shop.containerWorld) ?: return 0
         val state = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ).state
         val inv = (state as? org.bukkit.block.Container)?.inventory ?: return 0
-        val templateBytes = try {
-            Base64.getDecoder().decode(shop.sellItem)
-        } catch (_: IllegalArgumentException) {
-            return 0
-        }
-        val total = net.badgersmc.em.application.ItemStackMatch.countInBytes(inv, templateBytes)
+        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
+        val total = net.badgersmc.em.application.ItemStackMatch.countSimilar(inv, sellStack)
         return total / shop.sellAmount.coerceAtLeast(1)
     }
 }
