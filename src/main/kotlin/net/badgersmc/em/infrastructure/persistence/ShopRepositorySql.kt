@@ -216,8 +216,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                  container_world, container_x, container_y, container_z,
                  sell_item, sell_amount, cost_item, cost_amount,
                  trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
-                 direction, search_enabled, stock_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 direction, search_enabled, sell_material, stock_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """.trimIndent()
             conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS).use { ps ->
                 bind(ps, shop)
@@ -237,7 +237,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ds.connection.use { conn ->
             conn.prepareStatement(UPDATE_SQL).use { ps ->
                 bind(ps, shop)
-                ps.setLong(23, shop.id)
+                ps.setLong(24, shop.id)
                 ps.executeUpdate()
             }
         }
@@ -250,7 +250,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
               container_world = ?, container_x = ?, container_y = ?, container_z = ?,
               sell_item = ?, sell_amount = ?, cost_item = ?, cost_amount = ?,
               trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
-              direction = ?, search_enabled = ?, stock_count = ?
+              direction = ?, search_enabled = ?, sell_material = ?, stock_count = ?
             WHERE id = ?
         """.trimIndent()
     }
@@ -277,7 +277,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ps.setBoolean(19, shop.adminShop)
         ps.setString(20, shop.direction.name)
         ps.setBoolean(21, shop.searchEnabled)
-        ps.setInt(22, shop.stockCount)
+        ps.setString(22, extractMaterial(shop.sellItem))
+        ps.setInt(23, shop.stockCount)
     }
 
     private fun queryCount(sql: String, prep: PreparedStatement.() -> Unit): Int {
