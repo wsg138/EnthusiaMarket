@@ -144,23 +144,19 @@ class ShopCommands(
 
     @Subcommand("search")
     @Permission("enthusiamarket.shop.use")
-    @Suppress("UnusedParameter")
     fun search(
         @Context sender: CommandSender,
         @net.badgersmc.nexus.commands.annotations.Arg("query")
         @net.badgersmc.nexus.paper.commands.annotations.Suggests("itemMaterials")
-        query: String? = null,
-        @net.badgersmc.nexus.commands.annotations.Arg("mode") modeArg: String = "any",
-        @net.badgersmc.nexus.commands.annotations.Arg("page") pageArg: Int = 1,
+        query: String,
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
-        if (query == null) { player.sendMessage(lang.msg("shop.cmd.search.usage")); return }
         val material = org.bukkit.Material.matchMaterial(query)
         // Exact match first, then prefix fallback for partial queries (2+ chars)
         if (material != null) {
             val results = shopRepository.findBySellMaterial(material.name)
             if (results.isNotEmpty()) {
-                net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, pageArg.coerceAtLeast(1), lang).open(player)
+                net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, 1, lang).open(player)
                 return
             }
         }
@@ -168,7 +164,7 @@ class ShopCommands(
         if (query.length >= 2) {
             val prefixResults = shopRepository.findBySellMaterialPrefix(query.uppercase())
             if (prefixResults.isNotEmpty()) {
-                net.badgersmc.em.interaction.gui.SearchResultsMenu(prefixResults, query, pageArg.coerceAtLeast(1), lang).open(player)
+                net.badgersmc.em.interaction.gui.SearchResultsMenu(prefixResults, query, 1, lang).open(player)
                 return
             }
         }
@@ -177,15 +173,11 @@ class ShopCommands(
 
     @Subcommand("history")
     @Permission("enthusiamarket.shop.use")
-    fun history(
-        @Context sender: CommandSender,
-        @net.badgersmc.nexus.commands.annotations.Arg("page") page: Int = 1,
-    ) {
+    fun history(@Context sender: CommandSender) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
-        val p = page.coerceAtLeast(1)
-        val rows = transactions.findByOwner(player.uniqueId, PAGE_SIZE, (p - 1) * PAGE_SIZE)
+        val rows = transactions.findByOwner(player.uniqueId, PAGE_SIZE, 0)
         if (rows.isEmpty()) { player.sendMessage(lang.msg("shop.history.empty")); return }
-        player.sendMessage(lang.msg("shop.history.header", "page" to p))
+        player.sendMessage(lang.msg("shop.history.header", "page" to 1))
         val fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
             .withZone(java.time.ZoneId.systemDefault())
         for (t in rows) {
@@ -276,19 +268,10 @@ class ShopCommands(
 
     @Subcommand("admin breakothers")
     @Permission("enthusiamarket.admin.shop")
-    fun adminBreakOthers(
-        @Context sender: CommandSender,
-        @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "on",
-    ) {
+    fun adminBreakOthers(@Context sender: CommandSender) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
-        val durationMs = BreakDeleteMode.parseDurationMs(mode)
-        if (durationMs == null) {
-            adminBreak.disable(player.uniqueId)
-            player.sendMessage(lang.msg("shop.admin.breakothers.disabled"))
-            return
-        }
-        adminBreak.enable(player.uniqueId, durationMs)
-        player.sendMessage(lang.msg("shop.admin.breakothers.enabled", "minutes" to (durationMs / 60_000)))
+        adminBreak.enable(player.uniqueId, 5L * 60_000) // default 5-minute duration
+        player.sendMessage(lang.msg("shop.admin.breakothers.enabled", "minutes" to 5))
     }
 
     @Subcommand("admin vault")
