@@ -20,7 +20,7 @@ object HelpTopicsRenderer {
 
     fun renderTopicMenu(): Component {
         val header = Component.text("─── EnthusiaMarket Help ───", NamedTextColor.GOLD, TextDecoration.BOLD)
-        val intro = Component.text("Pick a topic (click or type /em help <topic>):", NamedTextColor.GRAY)
+        val intro = Component.text("Pick a topic (click or type /em help topic <topic>):", NamedTextColor.GRAY)
 
         val entries = HelpTopics.all.map { topic -> renderTopicEntry(topic) }
 
@@ -47,7 +47,7 @@ object HelpTopicsRenderer {
             .append(Component.text(topic.displayName, NamedTextColor.YELLOW))
             .append(Component.text("] ", NamedTextColor.DARK_GRAY))
             .append(Component.text(topic.summary, NamedTextColor.GRAY))
-            .clickEvent(ClickEvent.runCommand("/em help ${topic.slug}"))
+            .clickEvent(ClickEvent.runCommand("/em help topic ${topic.slug}"))
             .hoverEvent(HoverEvent.showText(Component.text("Open ${topic.displayName} help", NamedTextColor.GOLD)))
             .build()
     }

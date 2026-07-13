@@ -700,13 +700,16 @@ class AdminCommands(
     @Subcommand("help")
     fun help(
         @Context sender: CommandSender,
-        @Arg("topic") topicSlug: String? = null,
     ) {
-        if (topicSlug == null) {
-            val menu = net.badgersmc.em.interaction.help.HelpTopicsRenderer.renderTopicMenu()
-            sender.sendMessage(menu)
-            return
-        }
+        val menu = net.badgersmc.em.interaction.help.HelpTopicsRenderer.renderTopicMenu()
+        sender.sendMessage(menu)
+    }
+
+    @Subcommand("help topic")
+    fun helpTopic(
+        @Context sender: CommandSender,
+        @Arg("topic") topicSlug: String,
+    ) {
         val topic = net.badgersmc.em.interaction.help.HelpTopics.bySlug(topicSlug)
         if (topic == null) {
             sender.sendMessage(lang.msg("shop.help.unknown_topic", "topic" to topicSlug))
