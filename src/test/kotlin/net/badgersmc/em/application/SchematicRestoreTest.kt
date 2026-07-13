@@ -66,7 +66,7 @@ class SchematicRestoreTest {
         val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, shopRepo, economy, mockk<GuildProvider>(relaxed = true), config(), auctionRepo,
+            stallRepo, shopRepo, economy, mockk<GuildProvider>(relaxed = true), config(), auctionRepo, mockk(),
         )
 
         val report = service.tick(now)

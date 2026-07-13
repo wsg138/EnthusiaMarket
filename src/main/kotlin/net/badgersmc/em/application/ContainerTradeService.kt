@@ -6,6 +6,7 @@ import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Bukkit
 import org.bukkit.block.Container
@@ -76,6 +77,8 @@ open class ContainerTradeService(
     private fun buyPreconditions(shop: Shop, playerUuid: UUID): BuyPreconditions {
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
+        if (stall.state == StallState.GRACE)
+            return BuyPreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
         val (player, sellStack) = resolvePlayerAndSellStack(shop, playerUuid)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
         if (!inventoryHasAtLeast(player.inventory, sellStack, shop.sellAmount))
@@ -176,6 +179,8 @@ open class ContainerTradeService(
     private fun sellPreconditions(shop: Shop, playerUuid: UUID): SellPreconditions {
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
+        if (stall.state == StallState.GRACE)
+            return SellPreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
         val (player, sellStack) = resolvePlayerAndSellStack(shop, playerUuid)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
         val container = getContainer(shop)
@@ -328,6 +333,8 @@ open class ContainerTradeService(
     private fun barterPreconditions(shop: Shop, playerUuid: UUID): BarterPreconditions {
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
+        if (stall.state == StallState.GRACE)
+            return BarterPreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
         if (shopVault == null) return BarterPreconditions(result = ContainerTradeResult.Failure("Vault unavailable"))
         val (player, stacks) = resolveBarterPlayer(playerUuid, shop)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Invalid item"))
@@ -478,6 +485,8 @@ open class ContainerTradeService(
     private fun slotTradePreconditions(shop: Shop, playerUuid: UUID): SlotTradePreconditions {
         val (ownerUuid, stall) = resolveStallOwner(shop)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall not found"))
+        if (stall.state == StallState.GRACE)
+            return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
         val player = getPlayer(playerUuid)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Player offline"))
         val (container, sellStack) = resolveContainerStock(shop)

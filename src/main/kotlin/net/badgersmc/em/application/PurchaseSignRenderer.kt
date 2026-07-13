@@ -56,7 +56,8 @@ class PurchaseSignRenderer(
 
         return when (stall.state) {
             StallState.UNOWNED -> buyable(sign)
-            StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING ->
+            StallState.EMERGENCY_AUCTIONING -> emergencyAuction(sign)
+            StallState.AUCTIONING, StallState.RE_AUCTIONING ->
                 auctionLive(sign)
             StallState.OWNED, StallState.GRACE -> ownedLines(sign, stall)
         }
@@ -77,6 +78,19 @@ class PurchaseSignRenderer(
             lang.msg("purchase_sign.auction.line2", "stall" to sign.stallId.value),
             lang.msg("purchase_sign.auction.line3", "bid" to currentBid),
             lang.msg("purchase_sign.auction.line4"),
+        )
+    }
+
+    /** Renders emergency-auction signs with a distinct dark-red colour scheme
+     *  so players can visually distinguish them from standard auctions. */
+    private fun emergencyAuction(sign: PurchaseSign): List<Component> {
+        val auction = openAuctionCache[sign.stallId] ?: auctions.findOpenByStall(sign.stallId)
+        val currentBid = auction?.highBid?.amount ?: auction?.startingBid ?: 0L
+        return listOf(
+            lang.msg("purchase_sign.emergency_auction.line1"),
+            lang.msg("purchase_sign.emergency_auction.line2", "stall" to sign.stallId.value),
+            lang.msg("purchase_sign.emergency_auction.line3", "bid" to currentBid),
+            lang.msg("purchase_sign.emergency_auction.line4"),
         )
     }
 

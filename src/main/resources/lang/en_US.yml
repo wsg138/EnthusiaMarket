@@ -72,6 +72,11 @@ purchase_sign:
     line2: "<aqua><stall>"
     line3: "<yellow>Bid: <bid>"
     line4: "<gray>/em bid"
+  emergency_auction:
+    line1: "<dark_gray>[<dark_red>EM</dark_red>]"
+    line2: "<red><stall>"
+    line3: "<gold>Bid: <bid>"
+    line4: "<red>Emergency!</red>"
   owned:
     line1: "<dark_gray>[<gold>EM</gold>] <aqua><stall>"
     line2: "<yellow><owner>"
@@ -93,6 +98,7 @@ purchase_sign:
     no_guild_permission: "<prefix><red>You do not have MANAGE_SHOPS in your guild"
     stall_missing: "<prefix><red>Stall not found:</red> <stall>"
     auction_live: "<prefix><yellow>Auction is live on</yellow> <aqua><stall></aqua> <gray>— use /em bid"
+    emergency_auction_alert: "<prefix><dark_red>EMERGENCY AUCTION:</dark_red> <red><stall></red> <gray>rent overdue — starting bid <gold><bid></gold>. Use <click:run_command:'/em bid'><aqua>/em bid</aqua></click> to participate!"
     already_owned: "<prefix><gray>This stall is already owned"
     buy_no_permission: "<prefix><red>You do not have permission to buy stalls (enthusiamarket.stall.buyout)"
     rejected: "<prefix><red>Purchase rejected: <reason>"

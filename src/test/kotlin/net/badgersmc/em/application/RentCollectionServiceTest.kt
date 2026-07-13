@@ -119,7 +119,7 @@ class RentCollectionServiceTest {
         val auctionRepo = mockk<AuctionRepository>(relaxed = true)
 
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, shopRepo, economy, guildProvider, cfg, auctionRepo),
+            service = RentCollectionService(stallRepo, shopRepo, economy, guildProvider, cfg, auctionRepo, mockk()),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
             economy = economy,
