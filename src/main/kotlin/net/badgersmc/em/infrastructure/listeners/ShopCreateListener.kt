@@ -132,7 +132,8 @@ open class ShopCreateListener(
     open fun canManageStall(stall: Stall, player: Player): Boolean {
         if (player.hasPermission("enthusiamarket.admin")) return true
         return when (stall.owner.type) {
-            OwnerType.SOLO -> stall.owner.id == player.uniqueId.toString()
+            OwnerType.SOLO -> stall.owner.id == player.uniqueId.toString() ||
+                player.uniqueId in stall.members
             OwnerType.GUILD -> {
                 val provider = guildProvider ?: run {
                     player.sendMessage(lang.msg("shop.create.guild_unavailable"))
