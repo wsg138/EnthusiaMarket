@@ -1,7 +1,6 @@
 package net.badgersmc.em.infrastructure.listeners
 
 import net.badgersmc.em.application.ItemStackMatch
-import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.events.PostShopTransactionEvent
@@ -15,6 +14,7 @@ import org.bukkit.block.Sign
 import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.inventory.Inventory
+import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -118,8 +118,12 @@ class ContainerStockListener(
     }
 
     private fun rawStockOf(inventory: Inventory, shop: Shop): Int {
-        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return 0
-        return ItemStackMatch.countIn(inventory, sellStack)
+        val templateBytes = try {
+            Base64.getDecoder().decode(shop.sellItem)
+        } catch (_: IllegalArgumentException) {
+            return 0
+        }
+        return ItemStackMatch.countInBytes(inventory, templateBytes)
     }
 
     /** The shop's sign block state, or null if the sign chunk isn't loaded.

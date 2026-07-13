@@ -40,6 +40,10 @@ class ContainerStockListenerTest {
 
     private fun sellTemplate(): ItemStack = ItemStack(Material.DIAMOND, 1)
 
+    /** Real base64-encoded sell item — no more mocked strings so
+     *  [ContainerStockListener.rawStockOf] can decode and compare raw bytes. */
+    private fun sellTemplateBase64(): String = ItemStackSerializer.serialize(sellTemplate())
+
     private fun matchingStock(amount: Int): ItemStack = ItemStack(Material.DIAMOND, amount)
 
     /** Same material as sellTemplate, but different display name — isSimilar would match,
@@ -52,7 +56,7 @@ class ContainerStockListenerTest {
         return stack
     }
 
-    /** Creates a shop with the given coordinates. */
+    /** Creates a shop with the given coordinates and a real base64 sell item. */
     private fun shop(
         sellAmount: Int = 1,
         owner: UUID = UUID.randomUUID()
@@ -60,7 +64,7 @@ class ContainerStockListenerTest {
         id = 1L, stallId = "s1", owner = owner,
         signWorld = "world", signX = 100, signY = 64, signZ = 200,
         containerWorld = "world", containerX = 50, containerY = 64, containerZ = 60,
-        sellItem = "base64item", sellAmount = sellAmount,
+        sellItem = sellTemplateBase64(), sellAmount = sellAmount,
         costItem = "base64cost", costAmount = 10
     )
 
@@ -120,10 +124,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns updates sign with stock count`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
@@ -142,10 +142,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns counts only byte-exact matching stacks`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
@@ -163,10 +159,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns skips update when stock unchanged`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
@@ -213,11 +205,28 @@ class ContainerStockListenerTest {
     }
 
     @Test
-    fun `refreshAllSigns skips update when sign chunk not loaded`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
+    fun `refreshAllSigns survives corrupt sellItem base64`() {
+        val corruptShop = Shop(
+            id = 1L, stallId = "s1", owner = UUID.randomUUID(),
+            signWorld = "world", signX = 100, signY = 64, signZ = 200,
+            containerWorld = "world", containerX = 50, containerY = 64, containerZ = 60,
+            sellItem = "!!!not-valid-base64!!!", sellAmount = 1,
+            costItem = "base64cost", costAmount = 10
+        )
+        val repo = mockk<ShopRepository>(relaxed = true)
+        every { repo.all() } returns listOf(corruptShop)
 
+        val contItem = matchingStock(10)
+        mockWorld(contents = arrayOf(contItem))
+
+        val listener = ContainerStockListener(repo, mockk(relaxed = true))
+        // Must NOT throw — corrupt data returns 0 stock gracefully
+        listener.refreshAllSigns()
+        verify { repo.updateStockBatch(mapOf(corruptShop.id to 0)) }
+    }
+
+    @Test
+    fun `refreshAllSigns skips update when sign chunk not loaded`() {
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
@@ -249,10 +258,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `onTransaction updates sign and persists stock`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.findById(1L) } returns s
@@ -295,10 +300,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `onTransaction fires depletion event even when sign chunk unloaded`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val ownerUuid = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
         val s = shop(owner = ownerUuid)
         val repo = mockk<ShopRepository>(relaxed = true)
@@ -342,10 +343,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `zero stock fires ShopStockDepletedEvent`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val ownerUuid = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
         val s = shop(owner = ownerUuid)
         val repo = mockk<ShopRepository>(relaxed = true)
@@ -372,10 +369,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `depletion event not re-fired when still at zero`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
@@ -400,10 +393,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns reads Container inventory not stale snapshot`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)
@@ -440,10 +429,6 @@ class ContainerStockListenerTest {
 
     @Test
     fun `refreshAllSigns sums both halves of double chest via container inventory`() {
-        val sellStack = sellTemplate()
-        mockkObject(ItemStackSerializer)
-        every { ItemStackSerializer.deserialize("base64item") } returns sellStack
-
         val s = shop()
         val repo = mockk<ShopRepository>(relaxed = true)
         every { repo.all() } returns listOf(s)

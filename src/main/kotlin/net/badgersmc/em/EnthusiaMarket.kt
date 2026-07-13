@@ -1,6 +1,6 @@
 package net.badgersmc.em
 
-import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.application.ItemStackMatch
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -22,6 +22,7 @@ import net.milkbowl.vault.economy.Economy
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
+import java.util.Base64
 import javax.sql.DataSource
 
 open class EnthusiaMarket : JavaPlugin() {
@@ -282,10 +283,8 @@ open class EnthusiaMarket : JavaPlugin() {
     /** Raw container stock for [shop], or null if its container chunk isn't loaded (no force-load). */
     private fun stockIfLoaded(shop: Shop): Int? {
         val container = loadedContainer(shop) ?: return null
-        val sellStack = ItemStackSerializer.deserialize(shop.sellItem) ?: return null
-        return container.inventory.contents.filterNotNull()
-            .filter { it.isSimilar(sellStack) }
-            .sumOf { it.amount }
+        val templateBytes = Base64.getDecoder().decode(shop.sellItem)
+        return ItemStackMatch.countInBytes(container.inventory, templateBytes)
     }
 
     /** The shop's container block state, only if its chunk is already loaded; null otherwise. */

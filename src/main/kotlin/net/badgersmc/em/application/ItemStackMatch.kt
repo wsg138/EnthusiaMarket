@@ -16,6 +16,14 @@ object ItemStackMatch {
             .sumOf { it.amount }
     }
 
+    /** Same as [countIn] but the template is raw serialized bytes (base64-decoded
+     *  from [ItemStackSerializer.serialize]) — avoids the deserialize→serialize
+     *  round-trip which can drop enchantment NBT in some Paper versions. */
+    fun countInBytes(inventory: Inventory, templateBytes: ByteArray): Int =
+        inventory.contents.filterNotNull()
+            .filter { bytesMatch(it, templateBytes) }
+            .sumOf { it.amount }
+
     fun containsAtLeast(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
         countIn(inventory, template) >= amount
 
