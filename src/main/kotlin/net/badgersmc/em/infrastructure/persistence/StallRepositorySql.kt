@@ -15,6 +15,14 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         setString(1, id.value)
     }
 
+    override fun findByIds(ids: Collection<StallId>): Map<StallId, Stall> {
+        if (ids.isEmpty()) return emptyMap()
+        val placeholders = ids.joinToString(",") { "?" }
+        return queryMany("SELECT * FROM stalls WHERE id IN ($placeholders)") {
+            ids.forEachIndexed { i, id -> setString(i + 1, id.value) }
+        }.associateBy { it.id }
+    }
+
     override fun findByRegion(world: String, regionId: String): Stall? =
         queryOne("SELECT * FROM stalls WHERE world = ? AND region_id = ?") {
             setString(1, world); setString(2, regionId)
