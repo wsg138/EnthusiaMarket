@@ -22,7 +22,7 @@ import org.bukkit.entity.Player
  * Player-facing `/shop` command (ItemShops parity sub-project 1). Menu-driven,
  * matching ItemShops: list / edit / trust / untrust / delete / breakdelete.
  */
-@Command(name = "shop", description = "Manage your shops", aliases = ["shops", "finditem"])
+@Command(name = "shop", description = "Manage your shops", aliases = ["shops"])
 @Suppress("LongParameterList")
 class ShopCommands(
     private val management: ShopManagementService,
@@ -160,7 +160,7 @@ class ShopCommands(
             val results = shopRepository.findBySellMaterial(material.name)
                 .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) } // cheapest unit price first
             if (results.isNotEmpty()) {
-                val ticker = priceTicker(material.name)
+                val ticker = net.badgersmc.em.application.PriceTickerService.compute(material.name, transactions)
                 net.badgersmc.em.interaction.gui.SearchResultsMenu(
                     results, query, 1, lang, stallRepository, ticker,
                 ).open(player)
@@ -180,27 +180,6 @@ class ShopCommands(
             }
         }
         player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
-    }
-
-    private fun priceTicker(item: String): net.badgersmc.em.domain.shop.PriceTicker? {
-        val now = System.currentTimeMillis()
-        val dayMs = 24 * 60 * 60 * 1000L
-        val current = transactions.avgPriceInWindow(item, now - dayMs, now) ?: return null
-        fun change(windowDays: Int, cachedCur: net.badgersmc.em.domain.shop.PriceStats = current): Double? {
-            val winMs = windowDays * dayMs
-            val cur = if (windowDays == 1) cachedCur
-                else transactions.avgPriceInWindow(item, now - winMs, now)
-            val prev = transactions.avgPriceInWindow(item, now - 2 * winMs, now - winMs)
-            if (cur == null || prev == null || prev.avgPrice <= 0) return null
-            return ((cur.avgPrice - prev.avgPrice) / prev.avgPrice) * 100
-        }
-        return net.badgersmc.em.domain.shop.PriceTicker(
-            avgPrice = current.avgPrice,
-            sampleCount = current.sampleCount,
-            change24h = change(1),
-            change7d = change(7),
-            change30d = change(30),
-        )
     }
 
     @Subcommand("history")
