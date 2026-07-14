@@ -29,6 +29,6 @@ class MarketRemoteAuthenticationTest {
             logSuccessfulStallUpdates = false,
         )
         assertEquals(DeliveryOutcome.Success,
-            MarketHttpClient(config, "EnthusiaMarket/0.2.0").authenticatedTest("remote-audit"))
+            MarketHttpClient(config, "EnthusiaMarket/1.0.0").authenticatedTest("remote-audit"))
     }
 }
