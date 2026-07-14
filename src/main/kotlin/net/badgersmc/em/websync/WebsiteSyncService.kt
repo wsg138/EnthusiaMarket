@@ -215,11 +215,18 @@ class WebsiteSyncService(
         if (paused) return
         val now = System.currentTimeMillis()
         val id = dirty.firstReady(now) ?: return
-        val expectedGeneration = generations[id] ?: 0L
-        val stall = try { projector.capture(id) } catch (_: Exception) {
-            errorCategory = "stall_capture"; dirty.remove(id); return
-        }
+        val stall = captureStallForSync(id) ?: return
         dirty.remove(id)
+        submitStallForDelivery(id, stall, (generations[id] ?: 0L))
+    }
+
+    private fun captureStallForSync(id: String): PublicStall? = try {
+        projector.capture(id)
+    } catch (_: Exception) {
+        errorCategory = "stall_capture"; dirty.remove(id); null
+    }
+
+    private fun submitStallForDelivery(id: String, stall: PublicStall, expectedGeneration: Long) {
         submit {
             try {
                 outbox?.enqueueStall(stall)

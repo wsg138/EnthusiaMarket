@@ -1,5 +1,8 @@
 ---
 exclude_paths:
-  - "docs/**"
   - "src/main/resources/migrations/**"
-  - "build.gradle.kts"
+  - "src/main/resources/website-sync-migrations/**"
+
+engines:
+  tsqllint:
+    enabled: false

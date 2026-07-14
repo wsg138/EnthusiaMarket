@@ -76,16 +76,16 @@ class MarketHttpClient(private val config: WebsiteSyncConfig) {
         }
         val code = safeCode(response.body())
         if (status == 409 && code in RECONCILE_CODES) return DeliveryOutcome.Reconcile(code!!)
-        return DeliveryOutcome.Pause(
-            when (status) {
-                400 -> "bad_request"
-                401 -> "unauthorized"
-                403 -> "forbidden"
-                413 -> "payload_too_large"
-                in 300..399 -> "http_3xx"
-                else -> "http_4xx"
-            }
-        )
+        return DeliveryOutcome.Pause(pauseCategory(status))
+    }
+
+    private fun pauseCategory(status: Int): String = when (status) {
+        400 -> "bad_request"
+        401 -> "unauthorized"
+        403 -> "forbidden"
+        413 -> "payload_too_large"
+        in 300..399 -> "http_3xx"
+        else -> "http_4xx"
     }
 
     private fun safeCode(bytes: ByteArray): String? = runCatching {
