@@ -16,7 +16,7 @@ class ShopFactoryTest {
     @BeforeTest fun setup() { MockBukkit.mock() }
     @AfterTest fun teardown() { MockBukkit.unmock() }
 
-    @Test fun `builds a SELL shop with base64 sell item and emerald cost hint`() {
+    @Test fun `builds a SELL shop with base64 sell item and raw_gold cost hint`() {
         val sellStack = ItemStack(Material.DIAMOND, 5)
         val sellItemB64 = ItemStackSerializer.serialize(sellStack.clone().apply { amount = 1 })
         val owner = UUID.randomUUID()
@@ -35,10 +35,10 @@ class ShopFactoryTest {
         val decoded = ItemStackSerializer.deserialize(shop.sellItem)
         assertNotNull(decoded)
         assertEquals(Material.DIAMOND, decoded.type)
-        // costItem is the emerald UI hint.
+        // costItem is the RAW_GOLD UI hint.
         val cost = ItemStackSerializer.deserialize(shop.costItem)
         assertNotNull(cost)
-        assertEquals(Material.EMERALD, cost.type)
+        assertEquals(Material.RAW_GOLD, cost.type)
     }
 
     @Test fun `price above Int MAX is clamped`() {

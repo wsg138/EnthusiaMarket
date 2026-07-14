@@ -326,6 +326,11 @@ gui:
       cost_amount: "<green>Cost: <gold><amount>"
       confirm: "<green>Confirm & create shop"
       cancel: "<red>Cancel"
+      custom_price: "<gold>Custom Price <gray>(click to type)"
+      custom_price_prompt: "<prefix><shadow:#000000:1><yellow>Type the price in chat, or type <red>cancel</red>.</shadow>"
+      custom_price_timeout: "<prefix><shadow:#000000:1><gray>Custom price prompt timed out after 60 seconds.</shadow>"
+      custom_price_cancelled: "<prefix><shadow:#000000:1><gray>Custom price cancelled.</shadow>"
+      custom_price_invalid: "<prefix><shadow:#000000:1><red>Invalid price — must be a positive number. Try again or type <red>cancel</red>.</shadow>"
     # Purchase menu — trade interaction
     receive_label: "<green>YOU RECEIVE"
     give_label: "<red>YOU GIVE"

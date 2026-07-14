@@ -231,6 +231,7 @@ open class EnthusiaMarket : JavaPlugin() {
         ctx.getBean<ShopAuditScheduler>()
         websiteService.start()
 
+
         // PlaceholderAPI expansions (no-ops if PAPI absent).
         net.badgersmc.nexus.papi.registerNexusExpansions(
             basePackage = "net.badgersmc.em",

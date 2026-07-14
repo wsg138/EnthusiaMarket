@@ -27,7 +27,7 @@ jacoco {
 }
 
 group = "net.badgersmc.em"
-version = findProperty("releaseVersion")?.toString() ?: "0.2.0"
+version = findProperty("releaseVersion")?.toString() ?: "1.0.0"
 System.getenv("EM_BUILD_DIR")?.let { layout.buildDirectory.set(file(it)) }
 
 repositories {

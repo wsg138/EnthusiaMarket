@@ -11,7 +11,7 @@ import java.util.UUID
  * field mapping shared by CreateShopMenu (Java) and BedrockCreateShopForm so
  * both paths produce identical, correct base64-serialised shops. Mirrors the
  * mapping in SignPlaceListener: sellItem is a base64 ItemStack, costItem is an
- * EMERALD UI hint, real price flows through costAmount (Vault).
+ * RAW_GOLD UI hint (glinting), real price flows through costAmount (Vault).
  */
 object ShopFactory {
 
@@ -35,7 +35,7 @@ object ShopFactory {
         containerWorld = containerWorld, containerX = containerX, containerY = containerY, containerZ = containerZ,
         sellItem = sellItemBase64,
         sellAmount = sellAmount,
-        costItem = costItemBase64 ?: ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1)),
+        costItem = costItemBase64 ?: ItemStackSerializer.serialize(ItemStack(Material.RAW_GOLD, 1)),
         costAmount = costAmountOverride ?: price.coerceIn(1L, Int.MAX_VALUE.toLong()).toInt(),
         direction = direction,
         searchEnabled = searchEnabled,

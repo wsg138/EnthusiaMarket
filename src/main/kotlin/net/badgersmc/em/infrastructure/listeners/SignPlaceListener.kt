@@ -149,7 +149,7 @@ open class SignPlaceListener(
                     event.isCancelled = true
                     return
                 }
-                costItem = ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1))
+                costItem = ItemStackSerializer.serialize(ItemStack(Material.RAW_GOLD, 1))
                 costAmount = price.toInt()
                 costDisplay = "$price"
             }

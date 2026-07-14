@@ -14,6 +14,7 @@ import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Sign
@@ -51,6 +52,16 @@ class CreateShopMenu(
     // Barter-mode cost (TRADE shops use an item, not Vault currency)
     private var costItemB64: String? = initialCostItemB64
     private var costItemAmount: Int = initialCostAmount ?: 1
+
+    /** "price" (Vault cost) or "amount" (trade amount) — which field the player is typing for. */
+    private var priceInputTarget: String = "price"
+
+    internal val internalLang: LangService get() = lang
+
+    internal fun setPrice(value: Long) { price = value }
+    internal fun internalNotifyTimeout(playerId: UUID) {
+        org.bukkit.Bukkit.getPlayer(playerId)?.sendMessage(lang.msg("gui.shop.create.custom_price_timeout"))
+    }
 
     override fun open(player: Player) {
         render(player)
@@ -189,6 +200,14 @@ class CreateShopMenu(
             coerce = { coerceIn(1, Long.MAX_VALUE) },
             displayLabel = { lang.msg("gui.shop.create.price", "price" to price) },
         )
+        // Custom price input button — bottom row center, right under the paper price display
+        pane.addItem(GuiItem(decorated(Material.OAK_SIGN, lang.msg("gui.shop.create.custom_price"))) { event ->
+            event.isCancelled = true
+            priceInputTarget = "price"
+            player.closeInventory()
+            player.sendMessage(lang.msg("gui.shop.create.custom_price_prompt"))
+            ChatPriceListener.register(player.uniqueId, this, org.bukkit.Bukkit.getPluginManager().getPlugin("EnthusiaMarket")!!)
+        }, 3, 3)
     }
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
@@ -234,7 +253,7 @@ class CreateShopMenu(
     private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta ?: return item
-        meta.displayName(name)
+        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
         if (lore.isNotEmpty()) meta.lore(lore)
         item.itemMeta = meta
         return item
@@ -261,4 +280,6 @@ class CreateShopMenu(
             .forEachIndexed { i, c -> side.line(i, c) }
         return sign.update(true, false)
     }
+
+
 }

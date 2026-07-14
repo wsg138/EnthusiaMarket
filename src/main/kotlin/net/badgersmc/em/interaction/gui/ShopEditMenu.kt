@@ -12,7 +12,9 @@ import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
+import net.badgersmc.em.interaction.MenuItems
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -114,7 +116,7 @@ class ShopEditMenu(
             pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.edit.cost_up", "cost" to costAmount))) {
                 it.isCancelled = true; costAmount += 10; render(player)
             }, 4, 0)
-            pane.addItem(GuiItem(decorated(Material.EMERALD, lang.msg("gui.shop.edit.cost", "cost" to costAmount))), 4, 1)
+            pane.addItem(GuiItem(MenuItems.currencyIcon(lang.msg("gui.shop.edit.cost", "cost" to costAmount))), 4, 1)
             pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.edit.cost_down", "cost" to costAmount))) {
                 it.isCancelled = true; costAmount = (costAmount - 10).coerceAtLeast(1); render(player)
             }, 4, 2)
@@ -158,7 +160,7 @@ class ShopEditMenu(
     private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta ?: return item
-        meta.displayName(name)
+        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
         if (lore.isNotEmpty()) meta.lore(lore)
         item.itemMeta = meta
         return item

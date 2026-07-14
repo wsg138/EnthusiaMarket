@@ -8,9 +8,11 @@ import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.interaction.Menu
+import net.badgersmc.em.interaction.MenuItems
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
@@ -39,7 +41,7 @@ class AuctionBidMenu(
         val pane = StaticPane(9, 3)
 
         pane.addItem(
-            GuiItem(decorated(Material.EMERALD, lang.msg("gui.auction_bid.summary", "stall" to auction.stallId.value),
+            GuiItem(MenuItems.currencyIcon(lang.msg("gui.auction_bid.summary", "stall" to auction.stallId.value),
                 listOf(lang.msg("gui.auction_bid.current", "amount" to (auction.highBid?.amount ?: auction.startingBid)))))
 
             { it.isCancelled = true },
@@ -97,7 +99,7 @@ class AuctionBidMenu(
     private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta ?: return item
-        meta.displayName(name)
+        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
         if (lore.isNotEmpty()) meta.lore(lore)
         item.itemMeta = meta
         return item

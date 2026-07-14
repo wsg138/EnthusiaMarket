@@ -15,6 +15,7 @@ import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Material
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack

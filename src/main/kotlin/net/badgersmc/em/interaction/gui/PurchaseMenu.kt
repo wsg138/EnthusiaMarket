@@ -11,9 +11,11 @@ import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
+import net.badgersmc.em.interaction.MenuItems
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.em.interaction.blockTopInventoryExcept
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.TextDecoration
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.Bukkit
 import org.bukkit.Material
@@ -270,7 +272,7 @@ class PurchaseMenu(
     private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta ?: return item
-        meta.displayName(name)
+        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
         if (lore.isNotEmpty()) meta.lore(lore)
         item.itemMeta = meta
         return item
@@ -279,7 +281,7 @@ class PurchaseMenu(
     private fun decorated(base: ItemStack, name: Component, lore: List<Component> = emptyList()): ItemStack {
         val item = base.clone()
         val meta = item.itemMeta ?: return item
-        meta.displayName(name)
+        meta.displayName(name.decoration(TextDecoration.ITALIC, false))
         if (lore.isNotEmpty()) meta.lore(lore)
         item.itemMeta = meta
         return item
@@ -331,12 +333,12 @@ class PurchaseMenu(
                     lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                     lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
                 ),
-                giveItem = ItemStack(Material.EMERALD),
+                giveItem = MenuItems.currencyIcon(Component.empty()),
                 giveName = lang.msg("gui.shop.give_currency", "cost" to totalCost),
                 giveLore = listOf(lang.msg("gui.shop.give_currency_lore", "cost" to totalCost)),
             )
             SignDirection.BUY -> RowItems(
-                receiveItem = ItemStack(Material.EMERALD),
+                receiveItem = MenuItems.currencyIcon(Component.empty()),
                 receiveName = lang.msg("gui.shop.receive_currency", "cost" to totalCost),
                 receiveLore = listOf(lang.msg("gui.shop.receive_currency_lore", "cost" to totalCost)),
                 giveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER),

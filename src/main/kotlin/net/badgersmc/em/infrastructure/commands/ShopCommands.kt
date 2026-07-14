@@ -22,7 +22,7 @@ import org.bukkit.entity.Player
  * Player-facing `/shop` command (ItemShops parity sub-project 1). Menu-driven,
  * matching ItemShops: list / edit / trust / untrust / delete / breakdelete.
  */
-@Command(name = "shop", description = "Manage your shops", aliases = ["shops"])
+@Command(name = "shop", description = "Manage your shops", aliases = ["shops", "finditem"])
 @Suppress("LongParameterList")
 class ShopCommands(
     private val management: ShopManagementService,
