@@ -16,7 +16,9 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
+import org.bukkit.enchantments.Enchantment
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.EnchantmentStorageMeta
 import kotlin.math.abs
 
 /**
@@ -55,18 +57,20 @@ class SearchResultsMenu(
 
         pageItems.forEachIndexed { idx, shop ->
             val template = ItemStackSerializer.deserialize(shop.sellItem)
-            // Use a clean stack from the material so the original display name and
-            // enchantment lore don't overlay the search-result metadata
-            val icon = ItemStack(template?.type ?: Material.CHEST)
+            // Clone template to preserve stored enchantment NBT (e.g. enchanted books)
+            val icon = template?.clone() ?: ItemStack(Material.CHEST)
             val meta = icon.itemMeta ?: return@forEachIndexed
             val owner = Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
             val dirLabel = ShopDisplay.directionLabel(shop.direction)
             val stallName = stallNames[StallId(shop.stallId)] ?: "Unknown"
+            // Build enchantment suffix for enchanted books
+            val enchantSuffix = template?.let { enchantSummary(it) }.orEmpty()
             meta.displayName(lang.msg(
                 "gui.shop.search.result",
                 "sell_amt" to shop.sellAmount, "cost" to shop.costAmount,
                 "trades" to ShopDisplay.tradesAvailable(shop), "owner" to owner,
                 "direction" to dirLabel, "stall" to stallName,
+                "enchant" to enchantSuffix,
             ))
             icon.itemMeta = meta
             pane.addItem(GuiItem(icon) {
@@ -175,7 +179,35 @@ class SearchResultsMenu(
         return item
     }
 
-    private companion object {
+    companion object {
+        /** Extract human-readable enchantment info from an ItemStack (e.g. "Sharpness V, Unbreaking III"). */
+        fun enchantSummary(item: ItemStack): String {
+            val meta = item.itemMeta ?: return ""
+            // Enchanted books store enchants via EnchantmentStorageMeta
+            if (meta is EnchantmentStorageMeta && meta.hasStoredEnchants()) {
+                return " (" + meta.storedEnchants.entries.joinToString(", ") { (ench, level) ->
+                    "${fmtEnchant(ench)} ${romanNumeral(level)}"
+                } + ")"
+            }
+            // Regular enchanted items (swords, armor, etc.)
+            if (meta.hasEnchants()) {
+                return " (" + meta.enchants.entries.joinToString(", ") { (ench, level) ->
+                    "${fmtEnchant(ench)} ${romanNumeral(level)}"
+                } + ")"
+            }
+            return ""
+        }
+
+        private fun fmtEnchant(ench: Enchantment): String =
+            ench.key.key.split('_').joinToString(" ") { word ->
+                word.lowercase().replaceFirstChar { it.uppercase() }
+            }
+
+        private fun romanNumeral(n: Int): String = when (n) {
+            1 -> "I"; 2 -> "II"; 3 -> "III"; 4 -> "IV"; 5 -> "V"
+            6 -> "VI"; 7 -> "VII"; 8 -> "VIII"; 9 -> "IX"; 10 -> "X"
+            else -> n.toString()
+        }
         private const val ROWS = 6
         private const val PER_PAGE = 45 // top 5 rows; bottom row reserved for nav
     }

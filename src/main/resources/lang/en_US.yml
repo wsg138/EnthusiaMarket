@@ -357,7 +357,7 @@ gui:
     sell_lore_owner: "<gray>Owner: <yellow><owner></yellow>"
     search:
       title: "<dark_gray>Shops selling <query>"
-      result: "<direction> <green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner>"
+      result: "<direction> <green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <aqua><trades> in stock <dark_gray>| <yellow><owner><enchant></yellow>"
       clicked: "<shadow:#000000:1><gray>Shop at <white><world> <x> <y> <z> <gray>— pasted to chat.</shadow>"
       teleported: "<shadow:#000000:1><green>Teleported to shop at <white><world> <x> <y> <z></white>.</shadow>"
       prev: "<yellow><- Previous page"
