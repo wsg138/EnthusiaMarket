@@ -89,7 +89,8 @@ class MarketHttpClient(
         }
         val code = safeCode(response.body())
         if (status == 409 && code in RECONCILE_CODES) return DeliveryOutcome.Reconcile(code!!)
-        return DeliveryOutcome.Pause(pauseCategory(status))
+        val category = if (status == 400) safeDiagnosticCategory(response.body()) else null
+        return DeliveryOutcome.Pause(category ?: pauseCategory(status))
     }
 
     private fun authenticated(bytes: ByteArray): Boolean = runCatching {
@@ -113,6 +114,19 @@ class MarketHttpClient(
         root.getAsJsonObject("error")?.get("code")?.asString ?: root.get("code")?.asString
     }.getOrNull()
 
+    private fun safeDiagnosticCategory(bytes: ByteArray): String? = runCatching {
+        if (bytes.size > 64 * 1024) return@runCatching null
+        val diagnostic = JsonParser.parseString(bytes.toString(Charsets.UTF_8)).asJsonObject
+            .getAsJsonObject("error")?.getAsJsonObject("diagnostic") ?: return@runCatching null
+        if (diagnostic.get("category")?.asString != "invalid_field") return@runCatching null
+        val path = diagnostic.getAsJsonArray("issues")?.firstOrNull()?.asJsonObject
+            ?.get("path")?.asString ?: return@runCatching null
+        if (path.length !in 1..160 || !SAFE_DIAGNOSTIC_PATH.matches(path)) return@runCatching null
+        val fields = SAFE_DIAGNOSTIC_FIELD.findAll(path).map { it.value }.toList()
+        if (fields.isEmpty() || fields.any { it !in SAFE_DIAGNOSTIC_FIELDS }) return@runCatching null
+        "invalid_field:${path.replace(Regex("""\[\d+]"""), "[]")}"
+    }.getOrNull()
+
     private fun retryAfter(value: String?): Long? {
         if (value == null) return null
         value.toLongOrNull()?.let { return it.coerceIn(0, 86_400) * 1000 }
@@ -123,6 +137,19 @@ class MarketHttpClient(
     }
 
     companion object {
+        private val SAFE_DIAGNOSTIC_PATH = Regex("""^[A-Za-z][A-Za-z0-9]*(?:\[\d+]|\.[A-Za-z][A-Za-z0-9]*)*$""")
+        private val SAFE_DIAGNOSTIC_FIELD = Regex("""[A-Za-z][A-Za-z0-9]*""")
+        private val SAFE_DIAGNOSTIC_FIELDS = setOf(
+            "schemaVersion", "serverId", "serverEpoch", "eventId", "sentAt", "snapshotRevision", "generatedAt",
+            "stalls", "revision", "stall", "id", "buildingId", "floor", "location", "world", "x", "y", "z",
+            "owner", "type", "uuid", "name", "avatarUrl", "avatar", "kind", "source", "includesOuterLayer", "url",
+            "ownerSince", "nextRentAt", "members", "shops", "direction", "sellItem", "sellAmount", "costItem",
+            "costAmount", "interaction", "stockCount", "availableTrades", "searchable", "material", "displayName",
+            "amount", "icon", "metadata", "customName", "enchantments", "storedEnchantments", "potion", "armorTrim",
+            "smithingTemplate", "writtenBook", "shulkerColor", "container", "level", "basePotion", "form", "color",
+            "effects", "amplifier", "durationSeconds", "pattern", "title", "author", "generation", "pageCount", "slots",
+            "capacityUsed", "capacityMax", "contents", "slot", "item", "probe",
+        )
         private val RECONCILE_CODES = setOf(
             "market_not_initialized", "epoch_mismatch", "stale_revision", "stale_snapshot", "stall_not_found"
         )
