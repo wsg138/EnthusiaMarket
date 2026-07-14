@@ -12,6 +12,7 @@ import net.badgersmc.em.application.StallMemberService
 import net.badgersmc.em.application.StallOwnershipCounter
 import net.badgersmc.em.application.StallSellbackService
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.RegionProvisioner
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.config.EnthusiaMarketConfig
@@ -54,6 +55,7 @@ class AdminCommands(
     private val sellOffers: SellOfferService,
     private val sellback: StallSellbackService,
     private val regionMembers: RegionMemberSync,
+    private val regionProvisioner: RegionProvisioner,
     private val entityCounter: net.badgersmc.em.application.StallEntityCounter,
     private val regionProvider: net.badgersmc.em.domain.ports.RegionProvider,
     private val stallInfo: net.badgersmc.em.application.StallInfoService,
@@ -531,6 +533,8 @@ class AdminCommands(
         var skipped = 0
         var errors = 0
         for (stall in stalls.all()) {
+            // Re-apply region flags (idempotent — safe to run on already-correct regions)
+            regionProvisioner.provision(stall.world, stall.regionId, config.market.stallPriority)
             when (stall.state) {
                 StallState.OWNED, StallState.GRACE -> when (stall.owner.type) {
                     OwnerType.SOLO -> try {
