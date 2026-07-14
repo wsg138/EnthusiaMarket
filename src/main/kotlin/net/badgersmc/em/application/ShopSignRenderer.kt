@@ -15,6 +15,8 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 @Service
 class ShopSignRenderer {
 
+    private val minimessage = MiniMessage.miniMessage()
+
     /** [SELL]/[BUY]/[TRADE] header · `Nx material` · cost display · [Shop]. */
     fun lines(
         direction: SignDirection,
@@ -23,23 +25,27 @@ class ShopSignRenderer {
         costDisplay: String,
         displayName: Component? = null,
     ): List<Component> {
+        val headerTag = when (direction) {
+            SignDirection.BUY -> "gold"
+            SignDirection.TRADE -> "light_purple"
+            else -> "aqua"
+        }
+        val shadow = "<shadow:#000000:1>"
         val itemName: Component = if (displayName != null) {
             truncate(parseMiniMessageIfNeeded(displayName))
         } else {
-            // Truncate material name — "totem_of_undying" → "totem_of_un…" (fits after "1x " prefix)
             val truncated = if (sellMaterialName.length > 11) sellMaterialName.take(11) + "…" else sellMaterialName
             Component.text(truncated, NamedTextColor.WHITE)
         }
-        val headerColor = when (direction) {
-            SignDirection.BUY -> NamedTextColor.GOLD
-            SignDirection.TRADE -> NamedTextColor.LIGHT_PURPLE
-            else -> NamedTextColor.AQUA
-        }
+        // Escape user-provided strings to prevent MiniMessage injection
+        val safeCost = minimessage.escapeTags(costDisplay)
+        val safeDir = minimessage.escapeTags(direction.name)
         return listOf(
-            Component.text("[${direction.name}]", headerColor),
-            Component.text("${sellAmount}x ", NamedTextColor.WHITE).append(itemName),
-            Component.text(costDisplay, NamedTextColor.GOLD),
-            Component.text("[Shop]", NamedTextColor.GOLD),
+            minimessage.deserialize("$shadow<$headerTag>[$safeDir]</$headerTag></shadow>"),
+            minimessage.deserialize("$shadow<white>${sellAmount}x </white></shadow>")
+                .append(itemName),
+            minimessage.deserialize("$shadow<gold>$safeCost</gold></shadow>"),
+            minimessage.deserialize("$shadow<gold>[Shop]</gold></shadow>"),
         )
     }
 

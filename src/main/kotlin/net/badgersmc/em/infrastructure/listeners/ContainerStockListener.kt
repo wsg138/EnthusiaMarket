@@ -4,6 +4,7 @@ import net.badgersmc.em.application.ItemStackMatch
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.em.events.PostShopTransactionEvent
 import net.badgersmc.em.events.ShopStockDepletedEvent
 import net.badgersmc.nexus.i18n.LangService
@@ -55,7 +56,7 @@ class ContainerStockListener(
         // Defer DB write — flushed in batch on the next timer tick (PERF-5).
         dirtyStock[shop.id] = rawStock
         trackDepletion(shop, trades)
-        loadedSign(shop)?.let { updateSignStock(it, trades) }
+        loadedSign(shop)?.let { updateSignStock(it, shop, trades) }
     }
 
     // ── Timer path (called from EnthusiaMarket.onEnable every 20t) ─────
@@ -87,7 +88,7 @@ class ContainerStockListener(
 
         // Best-effort sign update — if the sign chunk isn't loaded,
         // the text will catch up on the next tick when it loads.
-        loadedSign(shop)?.let { updateSignStock(it, trades) }
+        loadedSign(shop)?.let { updateSignStock(it, shop, trades) }
     }
 
     /** Flush all batched [dirtyStock] writes to SQLite in a single batch (PERF-5). */
@@ -132,8 +133,13 @@ class ContainerStockListener(
     }
 
     /** PERF-5: no-physics update — sign text change doesn't need block physics recalculation. */
-    private fun updateSignStock(state: Sign, trades: Int) {
+    private fun updateSignStock(state: Sign, shop: Shop, trades: Int) {
         state.line(3, lang.msg("container_sign.stock_line", "trades" to trades))
+        // Red header when SELL shop is out of stock
+        if (shop.direction == SignDirection.SELL) {
+            val headerKey = if (trades == 0) "sign_header.sell_out" else "sign_header.sell"
+            state.line(0, lang.msg(headerKey))
+        }
         state.update(false)
     }
 
