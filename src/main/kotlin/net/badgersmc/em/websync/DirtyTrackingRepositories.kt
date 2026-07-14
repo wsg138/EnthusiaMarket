@@ -12,6 +12,15 @@ fun interface WebsiteSyncDirtySink {
     fun markDirty(stallId: String)
 }
 
+/**
+ * Decorates [StallRepository] to notify [WebsiteSyncDirtySink] on save/create.
+ *
+ * Stalls are never truly deleted in this domain — ownership changes via sellback,
+ * eviction clears the owner, and termination sets state=TERMINATED. All of these
+ * flow through [save], so no [delete] overrides are needed. If a true hard-delete
+ * method is added to [StallRepository] in the future, it must be overridden here
+ * to fire [dirty.markDirty].
+ */
 class DirtyTrackingStallRepository(
     private val delegate: StallRepository,
     private val dirty: WebsiteSyncDirtySink,

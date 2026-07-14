@@ -113,11 +113,10 @@ class PublicSnapshotProjector(
     fun validateLiveReport(): ValidationResult {
         val errors = canonical.validate().toMutableList()
         val diagnostics = mutableListOf("canonical_duplicate_visible_geometry:stall60,stall62")
-        val expected = (1..71).map { "stall$it" }.toSet()
+        val expected = canonical.stallIds.toSet()
         val persisted = stalls.all().map { it.id.value }.toSet()
         if (persisted != expected) errors += "persisted_stall_ids"
-        for (index in 1..71) {
-            val id = "stall$index"
+        for (id in canonical.stallIds) {
             val stall = stalls.findById(StallId(id))
             if (stall == null) { errors += "missing_stall:$id"; continue }
             if (stall.regionId != id || !regions.exists(stall.world, id)) errors += "missing_region:$id"

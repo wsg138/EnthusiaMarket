@@ -35,6 +35,7 @@ class WebsiteSyncService(
     private val configLoader: WebsiteSyncConfigLoader,
     private val outbox: WebsiteSyncOutbox?,
     private val projector: PublicSnapshotProjector,
+    private val canonical: CanonicalMarketMap,
     private val migrationFailure: Boolean = false,
 ) : WebsiteSyncDirtySink, AutoCloseable {
     private val generations = HashMap<String, Long>()
@@ -185,6 +186,7 @@ class WebsiteSyncService(
             return
         }
         fullCapture = IncrementalFullCapture(
+            stallIds = canonical.stallIds,
             generation = { generations[it] ?: 0L },
             capture = projector::capture,
         )
@@ -301,8 +303,9 @@ class WebsiteSyncService(
         executor.shutdownNow()
     }
 
+    private fun isCanonicalId(id: String): Boolean = id in canonical.stalls
+
     companion object {
         private fun durationTicks(duration: Duration): Long = (duration.toMillis() / 50L).coerceAtLeast(1L)
-        private fun isCanonicalId(id: String): Boolean = id.removePrefix("stall").toIntOrNull() in 1..71 && id.startsWith("stall")
     }
 }
