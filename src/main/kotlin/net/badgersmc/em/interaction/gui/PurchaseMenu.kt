@@ -297,7 +297,9 @@ class PurchaseMenu(
             listOf(lang.msg("gui.shulker_preview.lore")),
         )) { event ->
             event.isCancelled = true
-            ShulkerPreviewMenu(sell.clone(), lang).open(player)
+            // Deep-copy through bytes: ItemStack.clone() drops BlockStateMeta NBT (shulker contents)
+            val deepCopy = ItemStackSerializer.deserialize(ItemStackSerializer.serialize(sell)) ?: sell
+            ShulkerPreviewMenu(deepCopy, lang).open(player)
         }, 8, 0)
     }
 
