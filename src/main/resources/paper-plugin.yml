@@ -78,6 +78,7 @@ permissions:
     - enthusiamarket.admin.setowner
     - enthusiamarket.admin.bypasslimit
     - enthusiamarket.admin.shop
+    - enthusiamarket.admin.websync
   enthusiamarket.admin.bypasslimit:
     default: op
     description: Bypass all stall-ownership limits
@@ -97,6 +98,9 @@ permissions:
     default: op
     description: Admin shop tooling (/shop admin view/info/remove/fix/breakothers +
       search teleport)
+  enthusiamarket.admin.websync:
+    default: op
+    description: Manage website synchronization
   enthusiamarket.auction.bid:
     default: true
     description: Bid in an auction

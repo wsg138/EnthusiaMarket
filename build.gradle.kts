@@ -92,6 +92,7 @@ dependencies {
     // capture/restore (REQ-270..272). WE/FAWE themselves stay compileOnly
     // below; this module only adds the thin Kotlin facade over them.
     implementation("com.github.BadgersMC.Nexus:nexus-worldedit:v2.2.1")
+    implementation("com.google.code.gson:gson:2.11.0")
 
     // PlaceholderAPI expansion — provide-side only; registerNexusExpansions no-ops without PAPI.
     compileOnly("me.clip:placeholderapi:2.11.6")
@@ -169,6 +170,7 @@ configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
             child("setowner")
             child("refund")
         }
+        node("enthusiamarket.admin.websync", default = Default.OP, description = "Manage website synchronization")
         node("enthusiamarket.auction.cancel.force", default = Default.OP, description = "Force-cancel any auction")
         node("enthusiamarket.player", default = Default.TRUE, description = "Player-facing commands")
         // Player stall permissions — standalone nodes so the merger
