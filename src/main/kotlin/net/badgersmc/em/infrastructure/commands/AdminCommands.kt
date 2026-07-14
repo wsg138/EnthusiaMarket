@@ -38,6 +38,8 @@ import org.bukkit.entity.Player
 import net.badgersmc.nexus.scheduler.NexusScheduler
 import org.bukkit.plugin.java.JavaPlugin
 import java.util.UUID
+import java.time.Instant
+import net.badgersmc.em.websync.WebsiteSyncService
 
 @Command(name = "em", description = "EnthusiaMarket administrative commands", aliases = ["enthusiamarket"])
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
@@ -68,6 +70,7 @@ class AdminCommands(
     private val rentResync: net.badgersmc.em.application.RentTermsResyncService,
     private val shopRepository: ShopRepository,
     private val signRenderer: ShopSignRenderer,
+    private val websiteSync: WebsiteSyncService? = null,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -744,6 +747,84 @@ class AdminCommands(
         player.sendMessage(lang.msg("admin.refreshsigns.result", "fixed" to fixed, "skipped" to skipped, "errors" to errors))
     }
 
+    @Subcommand("websync status")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncStatus(@Context sender: CommandSender) {
+        val status = sync().status()
+        sender.sendMessage("Website sync: configured=${yesNo(status.configuredEnabled)}, active=${yesNo(status.active)}, " +
+            "secret=${yesNo(status.secretConfigured)}, validation=${status.validation}")
+        sender.sendMessage("Pending stalls=${status.pendingStalls}, full=${yesNo(status.pendingFull)}, " +
+            "oldest=${age(status.oldestPendingAgeMillis)}, snapshot=${status.snapshotRevision}")
+        sender.sendMessage("Last full=${instant(status.lastFullSuccess)}, last stall=${instant(status.lastStallSuccess)}, " +
+            "status=${status.errorCategory ?: "ok"}")
+    }
+
+    @Subcommand("websync secret")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncSecret(@Context sender: CommandSender, @Arg("value") value: WebsiteSyncSecretArgument) {
+        val result = sync().setSecret(value.value)
+        sender.sendMessage(if (result.config != null) "Website sync secret stored; synchronization remains in its configured state."
+            else "Website sync configuration is invalid; synchronization is disabled.")
+    }
+
+    @Subcommand("websync clear-secret")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncClearSecret(@Context sender: CommandSender, @Arg("confirmation") confirmation: String) {
+        if (confirmation != "confirm") {
+            sender.sendMessage("Use /em websync clear-secret confirm")
+            return
+        }
+        sync().clearSecret()
+        sender.sendMessage("Website sync secret cleared and synchronization disabled.")
+    }
+
+    @Subcommand("websync test")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncTest(@Context sender: CommandSender) {
+        sender.sendMessage("Testing website sync authentication...")
+        sync().authenticatedTest { success, category ->
+            sender.sendMessage(if (success) "Website sync authentication succeeded." else "Website sync test failed: $category")
+        }
+    }
+
+    @Subcommand("websync validate")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncValidate(@Context sender: CommandSender) {
+        val report = sync().validateLiveReport()
+        if (report.errors.isEmpty()) sender.sendMessage("Website sync validation passed for all 71 exact stall identities.")
+        else sender.sendMessage("Website sync validation failed (${report.errors.size} safe issue(s)): ${report.errors.take(10).joinToString()}")
+        sender.sendMessage("Website sync diagnostics: ${report.diagnostics.joinToString()}")
+    }
+
+    @Subcommand("websync full")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncFull(@Context sender: CommandSender) {
+        sender.sendMessage(if (sync().requestFull()) "Website full reconciliation requested." else "Website sync is not active.")
+    }
+
+    @Subcommand("websync enable")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncEnable(@Context sender: CommandSender) {
+        sync().enable()
+        sender.sendMessage(if (sync().status().active) "Website sync enabled; full reconciliation started."
+            else "Website sync remains inactive until a valid secret, configuration, and persistence are present.")
+    }
+
+    @Subcommand("websync disable")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncDisable(@Context sender: CommandSender) {
+        sync().disable()
+        sender.sendMessage("Website sync disabled; persistent pending state was retained.")
+    }
+
+    @Subcommand("websync retry")
+    @Permission(WEBSYNC_PERMISSION)
+    fun webSyncRetry(@Context sender: CommandSender) {
+        sender.sendMessage(if (sync().retry()) "Website sync delivery retry requested." else "Website sync retry could not be queued.")
+    }
+
+    private fun sync(): WebsiteSyncService = requireNotNull(websiteSync) { "Website sync service is unavailable" }
+
     /**
      * Drop expired entries from [pendingSellbacks] so the map doesn't
      * leak across stagings that never confirm. Called inline on every
@@ -761,6 +842,11 @@ class AdminCommands(
     internal companion object {
         const val KEY_WORLD = "world"
         const val KEY_REGION_PREFIX = "region_prefix"
+        const val WEBSYNC_PERMISSION = "enthusiamarket.admin.websync"
+
+        private fun yesNo(value: Boolean) = if (value) "yes" else "no"
+        private fun age(value: Long?): String = value?.let { "${it / 1000}s" } ?: "none"
+        private fun instant(value: Long?): String = value?.let { Instant.ofEpochMilli(it).toString() } ?: "never"
 
         /** Set a stall's region kind. Returns false when the stall is missing. */
         fun applySetKind(repo: StallRepository, stallId: String, kind: String): Boolean {
