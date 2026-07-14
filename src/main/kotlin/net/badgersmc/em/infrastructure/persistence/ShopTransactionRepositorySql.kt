@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.persistence
 
+import net.badgersmc.em.domain.shop.PriceStats
 import net.badgersmc.em.domain.shop.ShopTransaction
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
 import net.badgersmc.em.domain.shop.SignDirection
@@ -81,6 +82,31 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
                 return ps.executeUpdate()
             }
         }
+    }
+
+    @Suppress("NestedBlockDepth")
+    override fun avgPriceInWindow(item: String, fromMs: Long, toMs: Long): PriceStats? {
+        var result: PriceStats? = null
+        ds.connection.use { c ->
+            c.prepareStatement(
+                """SELECT CAST(SUM(total_price) AS REAL) / SUM(quantity), COUNT(*)
+                   FROM shop_transactions
+                   WHERE item = ? AND direction = 'SELL'
+                     AND created_at >= ? AND created_at < ?"""
+            ).use { ps ->
+                ps.setString(1, item.uppercase())
+                ps.setLong(2, fromMs)
+                ps.setLong(3, toMs)
+                ps.executeQuery().use { rs ->
+                    if (rs.next()) {
+                        val avg = rs.getDouble(1)
+                        val count = rs.getInt(2)
+                        if (count > 0) result = PriceStats(avg, count)
+                    }
+                }
+            }
+        }
+        return result
     }
 
     private fun map(rs: ResultSet) = ShopTransaction(

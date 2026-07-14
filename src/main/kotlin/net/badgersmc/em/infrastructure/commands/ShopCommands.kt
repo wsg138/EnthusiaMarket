@@ -158,20 +158,49 @@ class ShopCommands(
         // Exact match first, then prefix fallback for partial queries (2+ chars)
         if (material != null) {
             val results = shopRepository.findBySellMaterial(material.name)
+                .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) } // cheapest unit price first
             if (results.isNotEmpty()) {
-                net.badgersmc.em.interaction.gui.SearchResultsMenu(results, query, 1, lang, stallRepository).open(player)
+                val ticker = priceTicker(material.name)
+                net.badgersmc.em.interaction.gui.SearchResultsMenu(
+                    results, query, 1, lang, stallRepository, ticker,
+                ).open(player)
                 return
             }
         }
         // Prefix fallback
         if (query.length >= 2) {
             val prefixResults = shopRepository.findBySellMaterialPrefix(query.uppercase())
+                .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
             if (prefixResults.isNotEmpty()) {
-                net.badgersmc.em.interaction.gui.SearchResultsMenu(prefixResults, query, 1, lang, stallRepository).open(player)
+                // Ticker is meaningless for prefix searches (heterogeneous items)
+                net.badgersmc.em.interaction.gui.SearchResultsMenu(
+                    prefixResults, query, 1, lang, stallRepository, null,
+                ).open(player)
                 return
             }
         }
         player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
+    }
+
+    private fun priceTicker(item: String): net.badgersmc.em.domain.shop.PriceTicker? {
+        val now = System.currentTimeMillis()
+        val dayMs = 24 * 60 * 60 * 1000L
+        val current = transactions.avgPriceInWindow(item, now - dayMs, now) ?: return null
+        fun change(windowDays: Int, cachedCur: net.badgersmc.em.domain.shop.PriceStats = current): Double? {
+            val winMs = windowDays * dayMs
+            val cur = if (windowDays == 1) cachedCur
+                else transactions.avgPriceInWindow(item, now - winMs, now)
+            val prev = transactions.avgPriceInWindow(item, now - 2 * winMs, now - winMs)
+            if (cur == null || prev == null || prev.avgPrice <= 0) return null
+            return ((cur.avgPrice - prev.avgPrice) / prev.avgPrice) * 100
+        }
+        return net.badgersmc.em.domain.shop.PriceTicker(
+            avgPrice = current.avgPrice,
+            sampleCount = current.sampleCount,
+            change24h = change(1),
+            change7d = change(7),
+            change30d = change(30),
+        )
     }
 
     @Subcommand("history")

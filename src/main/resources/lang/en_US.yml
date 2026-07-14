@@ -357,6 +357,13 @@ gui:
       teleported: "<shadow:#000000:1><green>Teleported to shop at <white><world> <x> <y> <z></white>.</shadow>"
       prev: "<yellow><- Previous page"
       next: "<yellow>Next page ->"
+      ticker_name: "<green>Market Price</green>"
+      ticker_lore_avg: "<gray>Avg: <gold><avg></gold> <gray>(<count> trades)</gray>"
+      ticker_lore_up: "<gray><label>: <green>▲ <change>%</green>"
+      ticker_lore_down: "<gray><label>: <red>▼ <change>%</red>"
+      ticker_lore_flat: "<gray><label>: <white>—</white>"
+      ticker_lore_no_change: "<gray><label>: <dark_gray>no data</dark_gray>"
+      ticker_lore_no_data: "<gray>No price history yet</gray>"
     owned:
       title: "<dark_gray>Your shops (click to edit)"
       icon: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <white><world> <x>,<y>,<z>"
