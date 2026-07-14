@@ -7,6 +7,7 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.lumalyte.lg.api.GuildLookup
 import net.lumalyte.lg.api.GuildLookupImpl
 import net.lumalyte.lg.api.GuildSummary
+import net.lumalyte.lg.api.GuildVisualLookup
 import net.lumalyte.lg.application.services.BankService
 import net.lumalyte.lg.domain.entities.RankPermission
 import org.bukkit.Bukkit
@@ -29,6 +30,10 @@ class LumaGuildsGuildProvider : GuildProvider {
 
     private val lookup: GuildLookup? by lazy {
         Bukkit.getServicesManager().load(GuildLookup::class.java)
+    }
+
+    private val visualLookup: GuildVisualLookup? by lazy {
+        Bukkit.getServicesManager().load(GuildVisualLookup::class.java)
     }
 
     /**
@@ -69,6 +74,20 @@ class LumaGuildsGuildProvider : GuildProvider {
         val uuid = parseUuid(id) ?: return null
         val guild = lookup?.getGuild(uuid) ?: return null
         return toGuildRef(guild)
+    }
+
+    override fun visualById(id: String): GuildProvider.GuildVisual? {
+        val uuid = parseUuid(id) ?: return null
+        val visual = visualLookup?.getGuildVisual(uuid) ?: return null
+        return GuildProvider.GuildVisual(
+            leaderId = visual.leaderId,
+            banner = visual.banner?.let { banner ->
+                GuildProvider.BannerDesign(
+                    baseColor = banner.baseColor,
+                    patterns = banner.patterns.map { GuildProvider.BannerPattern(it.type, it.color) },
+                )
+            },
+        )
     }
 
     override fun listGuilds(): List<GuildProvider.GuildRef> =

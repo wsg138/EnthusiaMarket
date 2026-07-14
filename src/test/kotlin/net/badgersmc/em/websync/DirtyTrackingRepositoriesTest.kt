@@ -49,6 +49,18 @@ class DirtyTrackingRepositoriesTest {
     }
 
     @Test
+    fun `ownership transition dirties the affected stall immediately`() {
+        val delegate = mockk<StallRepository>()
+        val ids = mutableListOf<String>()
+        val guildOwned = stall("stall1").copy(owner = OwnerRef.guild("00000000-0000-4000-8000-000000000002"))
+        every { delegate.save(guildOwned) } just runs
+
+        DirtyTrackingStallRepository(delegate, WebsiteSyncDirtySink(ids::add)).save(guildOwned)
+
+        assertEquals(listOf("stall1"), ids)
+    }
+
+    @Test
     fun `upsert dirties old and new stall associations after persistence`() {
         val old = shop(1, "stall1")
         val moved = old.copy(stallId = "stall2")

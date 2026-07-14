@@ -4,6 +4,10 @@ import io.mockk.every
 import io.mockk.mockk
 import net.lumalyte.lg.api.GuildLookup
 import net.lumalyte.lg.api.GuildSummary
+import net.lumalyte.lg.api.GuildBannerDesignSummary
+import net.lumalyte.lg.api.GuildBannerPatternSummary
+import net.lumalyte.lg.api.GuildVisualLookup
+import net.lumalyte.lg.api.GuildVisualSummary
 import org.bukkit.plugin.ServicePriority
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -26,6 +30,7 @@ class LumaGuildsGuildProviderTest {
     private val guildId = UUID.randomUUID()
     private val playerId = UUID.randomUUID()
     private val lookup = mockk<GuildLookup>(relaxed = true)
+    private val visualLookup = mockk<GuildVisualLookup>(relaxed = true)
     private val provider = LumaGuildsGuildProvider()
     private lateinit var server: ServerMock
 
@@ -34,6 +39,7 @@ class LumaGuildsGuildProviderTest {
         server = MockBukkit.mock()
         val plugin = MockBukkit.createMockPlugin("LumaGuilds")
         server.servicesManager.register(GuildLookup::class.java, lookup, plugin, ServicePriority.Normal)
+        server.servicesManager.register(GuildVisualLookup::class.java, visualLookup, plugin, ServicePriority.Normal)
     }
 
     @AfterEach
@@ -90,6 +96,27 @@ class LumaGuildsGuildProviderTest {
     fun `guildById returns null when guild not found`() {
         every { lookup.getGuild(guildId) } returns null
         assertNull(provider.guildById(guildId.toString()))
+    }
+
+    @Test
+    fun `visualById maps leader and ordered public banner`() {
+        val leaderId = UUID.randomUUID()
+        every { visualLookup.getGuildVisual(guildId) } returns GuildVisualSummary(
+            leaderId,
+            GuildBannerDesignSummary(
+                "BLUE",
+                listOf(
+                    GuildBannerPatternSummary("STRIPE_TOP", "WHITE"),
+                    GuildBannerPatternSummary("CROSS", "RED"),
+                ),
+            ),
+        )
+
+        val result = provider.visualById(guildId.toString())
+
+        assertEquals(leaderId, result?.leaderId)
+        assertEquals("BLUE", result?.banner?.baseColor)
+        assertEquals(listOf("STRIPE_TOP", "CROSS"), result?.banner?.patterns?.map { it.type })
     }
 
     // --- tag/emoji normalisation flows through GuildSummary ---

@@ -1,7 +1,14 @@
 package net.badgersmc.em.websync
 
 data class PublicLocation(val world: String, val x: Int, val y: Int, val z: Int)
-data class PublicAvatar(val kind: String, val source: String? = null, val includesOuterLayer: Boolean? = null)
+data class PublicBannerPattern(val type: String, val color: String)
+data class PublicBannerDesign(val baseColor: String, val patterns: List<PublicBannerPattern>)
+data class PublicAvatar(
+    val kind: String,
+    val source: String? = null,
+    val includesOuterLayer: Boolean? = null,
+    val banner: PublicBannerDesign? = null,
+)
 data class PublicOwner(
     val type: String,
     val id: String?,

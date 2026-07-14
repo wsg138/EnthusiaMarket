@@ -75,9 +75,21 @@ class WebsiteSyncContractFixtureTest {
     private fun unowned() = PublicOwner("NONE", null, null, "Unowned", null, PublicAvatar("NONE"))
     private fun solo() = PublicOwner(
         "PLAYER", "00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000001",
-        "P2wn", null, PublicAvatar("MINECRAFT_HEAD", "JAVA", true),
+        "P2wn", "https://minotar.net/helm/00000000-0000-4000-8000-000000000001/96.png",
+        PublicAvatar("MINECRAFT_HEAD", "JAVA", true),
     )
-    private fun guild() = PublicOwner("GUILD", "guild-1", null, "Example Guild", null, PublicAvatar("GUILD"))
+    private fun guild() = PublicOwner(
+        "GUILD", "guild-1", null, "Example Guild", null,
+        PublicAvatar(
+            "GUILD_BANNER", "LUMAGUILDS", banner = PublicBannerDesign(
+                "BLUE",
+                listOf(
+                    PublicBannerPattern("STRIPE_TOP", "WHITE"),
+                    PublicBannerPattern("CROSS", "RED"),
+                ),
+            ),
+        ),
+    )
 
     companion object {
         private const val SECRET = "contract-test-secret"
