@@ -57,6 +57,25 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
         }
     }
 
+    override fun findByOwnerOrBuyer(player: UUID, limit: Int, offset: Int): List<ShopTransaction> {
+        ds.connection.use { c ->
+            c.prepareStatement(
+                """SELECT * FROM shop_transactions WHERE owner = ? OR buyer = ?
+                   ORDER BY created_at DESC LIMIT ? OFFSET ?"""
+            ).use { ps ->
+                ps.setString(1, player.toString())
+                ps.setString(2, player.toString())
+                ps.setInt(3, limit)
+                ps.setInt(4, offset)
+                ps.executeQuery().use { rs ->
+                    val out = mutableListOf<ShopTransaction>()
+                    while (rs.next()) out += map(rs)
+                    return out
+                }
+            }
+        }
+    }
+
     override fun countUnnotified(owner: UUID): Int {
         ds.connection.use { c ->
             c.prepareStatement("SELECT COUNT(*) FROM shop_transactions WHERE owner = ? AND notified = 0").use { ps ->

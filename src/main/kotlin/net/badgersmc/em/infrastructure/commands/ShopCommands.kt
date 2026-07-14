@@ -207,7 +207,8 @@ class ShopCommands(
     @Permission("enthusiamarket.shop.use")
     fun history(@Context sender: CommandSender) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
-        val rows = transactions.findByOwner(player.uniqueId, PAGE_SIZE, 0)
+        // Show sales where the player is EITHER the shop owner OR the customer (for stall members)
+        val rows = transactions.findByOwnerOrBuyer(player.uniqueId, PAGE_SIZE, 0)
         if (rows.isEmpty()) { player.sendMessage(lang.msg("shop.history.empty")); return }
         player.sendMessage(lang.msg("shop.history.header", "page" to 1))
         val fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
