@@ -125,6 +125,7 @@ class SearchResultsMenu(
         val meta = item.itemMeta ?: return item
 
         val name = lang.msg("gui.shop.search.ticker_name")
+            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)
         meta.displayName(name)
 
         val lore = mutableListOf<Component>()
@@ -132,12 +133,21 @@ class SearchResultsMenu(
             lore += lang.msg("gui.shop.search.ticker_lore_avg",
                 "avg" to "%,.1f".format(ticker.avgPrice),
                 "count" to ticker.sampleCount,
-            )
+            ).decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)
             lore += changeLine("24h", ticker.change24h)
             lore += changeLine("7d", ticker.change7d)
             lore += changeLine("30d", ticker.change30d)
         } else {
+            // Fall back to average from current listings when no transaction history
+            if (results.isNotEmpty()) {
+                val avgListing = results.sumOf { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) } / results.size
+                lore += lang.msg("gui.shop.search.ticker_lore_listing",
+                    "avg" to "%,.1f".format(avgListing),
+                    "count" to results.size,
+                ).decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)
+            }
             lore += lang.msg("gui.shop.search.ticker_lore_no_data")
+                .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)
         }
 
         meta.lore(lore)
@@ -147,12 +157,14 @@ class SearchResultsMenu(
 
     private fun changeLine(label: String, pct: Double?): Component {
         if (pct == null) return lang.msg("gui.shop.search.ticker_lore_no_change", "label" to label)
+            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)
         val key = when {
             pct > 0.1 -> "gui.shop.search.ticker_lore_up"
             pct < -0.1 -> "gui.shop.search.ticker_lore_down"
             else -> "gui.shop.search.ticker_lore_flat"
         }
         return lang.msg(key, "label" to label, "change" to "%.1f".format(abs(pct)))
+            .decoration(net.kyori.adventure.text.format.TextDecoration.ITALIC, false)
     }
 
     private fun named(material: Material, name: Component): ItemStack {

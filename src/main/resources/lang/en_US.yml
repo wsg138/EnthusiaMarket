@@ -364,6 +364,7 @@ gui:
       next: "<yellow>Next page ->"
       ticker_name: "<green>Market Price</green>"
       ticker_lore_avg: "<gray>Avg: <gold><avg></gold> <gray>(<count> trades)</gray>"
+      ticker_lore_listing: "<gray>Avg listing: <gold><avg></gold> <gray>(<count> shops)</gray>"
       ticker_lore_up: "<gray><label>: <green>▲ <change>%</green>"
       ticker_lore_down: "<gray><label>: <red>▼ <change>%</red>"
       ticker_lore_flat: "<gray><label>: <white>—</white>"

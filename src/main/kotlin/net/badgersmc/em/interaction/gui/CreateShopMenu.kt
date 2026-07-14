@@ -21,7 +21,9 @@ import org.bukkit.block.Sign
 import org.bukkit.block.sign.Side
 import org.bukkit.entity.Player
 import org.bukkit.inventory.ItemStack
+import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * IFramework GUI for creating a sign shop (REQ-012, REQ-289).
@@ -200,14 +202,14 @@ class CreateShopMenu(
             coerce = { coerceIn(1, Long.MAX_VALUE) },
             displayLabel = { lang.msg("gui.shop.create.price", "price" to price) },
         )
-        // Custom price input button — bottom row center, right under the paper price display
+        // Custom price input button — right of the paper price display
         pane.addItem(GuiItem(decorated(Material.OAK_SIGN, lang.msg("gui.shop.create.custom_price"))) { event ->
             event.isCancelled = true
             priceInputTarget = "price"
             player.closeInventory()
             player.sendMessage(lang.msg("gui.shop.create.custom_price_prompt"))
-            ChatPriceListener.register(player.uniqueId, this, org.bukkit.Bukkit.getPluginManager().getPlugin("EnthusiaMarket")!!)
-        }, 3, 3)
+            pendingPriceInputs[player.uniqueId] = this to Instant.now()
+        }, 4, 3)
     }
 
     private fun renderBarterCost(pane: StaticPane, player: Player) {
@@ -281,5 +283,38 @@ class CreateShopMenu(
         return sign.update(true, false)
     }
 
+    companion object {
+        private const val CUSTOM_PRICE_TIMEOUT_SEC = 60L
 
+        /** Pending custom-price prompts: player UUID → (menu, when prompted). */
+        val pendingPriceInputs: ConcurrentHashMap<UUID, Pair<CreateShopMenu, Instant>> = ConcurrentHashMap()
+
+        /** Handle a chat message that might be a custom price input. Returns true if consumed. */
+        fun handleChat(player: Player, message: String, lang: LangService): Boolean {
+            val entry = pendingPriceInputs.remove(player.uniqueId) ?: return false
+            val (menu, promptedAt) = entry
+            if (java.time.Duration.between(promptedAt, Instant.now()).seconds > CUSTOM_PRICE_TIMEOUT_SEC) {
+                player.sendMessage(lang.msg("gui.shop.create.custom_price_timeout"))
+                return true
+            }
+            val trimmed = message.trim()
+            if (trimmed.equals("cancel", ignoreCase = true)) {
+                player.sendMessage(lang.msg("gui.shop.create.custom_price_cancelled"))
+                return true
+            }
+            val value = trimmed.toLongOrNull()?.takeIf { it > 0 }
+            if (value == null) {
+                player.sendMessage(lang.msg("gui.shop.create.custom_price_invalid"))
+                // Re-register so they can try again
+                pendingPriceInputs[player.uniqueId] = menu to promptedAt
+                return true
+            }
+            when (menu.priceInputTarget) {
+                "price" -> menu.price = value
+                "amount" -> menu.amount = value.toInt()
+            }
+            menu.open(player)
+            return true
+        }
+    }
 }
