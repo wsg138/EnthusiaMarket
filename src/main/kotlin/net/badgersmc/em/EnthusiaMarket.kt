@@ -205,6 +205,10 @@ open class EnthusiaMarket : JavaPlugin() {
             ),
         )
 
+        // Phase 5b: Register /finditem as a top-level Paper Brigadier command.
+        // @Subcommand("") crashes Nexus; we bypass it entirely.
+        net.badgersmc.em.infrastructure.commands.FindItemRegistrar.register(this, itemMaterialNames, ctx)
+
         // Phase 6: Discover every @Listener-annotated bean in the scan
         // package, resolve it from DI, and register it with Bukkit.
         // NOTE: registerNexusListeners is fail-OPEN per listener — a bean
