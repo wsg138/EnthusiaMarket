@@ -69,11 +69,13 @@ class MarketHttpClient(private val config: WebsiteSyncConfig) {
     private fun classify(response: HttpResponse<ByteArray>): DeliveryOutcome {
         val status = response.statusCode()
         if (status in 200..299) return DeliveryOutcome.Success
-        val code = safeCode(response.body())
-        if (code in RECONCILE_CODES) return DeliveryOutcome.Reconcile(code!!)
+        // Check transient/retryable statuses first — a 429/5xx body may coincidentally
+        // contain a reconciliation-code string, but we must back off, not reconcile.
         if (status == 408 || status == 429 || status >= 500) {
             return DeliveryOutcome.Retry(retryAfter(response.headers().firstValue("Retry-After").orElse(null)))
         }
+        val code = safeCode(response.body())
+        if (status == 409 && code in RECONCILE_CODES) return DeliveryOutcome.Reconcile(code!!)
         return DeliveryOutcome.Pause(
             when (status) {
                 400 -> "bad_request"
@@ -94,7 +96,7 @@ class MarketHttpClient(private val config: WebsiteSyncConfig) {
 
     private fun retryAfter(value: String?): Long? {
         if (value == null) return null
-        value.toLongOrNull()?.let { return (it.coerceAtLeast(0) * 1000).coerceAtMost(86_400_000) }
+        value.toLongOrNull()?.let { return it.coerceIn(0, 86_400) * 1000 }
         return runCatching {
             (ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli() -
                 System.currentTimeMillis()).coerceIn(0, 86_400_000)

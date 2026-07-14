@@ -67,13 +67,9 @@ class DirtyTrackingShopRepository(
     }
 
     override fun deleteByContainer(world: String, x: Int, y: Int, z: Int) {
-        val indexed = safe { delegate.findByContainer(world, x, y, z) }.orEmpty()
-        val persisted = safe {
-            delegate.all().filter {
-                it.containerWorld == world && it.containerX == x && it.containerY == y && it.containerZ == z
-            }
-        }.orEmpty()
-        val affected = (indexed + persisted).distinctBy { it.id }.map { it.id to it.stallId }
+        val affected = safe { delegate.findByContainer(world, x, y, z) }
+            .orEmpty()
+            .map { it.id to it.stallId }
         delegate.deleteByContainer(world, x, y, z)
         affected.forEach { stallByShopId.remove(it.first) }
         notify(*affected.map { it.second }.toTypedArray())

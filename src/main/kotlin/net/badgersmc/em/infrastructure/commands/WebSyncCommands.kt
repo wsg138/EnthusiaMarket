@@ -69,9 +69,9 @@ class WebSyncCommands(private val service: WebsiteSyncService) {
     @Subcommand("websync enable")
     @Permission(PERMISSION)
     fun enable(@Context sender: CommandSender) {
-        val result = service.enable()
-        sender.sendMessage(if (result.config?.secretConfigured == true) "Website sync enabled; full reconciliation started."
-            else "Website sync remains inactive until a valid secret and configuration are present.")
+        service.enable()
+        sender.sendMessage(if (service.status().active) "Website sync enabled; full reconciliation started."
+            else "Website sync remains inactive until a valid secret, configuration, and persistence are present.")
     }
 
     @Subcommand("websync disable")

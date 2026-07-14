@@ -131,10 +131,11 @@ class WebsiteSyncService(
         if (cfg == null || !cfg.secretConfigured || outbox == null) {
             callback(false, "not_configured"); return
         }
-        submit {
+        val submitted = submit {
             val outcome = MarketHttpClient(cfg).authenticatedTest(outbox.serverEpoch())
             main { callback(outcome is DeliveryOutcome.Success, outcome.safeCategory()) }
         }
+        if (!submitted) callback(false, "executor_saturated")
     }
 
     fun validateLive(): List<String> = projector.validateLive().also {
@@ -195,17 +196,22 @@ class WebsiteSyncService(
     private fun tick() {
         if (!active) return
         val capture = fullCapture
-        if (capture != null) {
-            try {
-                capture.tick()
-                if (capture.complete) finishFullCapture(capture)
-            } catch (_: Exception) {
-                fullCapture = null
-                paused = true
-                errorCategory = "snapshot_capture"
-            }
-            return
+        if (capture != null) { tickFullCapture(capture); return }
+        tickIncrementalStall()
+    }
+
+    private fun tickFullCapture(capture: IncrementalFullCapture) {
+        try {
+            capture.tick()
+            if (capture.complete) finishFullCapture(capture)
+        } catch (_: Exception) {
+            fullCapture = null
+            paused = true
+            errorCategory = "snapshot_capture"
         }
+    }
+
+    private fun tickIncrementalStall() {
         if (paused) return
         val now = System.currentTimeMillis()
         val id = dirty.firstReady(now) ?: return
@@ -221,6 +227,8 @@ class WebsiteSyncService(
                     if ((generations[id] ?: 0L) > expectedGeneration) markDirty(id)
                     refreshStatus(); pump()
                 }
+            } catch (_: IllegalArgumentException) {
+                main { errorCategory = "payload_too_large" }
             } catch (_: Exception) { main { markDirty(id); errorCategory = "persistence" } }
         }
     }
@@ -238,9 +246,12 @@ class WebsiteSyncService(
                     }
                     paused = false
                     validation = "valid"
+                    errorCategory = null
                     refreshStatus()
                     pump()
                 }
+            } catch (_: IllegalArgumentException) {
+                main { paused = true; errorCategory = "payload_too_large" }
             } catch (_: Exception) {
                 main { paused = true; errorCategory = "persistence" }
             }
@@ -258,7 +269,7 @@ class WebsiteSyncService(
             }
             val outcome = MarketHttpClient(cfg).deliver(delivery)
             when (outcome) {
-                DeliveryOutcome.Success -> runCatching { box.acknowledge(delivery) }
+                DeliveryOutcome.Success -> { runCatching { box.acknowledge(delivery) }; errorCategory = null }
                 is DeliveryOutcome.Retry -> {
                     val exponential = cfg.initialRetry.toMillis() * (1L shl delivery.attemptCount.coerceAtMost(16))
                     val delay = outcome.retryAfterMillis ?: exponential.coerceAtMost(cfg.maximumRetry.toMillis())

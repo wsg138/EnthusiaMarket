@@ -51,8 +51,9 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
         )
         require(body.size <= STALL_BODY_LIMIT) { "stall_body_limit" }
         val hash = MarketRequestSigner.bodyHash(body)
-        if (prior == null) insertStall(connection, stall.id, revision, hash, body, eventId)
-        else updatePendingStall(connection, stall.id, revision, hash, body, eventId)
+        val write = StallWrite(stall.id, revision, hash, body, eventId)
+        if (prior == null) insertStall(connection, write)
+        else updatePendingStall(connection, write)
         PendingDelivery(DeliveryKind.STALL, stall.id, revision, eventId, body, hash, 0)
     }
 
@@ -88,7 +89,7 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
         setState(connection, "snapshot_hash", MarketRequestSigner.bodyHash(body))
         for (entry in includedState) {
             val prior = stallRow(connection, entry.stallId)
-            if (prior == null) insertStall(connection, entry.stallId, entry.revision, entry.hash, null, null)
+            if (prior == null) insertStall(connection, StallWrite(entry.stallId, entry.revision, entry.hash, null, null))
             else updateFullIncluded(connection, entry)
         }
         connection.prepareStatement("DELETE FROM em_websync_full").use { it.executeUpdate() }
@@ -204,6 +205,8 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
     }
 
     private data class StallRow(val revision: Long)
+    private data class StallWrite(val id: String, val revision: Long, val hash: String, val body: ByteArray?, val eventId: String?)
+
     private fun stallRow(connection: Connection, id: String): StallRow? = connection.prepareStatement(
         "SELECT revision FROM em_websync_stalls WHERE stall_id = ?"
     ).use { statement ->
@@ -211,13 +214,13 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
         statement.executeQuery().use { if (it.next()) StallRow(it.getLong(1)) else null }
     }
 
-    private fun insertStall(connection: Connection, id: String, revision: Long, hash: String, body: ByteArray?, eventId: String?) {
+    private fun insertStall(connection: Connection, w: StallWrite) {
         connection.prepareStatement(
             "INSERT INTO em_websync_stalls (stall_id, revision, latest_hash, pending_body, pending_event_id, pending_since, retry_at, " +
                 "attempt_count, acknowledged_revision, acknowledged_hash, success_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, NULL, NULL)"
         ).use {
-            it.setString(1, id); it.setLong(2, revision); it.setString(3, hash); it.setBytes(4, body); it.setString(5, eventId)
-            if (body == null) {
+            it.setString(1, w.id); it.setLong(2, w.revision); it.setString(3, w.hash); it.setBytes(4, w.body); it.setString(5, w.eventId)
+            if (w.body == null) {
                 it.setNull(6, java.sql.Types.BIGINT); it.setNull(7, java.sql.Types.BIGINT)
             } else {
                 val now = System.currentTimeMillis(); it.setLong(6, now); it.setLong(7, now)
@@ -226,13 +229,13 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
         }
     }
 
-    private fun updatePendingStall(connection: Connection, id: String, revision: Long, hash: String, body: ByteArray, eventId: String) {
+    private fun updatePendingStall(connection: Connection, w: StallWrite) {
         connection.prepareStatement(
             "UPDATE em_websync_stalls SET revision = ?, latest_hash = ?, pending_body = ?, pending_event_id = ?, " +
                 "pending_since = ?, retry_at = ?, attempt_count = 0 WHERE stall_id = ?"
         ).use {
-            it.setLong(1, revision); it.setString(2, hash); it.setBytes(3, body); it.setString(4, eventId)
-            val now = System.currentTimeMillis(); it.setLong(5, now); it.setLong(6, now); it.setString(7, id); it.executeUpdate()
+            it.setLong(1, w.revision); it.setString(2, w.hash); it.setBytes(3, w.body!!); it.setString(4, w.eventId)
+            val now = System.currentTimeMillis(); it.setLong(5, now); it.setLong(6, now); it.setString(7, w.id); it.executeUpdate()
         }
     }
 
