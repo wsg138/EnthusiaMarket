@@ -29,6 +29,7 @@ open class EnthusiaMarket : JavaPlugin() {
 
     private var nexus: NexusContext? = null
     private var scheduler: NexusScheduler? = null
+    private var websiteSync: net.badgersmc.em.websync.WebsiteSyncService? = null
 
     @Suppress("LongMethod", "TooGenericExceptionThrown")
     override fun onEnable() {
@@ -105,6 +106,15 @@ open class EnthusiaMarket : JavaPlugin() {
         MigrationRunner(ds, resourcePrefix = "migrations", classLoader = this::class.java.classLoader).runAll()
         ctx.registerBean("dataSource", DataSource::class, ds as DataSource)
 
+        // Website synchronization observes repository mutations through fail-open decorators.
+        // The relay breaks the construction cycle: repositories are registered before the sync
+        // service is built, and notifications are harmless no-ops until the target is attached.
+        val websiteDirtyRelay = net.badgersmc.em.websync.WebsiteSyncDirtyRelay()
+        val stallSqlRepo = net.badgersmc.em.infrastructure.persistence.StallRepositorySql(ds)
+        val stallRepository: net.badgersmc.em.domain.stall.StallRepository =
+            net.badgersmc.em.websync.DirtyTrackingStallRepository(stallSqlRepo, websiteDirtyRelay)
+        ctx.registerBean("stallRepository", net.badgersmc.em.domain.stall.StallRepository::class, stallRepository)
+
         // Shop repository + in-memory container index (REQ-281/282, PERF-4). The hopper-control
         // hot path (InventoryMoveItemEvent) must resolve shop status without a DB query, so we wrap
         // the SQL repo in IndexedShopRepository and register THAT as the sole ShopRepository bean.
@@ -114,14 +124,52 @@ open class EnthusiaMarket : JavaPlugin() {
         val shopLocationIndex = net.badgersmc.em.application.InMemoryShopLocationIndex()
         val shopSqlRepo = net.badgersmc.em.infrastructure.persistence.ShopRepositorySql(ds)
         shopLocationIndex.rebuild(shopSqlRepo.all()) // REQ-282: rebuild from persistence on enable
-        val shopRepository: ShopRepository =
+        val indexedShopRepository: ShopRepository =
             net.badgersmc.em.application.IndexedShopRepository(shopSqlRepo, shopLocationIndex)
+        val shopRepository: ShopRepository =
+            net.badgersmc.em.websync.DirtyTrackingShopRepository(indexedShopRepository, websiteDirtyRelay)
         ctx.registerBean(
             "shopLocationIndex",
             net.badgersmc.em.domain.shop.ShopLocationIndex::class,
             shopLocationIndex,
         )
         ctx.registerBean("shopRepository", ShopRepository::class, shopRepository)
+
+        // Website-sync migrations use a dedicated history table and resource prefix. Any failure
+        // leaves the outbox unavailable but cannot abort ordinary Market startup.
+        val websiteOutbox = try {
+            net.badgersmc.em.websync.WebsiteSyncMigrationRunner(ds).runAll()
+            net.badgersmc.em.websync.WebsiteSyncOutbox(ds)
+        } catch (e: Exception) {
+            logger.warning("Website synchronization persistence is unavailable (safe category: migration)")
+            null
+        }
+        val websiteConfig = net.badgersmc.em.websync.WebsiteSyncConfigLoader(dataFolder)
+        val websiteCanonical = try {
+            net.badgersmc.em.websync.CanonicalMarketMap.load()
+        } catch (e: Exception) {
+            logger.warning("Website synchronization canonical map is unavailable (safe category: canonical)")
+            net.badgersmc.em.websync.CanonicalMarketMap.unavailable()
+        }
+        val websiteAvailability = net.badgersmc.em.websync.ShopAvailabilityCalculator(
+            ctx.getBean(net.badgersmc.em.domain.ports.EconomyProvider::class),
+            ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class),
+        )
+        val websiteProjector = net.badgersmc.em.websync.PublicSnapshotProjector(
+            stallRepository,
+            shopRepository,
+            ctx.getBean(net.badgersmc.em.domain.ports.RegionProvider::class),
+            ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class),
+            websiteAvailability,
+            websiteCanonical,
+        )
+        val websiteService = net.badgersmc.em.websync.WebsiteSyncService(
+            this, websiteConfig, websiteOutbox, websiteProjector, websiteCanonical,
+            migrationFailure = websiteOutbox == null,
+        )
+        websiteSync = websiteService
+        websiteDirtyRelay.target = websiteService
+        ctx.registerBean("websiteSyncService", net.badgersmc.em.websync.WebsiteSyncService::class, websiteService)
 
         // NexusScheduler — replaces ad-hoc Bukkit.getScheduler() calls; auto-cancels on disable.
         val sched = NexusScheduler(this)
@@ -181,6 +229,7 @@ open class EnthusiaMarket : JavaPlugin() {
         ctx.getBean<RentScheduler>()
         ctx.getBean<AuctionScheduler>()
         ctx.getBean<ShopAuditScheduler>()
+        websiteService.start()
 
         // PlaceholderAPI expansions (no-ops if PAPI absent).
         net.badgersmc.nexus.papi.registerNexusExpansions(
@@ -357,6 +406,7 @@ open class EnthusiaMarket : JavaPlugin() {
         }
 
     override fun onDisable() {
+        websiteSync?.close()
         scheduler?.cancelAll()
         nexus?.close()
         logger.info("EnthusiaMarket disabled")

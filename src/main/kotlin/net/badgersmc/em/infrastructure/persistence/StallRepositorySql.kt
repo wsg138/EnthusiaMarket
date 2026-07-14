@@ -1,14 +1,12 @@
 package net.badgersmc.em.infrastructure.persistence
 
 import net.badgersmc.em.domain.stall.*
-import net.badgersmc.nexus.annotations.Repository
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
-@Repository
 class StallRepositorySql(private val ds: DataSource) : StallRepository {
 
     override fun findById(id: StallId): Stall? = queryOne("SELECT * FROM stalls WHERE id = ?") {

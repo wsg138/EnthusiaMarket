@@ -1,0 +1,26 @@
+config-version: 1
+
+enabled: false
+
+endpoint: "https://market-api.enthusia.info"
+server-id: "enthusia-main"
+sync-secret: ""
+
+timing:
+  startup-delay-seconds: 30
+  stall-debounce-milliseconds: 250
+  maximum-debounce-milliseconds: 2000
+  reconciliation-minutes: 15
+
+http:
+  connect-timeout-seconds: 10
+  request-timeout-seconds: 15
+  maximum-concurrent-requests: 1
+
+retry:
+  initial-delay-seconds: 5
+  maximum-delay-seconds: 300
+
+logging:
+  status-changes: true
+  successful-stall-updates: false
