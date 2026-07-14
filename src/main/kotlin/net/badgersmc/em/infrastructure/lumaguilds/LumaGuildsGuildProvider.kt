@@ -5,7 +5,9 @@ import net.badgersmc.nexus.annotations.Component
 import net.kyori.adventure.text.minimessage.MiniMessage
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.lumalyte.lg.api.GuildLookup
+import net.lumalyte.lg.api.GuildLookupImpl
 import net.lumalyte.lg.api.GuildSummary
+import net.lumalyte.lg.application.services.BankService
 import net.lumalyte.lg.domain.entities.RankPermission
 import org.bukkit.Bukkit
 import java.util.UUID
@@ -27,6 +29,31 @@ class LumaGuildsGuildProvider : GuildProvider {
 
     private val lookup: GuildLookup? by lazy {
         Bukkit.getServicesManager().load(GuildLookup::class.java)
+    }
+
+    /**
+     * LumaGuilds' [BankService] exposes [BankService.deductFromGuildBank] and
+     * [BankService.creditToGuildBank] — these directly modify the guild vault gold
+     * balance without requiring an online player actor. [GuildLookup.bankWithdraw]
+     * and [GuildLookup.bankDeposit] route through [BankService.withdraw] and
+     * [BankService.deposit], which call [org.bukkit.Bukkit.getPlayer] and return
+     * null for offline/non-existent actors (including our SYSTEM_ACTOR_UUID).
+     *
+     * We extract [BankService] from [GuildLookupImpl.banks] via reflection since
+     * [BankService] is not part of the public [GuildLookup] interface and sits
+     * in LumaGuilds' Koin container (cross-classloader Koin access causes
+     * LinkageErrors).
+     */
+    private val bankService: BankService? by lazy {
+        val impl = lookup as? GuildLookupImpl ?: return@lazy null
+        try {
+            val field = GuildLookupImpl::class.java.getDeclaredField("banks")
+            field.isAccessible = true
+            field.get(impl) as? BankService
+        } catch (e: Throwable) {
+            logger.log(java.util.logging.Level.WARNING, "Failed to extract BankService from GuildLookupImpl; bank operations will use GuildLookup fallback", e)
+            null
+        }
     }
 
     private val dissolveHandlers = mutableListOf<(String) -> Unit>()
@@ -126,13 +153,23 @@ class LumaGuildsGuildProvider : GuildProvider {
     override fun bankWithdraw(guildId: String, amount: Long): Boolean {
         if (amount <= 0) return false
         val uuid = parseUuid(guildId) ?: return false
-        // GuildLookup rejects amounts beyond Int range itself.
+        val bs = bankService
+        if (bs != null && amount in 1..Int.MAX_VALUE) {
+            // Fast path: deductFromGuildBank modifies vault gold directly, no player required.
+            return bs.deductFromGuildBank(uuid, amount.toInt(), "EnthusiaMarket stall rent")
+        }
+        // Fallback: use GuildLookup (handles Long amounts, but requires online player actor).
         return lookup?.bankWithdraw(uuid, SYSTEM_ACTOR_UUID, amount, "System withdrawal") ?: false
     }
 
     override fun bankDeposit(guildId: String, amount: Long): Boolean {
         if (amount <= 0) return false
         val uuid = parseUuid(guildId) ?: return false
+        val bs = bankService
+        if (bs != null && amount in 1..Int.MAX_VALUE) {
+            // Fast path: creditToGuildBank modifies vault gold directly, no player required.
+            return bs.creditToGuildBank(uuid, amount.toInt(), "EnthusiaMarket")
+        }
         return lookup?.bankDeposit(uuid, SYSTEM_ACTOR_UUID, amount, "System deposit") ?: false
     }
 
