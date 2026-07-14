@@ -109,7 +109,7 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
     fun nextReady(now: Long = System.currentTimeMillis()): PendingDelivery? = dataSource.connection.use { connection ->
         connection.prepareStatement(
             "SELECT snapshot_revision, pending_body, pending_event_id, attempt_count FROM em_websync_full " +
-                "WHERE retry_at IS NULL OR retry_at <= ?"
+                "WHERE singleton_id = 1 AND (retry_at IS NULL OR retry_at <= ?)"
         ).use { statement ->
             statement.setLong(1, now)
             statement.executeQuery().use { result ->
@@ -121,6 +121,7 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
                 }
             }
         }
+        if (hasPendingFull(connection)) return null
         connection.prepareStatement(
             "SELECT stall_id, revision, pending_body, pending_event_id, latest_hash, attempt_count " +
                 "FROM em_websync_stalls WHERE pending_body IS NOT NULL AND (retry_at IS NULL OR retry_at <= ?) " +
@@ -134,6 +135,20 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
                     result.getString("latest_hash"), result.getInt("attempt_count"))
             }
         }
+    }
+
+    /** Earliest time at which [nextReady] can return work, preserving full-sync priority. */
+    @Suppress("NestedBlockDepth")
+    fun nextAttemptAt(): Long? = dataSource.connection.use { connection ->
+        connection.prepareStatement("SELECT retry_at FROM em_websync_full WHERE singleton_id = 1").use { statement ->
+            statement.executeQuery().use { result ->
+                if (result.next()) {
+                    val retryAt = result.getLong(1)
+                    return if (result.wasNull()) 0L else retryAt
+                }
+            }
+        }
+        nullableLong(connection, "SELECT MIN(retry_at) FROM em_websync_stalls WHERE pending_body IS NOT NULL")
     }
 
     fun acknowledge(delivery: PendingDelivery, at: Long = System.currentTimeMillis()): Boolean = transaction { connection ->
@@ -266,21 +281,25 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
             result.next(); result.getLong(1).let { if (result.wasNull()) null else it }
         } }
 
+    private fun hasPendingFull(connection: Connection): Boolean =
+        scalarLong(connection, "SELECT COUNT(*) FROM em_websync_full WHERE singleton_id = 1") > 0
+
     /**
      * Execute [block] in a JDBC transaction.
      *
      * SAFETY NOTE: This toggles [Connection.autoCommit]. HikariCP resets
      * autoCommit on [Connection.close] (which [use] calls when the block
-     * exits), but the [finally] restoration is kept as a belt-and-suspenders
+     * exits), but the [finally] restoration to the exact prior value is kept as a belt-and-suspenders
      * guard. If you observe stalled transactions in other EM components, this
      * pattern is a candidate — the EnthusiaMarket codebase has seen
      * HikariCP autoCommit leak issues in the past.
      */
     private fun <T> transaction(block: (Connection) -> T): T = dataSource.connection.use { connection ->
+        val priorAutoCommit = connection.autoCommit
         connection.autoCommit = false
         try { block(connection).also { connection.commit() } }
         catch (e: Exception) { connection.rollback(); throw e }
-        finally { connection.autoCommit = true }
+        finally { connection.autoCommit = priorAutoCommit }
     }
 
     private fun List<PublicStall>.sortedByNaturalId(): List<PublicStall> = sortedBy { it.id.removePrefix("stall").toInt() }

@@ -15,7 +15,10 @@ sealed class DeliveryOutcome {
     data class Pause(val category: String) : DeliveryOutcome()
 }
 
-class MarketHttpClient(private val config: WebsiteSyncConfig) {
+class MarketHttpClient(
+    private val config: WebsiteSyncConfig,
+    private val userAgent: String = "EnthusiaMarket/0.2.0",
+) {
     private val client = HttpClient.newBuilder()
         .connectTimeout(config.connectTimeout)
         .followRedirects(HttpClient.Redirect.NEVER)
@@ -36,24 +39,31 @@ class MarketHttpClient(private val config: WebsiteSyncConfig) {
             TestRequest(serverEpoch = serverEpoch, eventId = eventId, sentAt = Instant.now().toString(), probe = "website-sync-test")
         )
         require(body.size <= 32 * 1024) { "test_body_limit" }
-        return send("POST", "/internal/v1/test", eventId, body)
+        return send("POST", "/internal/v1/test", eventId, body, requireAuthenticated = true)
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun send(method: String, path: String, eventId: String, body: ByteArray): DeliveryOutcome {
+    private fun send(
+        method: String,
+        path: String,
+        eventId: String,
+        body: ByteArray,
+        requireAuthenticated: Boolean = false,
+    ): DeliveryOutcome {
         return try {
             val timestamp = System.currentTimeMillis().toString()
             val signature = MarketRequestSigner.sign(config.secret, method, path, config.serverId, timestamp, eventId, body)
             val request = HttpRequest.newBuilder(config.endpoint.resolve(path))
                 .timeout(config.requestTimeout)
                 .header("Content-Type", "application/json")
+                .header("User-Agent", userAgent)
                 .header("X-Enthusia-Server-Id", config.serverId)
                 .header("X-Enthusia-Timestamp", timestamp)
                 .header("X-Enthusia-Event-Id", eventId)
                 .header("X-Enthusia-Signature", signature)
                 .method(method, HttpRequest.BodyPublishers.ofByteArray(body))
                 .build()
-            classify(client.send(request, HttpResponse.BodyHandlers.ofByteArray()))
+            classify(client.send(request, HttpResponse.BodyHandlers.ofByteArray()), requireAuthenticated)
         } catch (_: java.net.http.HttpTimeoutException) {
             DeliveryOutcome.Retry()
         } catch (_: java.io.IOException) {
@@ -66,9 +76,12 @@ class MarketHttpClient(private val config: WebsiteSyncConfig) {
         }
     }
 
-    private fun classify(response: HttpResponse<ByteArray>): DeliveryOutcome {
+    private fun classify(response: HttpResponse<ByteArray>, requireAuthenticated: Boolean): DeliveryOutcome {
         val status = response.statusCode()
-        if (status in 200..299) return DeliveryOutcome.Success
+        if (status in 200..299) {
+            if (!requireAuthenticated || authenticated(response.body())) return DeliveryOutcome.Success
+            return DeliveryOutcome.Pause("invalid_test_response")
+        }
         // Check transient/retryable statuses first — a 429/5xx body may coincidentally
         // contain a reconciliation-code string, but we must back off, not reconcile.
         if (status == 408 || status == 429 || status >= 500) {
@@ -78,6 +91,12 @@ class MarketHttpClient(private val config: WebsiteSyncConfig) {
         if (status == 409 && code in RECONCILE_CODES) return DeliveryOutcome.Reconcile(code!!)
         return DeliveryOutcome.Pause(pauseCategory(status))
     }
+
+    private fun authenticated(bytes: ByteArray): Boolean = runCatching {
+        if (bytes.size > 64 * 1024) return@runCatching false
+        JsonParser.parseString(bytes.toString(Charsets.UTF_8)).asJsonObject
+            .get("authenticated")?.asBoolean == true
+    }.getOrDefault(false)
 
     private fun pauseCategory(status: Int): String = when (status) {
         400 -> "bad_request"

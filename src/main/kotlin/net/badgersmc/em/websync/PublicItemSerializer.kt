@@ -112,8 +112,9 @@ class PublicItemSerializer(
                 val contents = shulker.inventory.contents.mapIndexedNotNull { slot, nested ->
                     nested?.takeUnless { it.type.isAir }?.let { PublicContainerEntry(slot, serialize(it, depth + 1, context)) }
                 }.take(1024)
+                val capacityMax = shulker.inventory.size * shulker.inventory.maxStackSize
                 return PublicContainer("SHULKER", shulker.inventory.size, contents.sumOf { it.item.amount },
-                    shulker.inventory.size * item.maxStackSize, contents)
+                    capacityMax, contents)
             }
         }
         if (meta is BundleMeta) {

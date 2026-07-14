@@ -48,6 +48,8 @@ class WebsiteSyncService(
     private val deliveryInFlight = AtomicBoolean(false)
     private var fullCapture: IncrementalFullCapture? = null
     private var config: WebsiteSyncConfig? = null
+    private var httpClientConfig: WebsiteSyncConfig? = null
+    private var httpClient: MarketHttpClient? = null
     @Volatile private var active = false
     @Volatile private var paused = true
     @Volatile private var validation = "not_validated"
@@ -55,6 +57,16 @@ class WebsiteSyncService(
     @Volatile private var cachedOutbox = OutboxStatus(0, false, null, 0, null, null)
     private var tickTask: org.bukkit.scheduler.BukkitTask? = null
     private var reconciliationTask: org.bukkit.scheduler.BukkitTask? = null
+    private val retryWakeScheduler = RetryWakeScheduler(
+        clock = System::currentTimeMillis,
+        scheduleTask = { delayMillis, task ->
+            val ticks = ((delayMillis + 49L) / 50L).coerceAtLeast(1L)
+            val bukkitTask = Bukkit.getScheduler().runTaskLater(plugin, Runnable(task), ticks)
+            CancelableTask(bukkitTask::cancel)
+        },
+        shouldWake = { active && !paused },
+        wake = ::pump,
+    )
 
     fun start() {
         val result = configLoader.load(startup = true)
@@ -102,14 +114,17 @@ class WebsiteSyncService(
         fullCapture = null
         dirty.clear()
         reconciliationTask?.cancel()
+        cancelRetryWake()
         return result
     }
 
     fun setSecret(value: String): WebsiteSyncConfigResult = configLoader.setSecret(value).also {
         config = it.config ?: configLoader.current()
+        clearHttpClient()
     }
     fun clearSecret(): WebsiteSyncConfigResult = configLoader.clearSecret().also {
-        config = it.config ?: configLoader.current(); active = false; paused = true; errorCategory = "secret_missing"
+        config = it.config ?: configLoader.current(); clearHttpClient()
+        active = false; paused = true; errorCategory = "secret_missing"
     }
 
     fun requestFull(): Boolean {
@@ -122,8 +137,10 @@ class WebsiteSyncService(
         if (!active || outbox == null) return false
         paused = false
         errorCategory = null
-        submit { outbox.retryNow(); main(::pump) }
-        return true
+        val submitted = submit { outbox.retryNow(); main(::pump) }
+        if (submitted) cancelRetryWake()
+        else scheduleRetryWake(System.currentTimeMillis() + EXECUTOR_RECOVERY_DELAY_MILLIS)
+        return submitted
     }
 
     fun authenticatedTest(callback: (Boolean, String) -> Unit) {
@@ -132,7 +149,7 @@ class WebsiteSyncService(
             callback(false, "not_configured"); return
         }
         val submitted = submit {
-            val outcome = MarketHttpClient(cfg).authenticatedTest(outbox.serverEpoch())
+            val outcome = client(cfg).authenticatedTest(outbox.serverEpoch())
             main { callback(outcome is DeliveryOutcome.Success, outcome.safeCategory()) }
         }
         if (!submitted) callback(false, "executor_saturated")
@@ -180,6 +197,7 @@ class WebsiteSyncService(
 
     private fun beginFullCapture() {
         paused = true
+        cancelRetryWake()
         val errors = validateLive()
         if (errors.isNotEmpty()) {
             fullCapture = null
@@ -227,7 +245,7 @@ class WebsiteSyncService(
     }
 
     private fun submitStallForDelivery(id: String, stall: PublicStall, expectedGeneration: Long) {
-        submit {
+        val submitted = submit {
             try {
                 outbox?.enqueueStall(stall)
                 main {
@@ -238,13 +256,17 @@ class WebsiteSyncService(
                 main { errorCategory = "payload_too_large" }
             } catch (_: Exception) { main { markDirty(id); errorCategory = "persistence" } }
         }
+        if (!submitted) {
+            markDirty(id)
+            errorCategory = "executor_saturated"
+        }
     }
 
     private fun finishFullCapture(capture: IncrementalFullCapture) {
         fullCapture = null
         val snapshots = capture.stalls.toList()
         val capturedGenerations = capture.capturedGenerations.toMap()
-        submit {
+        val submitted = submit {
             try {
                 outbox?.enqueueFull(snapshots)
                 main {
@@ -263,32 +285,86 @@ class WebsiteSyncService(
                 main { paused = true; errorCategory = "persistence" }
             }
         }
+        if (!submitted) {
+            fullCapture = capture
+            paused = true
+            errorCategory = "executor_saturated"
+        }
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun pump() {
         val box = outbox ?: return
-        if (!active || paused || !deliveryInFlight.compareAndSet(false, true)) return
+        if (!active || paused) return
+        cancelRetryWake()
+        if (!deliveryInFlight.compareAndSet(false, true)) return
         val cfg = config ?: run { deliveryInFlight.set(false); return }
-        submit {
-            val delivery = runCatching { box.nextReady() }.getOrNull()
-            if (delivery == null) {
-                deliveryInFlight.set(false); refreshStatus(); return@submit
+        val submitted = submit {
+            val deliveryResult = runCatching { box.nextReady() }
+            if (deliveryResult.isFailure) {
+                deliveryInFlight.set(false)
+                errorCategory = "persistence"
+                main { scheduleRetryWake(System.currentTimeMillis() + EXECUTOR_RECOVERY_DELAY_MILLIS) }
+                return@submit
             }
-            val outcome = MarketHttpClient(cfg).deliver(delivery)
+            val delivery = deliveryResult.getOrNull()
+            if (delivery == null) {
+                val nextAttempt = runCatching { box.nextAttemptAt() }
+                deliveryInFlight.set(false); refreshStatus()
+                if (nextAttempt.isFailure) {
+                    errorCategory = "persistence"
+                    main { scheduleRetryWake(System.currentTimeMillis() + EXECUTOR_RECOVERY_DELAY_MILLIS) }
+                } else if (nextAttempt.getOrNull() != null) {
+                    main { scheduleRetryWake(requireNotNull(nextAttempt.getOrNull())) }
+                }
+                return@submit
+            }
+            val outcome = client(cfg).deliver(delivery)
+            var pumpAgain = false
+            var recoveryWake: Long? = null
             when (outcome) {
-                DeliveryOutcome.Success -> { runCatching { box.acknowledge(delivery) }; errorCategory = null }
+                DeliveryOutcome.Success -> {
+                    val acknowledgement = runCatching { box.acknowledge(delivery) }
+                    if (acknowledgement.isSuccess) {
+                        errorCategory = null
+                        pumpAgain = true
+                    } else {
+                        errorCategory = "persistence"
+                        recoveryWake = System.currentTimeMillis() + EXECUTOR_RECOVERY_DELAY_MILLIS
+                    }
+                }
                 is DeliveryOutcome.Retry -> {
-                    val exponential = cfg.initialRetry.toMillis() * (1L shl delivery.attemptCount.coerceAtMost(16))
-                    val delay = outcome.retryAfterMillis ?: exponential.coerceAtMost(cfg.maximumRetry.toMillis())
-                    runCatching { box.retry(delivery, System.currentTimeMillis() + delay) }
+                    val delay = RetryDelayPolicy.delay(
+                        cfg.initialRetry, cfg.maximumRetry, delivery.attemptCount, outcome.retryAfterMillis)
+                    val retryAt = System.currentTimeMillis() + delay
+                    if (runCatching { box.retry(delivery, retryAt) }.isSuccess) recoveryWake = retryAt
+                    else {
+                        errorCategory = "persistence"
+                        recoveryWake = System.currentTimeMillis() + EXECUTOR_RECOVERY_DELAY_MILLIS
+                    }
                 }
                 is DeliveryOutcome.Reconcile -> main { errorCategory = outcome.category; beginFullCapture() }
                 is DeliveryOutcome.Pause -> main { paused = true; errorCategory = outcome.category }
             }
             deliveryInFlight.set(false)
             refreshStatus()
-            if (outcome is DeliveryOutcome.Success) main(::pump)
+            if (pumpAgain) main(::pump)
+            else if (recoveryWake != null) main { scheduleRetryWake(requireNotNull(recoveryWake)) }
         }
+        if (!submitted) {
+            deliveryInFlight.set(false)
+            scheduleRetryWake(System.currentTimeMillis() + EXECUTOR_RECOVERY_DELAY_MILLIS)
+        }
+    }
+
+    private fun scheduleRetryWake(at: Long) {
+        check(Bukkit.isPrimaryThread())
+        if (!active || paused) return
+        retryWakeScheduler.schedule(at)
+    }
+
+    private fun cancelRetryWake() {
+        retryWakeScheduler.cancel()
     }
 
     private fun refreshStatus() {
@@ -308,6 +384,21 @@ class WebsiteSyncService(
         if (Bukkit.isPrimaryThread()) task() else runCatching { Bukkit.getScheduler().runTask(plugin, Runnable(task)) }
     }
 
+    @Synchronized
+    private fun client(cfg: WebsiteSyncConfig): MarketHttpClient {
+        if (httpClient == null || httpClientConfig != cfg) {
+            httpClientConfig = cfg
+            httpClient = MarketHttpClient(cfg, "EnthusiaMarket/${plugin.pluginMeta.version}")
+        }
+        return requireNotNull(httpClient)
+    }
+
+    @Synchronized
+    private fun clearHttpClient() {
+        httpClient = null
+        httpClientConfig = null
+    }
+
     private fun DeliveryOutcome.safeCategory(): String = when (this) {
         DeliveryOutcome.Success -> "authenticated"
         is DeliveryOutcome.Retry -> "temporary_failure"
@@ -318,12 +409,15 @@ class WebsiteSyncService(
     override fun close() {
         active = false; paused = true
         tickTask?.cancel(); reconciliationTask?.cancel()
+        cancelRetryWake()
+        clearHttpClient()
         executor.shutdownNow()
     }
 
     private fun isCanonicalId(id: String): Boolean = id in canonical.stalls
 
     companion object {
+        private const val EXECUTOR_RECOVERY_DELAY_MILLIS = 1_000L
         private fun durationTicks(duration: Duration): Long = (duration.toMillis() / 50L).coerceAtLeast(1L)
     }
 }

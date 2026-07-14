@@ -7,9 +7,32 @@ import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.logging.Logger
 
 fun interface WebsiteSyncDirtySink {
     fun markDirty(stallId: String)
+}
+
+fun interface DirtyTrackingFailureObserver {
+    fun report(operation: String, publicStallId: String?)
+}
+
+class RateLimitedDirtyTrackingFailureObserver(
+    private val logger: Logger,
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val minimumIntervalMillis: Long = 60_000,
+) : DirtyTrackingFailureObserver {
+    private val lastReport = ConcurrentHashMap<String, Long>()
+
+    override fun report(operation: String, publicStallId: String?) {
+        val key = "$operation:${publicStallId.orEmpty()}"
+        val now = clock()
+        val prior = lastReport[key]
+        if (prior == null || now - prior >= minimumIntervalMillis) {
+            lastReport[key] = now
+            logger.warning("Website sync dirty tracking failed (category=$operation, stall=${publicStallId ?: "unknown"})")
+        }
+    }
 }
 
 /**
@@ -24,6 +47,7 @@ fun interface WebsiteSyncDirtySink {
 class DirtyTrackingStallRepository(
     private val delegate: StallRepository,
     private val dirty: WebsiteSyncDirtySink,
+    private val failures: DirtyTrackingFailureObserver = DirtyTrackingFailureObserver { _, _ -> },
 ) : StallRepository by delegate {
     override fun save(stall: Stall) {
         delegate.save(stall)
@@ -36,7 +60,7 @@ class DirtyTrackingStallRepository(
     }
 
     private fun notify(stallId: String) {
-        try { dirty.markDirty(stallId) } catch (_: Exception) { /* Market mutations must remain isolated. */ }
+        try { dirty.markDirty(stallId) } catch (_: Exception) { failures.report("notify", stallId) }
     }
 }
 
@@ -44,11 +68,12 @@ class DirtyTrackingStallRepository(
 class DirtyTrackingShopRepository(
     private val delegate: ShopRepository,
     private val dirty: WebsiteSyncDirtySink,
+    private val failures: DirtyTrackingFailureObserver = DirtyTrackingFailureObserver { _, _ -> },
 ) : ShopRepository by delegate {
     private val stallByShopId = ConcurrentHashMap<Long, String>()
 
     init {
-        runCatching { delegate.all().forEach { stallByShopId[it.id] = it.stallId } }
+        safe("initial_load") { delegate.all().forEach { stallByShopId[it.id] = it.stallId } }
     }
 
     override fun upsert(shop: Shop): Shop {
@@ -67,7 +92,7 @@ class DirtyTrackingShopRepository(
     }
 
     override fun deleteByContainer(world: String, x: Int, y: Int, z: Int) {
-        val affected = safe { delegate.findByContainer(world, x, y, z) }
+        val affected = safe("lookup_delete_by_container") { delegate.findByContainer(world, x, y, z) }
             .orEmpty()
             .map { it.id to it.stallId }
         delegate.deleteByContainer(world, x, y, z)
@@ -76,7 +101,7 @@ class DirtyTrackingShopRepository(
     }
 
     override fun deleteByOwner(owner: UUID): Int {
-        val affected = safe { delegate.findByOwner(owner).map { it.id to it.stallId } }.orEmpty()
+        val affected = safe("lookup_delete_by_owner") { delegate.findByOwner(owner).map { it.id to it.stallId } }.orEmpty()
         val count = delegate.deleteByOwner(owner)
         affected.forEach { stallByShopId.remove(it.first) }
         notify(*affected.map { it.second }.toTypedArray())
@@ -101,13 +126,16 @@ class DirtyTrackingShopRepository(
     }
 
     private fun stallId(id: Long): String? = stallByShopId[id]
-        ?: safe { delegate.findById(id)?.stallId }?.also { stallByShopId[id] = it }
+        ?: safe("lookup_shop") { delegate.findById(id)?.stallId }?.also { stallByShopId[id] = it }
 
     private fun notify(vararg ids: String?) {
         ids.filterNotNull().distinct().forEach {
-            try { dirty.markDirty(it) } catch (_: Exception) { /* Never escape into Market callers. */ }
+            try { dirty.markDirty(it) } catch (_: Exception) { failures.report("notify", it) }
         }
     }
 
-    private fun <T> safe(block: () -> T): T? = try { block() } catch (_: Exception) { null }
+    private fun <T> safe(operation: String, block: () -> T): T? = try { block() } catch (_: Exception) {
+        failures.report(operation, null)
+        null
+    }
 }

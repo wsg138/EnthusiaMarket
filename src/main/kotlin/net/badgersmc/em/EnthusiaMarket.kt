@@ -110,9 +110,10 @@ open class EnthusiaMarket : JavaPlugin() {
         // The relay breaks the construction cycle: repositories are registered before the sync
         // service is built, and notifications are harmless no-ops until the target is attached.
         val websiteDirtyRelay = net.badgersmc.em.websync.WebsiteSyncDirtyRelay()
+        val dirtyFailures = net.badgersmc.em.websync.RateLimitedDirtyTrackingFailureObserver(logger)
         val stallSqlRepo = net.badgersmc.em.infrastructure.persistence.StallRepositorySql(ds)
         val stallRepository: net.badgersmc.em.domain.stall.StallRepository =
-            net.badgersmc.em.websync.DirtyTrackingStallRepository(stallSqlRepo, websiteDirtyRelay)
+            net.badgersmc.em.websync.DirtyTrackingStallRepository(stallSqlRepo, websiteDirtyRelay, dirtyFailures)
         ctx.registerBean("stallRepository", net.badgersmc.em.domain.stall.StallRepository::class, stallRepository)
 
         // Shop repository + in-memory container index (REQ-281/282, PERF-4). The hopper-control
@@ -127,7 +128,7 @@ open class EnthusiaMarket : JavaPlugin() {
         val indexedShopRepository: ShopRepository =
             net.badgersmc.em.application.IndexedShopRepository(shopSqlRepo, shopLocationIndex)
         val shopRepository: ShopRepository =
-            net.badgersmc.em.websync.DirtyTrackingShopRepository(indexedShopRepository, websiteDirtyRelay)
+            net.badgersmc.em.websync.DirtyTrackingShopRepository(indexedShopRepository, websiteDirtyRelay, dirtyFailures)
         ctx.registerBean(
             "shopLocationIndex",
             net.badgersmc.em.domain.shop.ShopLocationIndex::class,
@@ -181,6 +182,7 @@ open class EnthusiaMarket : JavaPlugin() {
         ctx.registerBean("stallPriority", Int::class, cfg.market.stallPriority)
 
         // Phase 5: Register Paper commands (triggers bean creation via DI).
+        net.badgersmc.em.infrastructure.commands.WebsiteSyncSecretArgumentRegistration.register()
         // itemMaterials suggestion provider backs `/shop search` tab-completion (REQ-283):
         // computed once here, prefix-filtered per keystroke by the pure MaterialSuggestions helper.
         val itemMaterialNames = org.bukkit.Material.entries.filter { it.isItem }.map { it.name }
