@@ -74,6 +74,14 @@ class LumaGuildsGuildProvider : GuildProvider {
     override fun listGuilds(): List<GuildProvider.GuildRef> =
         lookup?.getAllGuilds()?.map { toGuildRef(it) } ?: emptyList()
 
+    override fun memberIds(guildId: String): Set<UUID> {
+        val uuid = parseUuid(guildId) ?: return emptySet()
+        return org.bukkit.Bukkit.getOnlinePlayers()
+            .filter { lookup?.isMember(it.uniqueId, uuid) == true }
+            .map { it.uniqueId }
+            .toSet()
+    }
+
     /** Map a LumaGuilds [GuildSummary] to [GuildProvider.GuildRef], normalising tag/emoji to MiniMessage. */
     private fun toGuildRef(guild: GuildSummary): GuildProvider.GuildRef =
         GuildProvider.GuildRef(

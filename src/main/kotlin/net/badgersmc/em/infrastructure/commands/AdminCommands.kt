@@ -552,7 +552,16 @@ class AdminCommands(
                     } catch (_: Exception) {
                         errors++
                     }
-                    OwnerType.GUILD -> skipped++  // no auto WG bridge for guilds yet
+                    OwnerType.GUILD -> try {
+                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+                        val guids = guildProvider.memberIds(stall.owner.id)
+                        if (guids.isNotEmpty()) {
+                            regionMembers.syncGuildMembers(stall.world, stall.regionId, guids)
+                        }
+                        fixed++  // owners/members always cleared above; sync best-effort
+                    } catch (_: Exception) {
+                        errors++
+                    }
                     OwnerType.NONE -> Unit
                 }
                 StallState.UNOWNED -> try {

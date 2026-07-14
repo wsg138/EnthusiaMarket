@@ -52,6 +52,14 @@ class WorldGuardRegionMemberSync : RegionMemberSync {
         }
     }
 
+    override fun syncGuildMembers(world: String, regionId: String, memberUuids: Set<UUID>) {
+        withRegion(world, regionId) { region ->
+            region.owners.removeAll()
+            region.members.removeAll()
+            memberUuids.forEach { region.members.addPlayer(it) }
+        }
+    }
+
     private inline fun withRegion(
         world: String,
         regionId: String,

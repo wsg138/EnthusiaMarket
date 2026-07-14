@@ -53,6 +53,9 @@ interface GuildProvider {
     /** Every guild known to the backing system (for pickers). */
     fun listGuilds(): List<GuildRef>
 
+    /** UUIDs of every player who is currently a member of the guild. */
+    fun memberIds(guildId: String): Set<UUID>
+
     /** Register a callback invoked when a guild is dissolved. */
     fun onDissolved(handler: (guildId: String) -> Unit)
 }

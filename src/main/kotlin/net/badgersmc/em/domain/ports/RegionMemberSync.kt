@@ -30,4 +30,11 @@ interface RegionMemberSync {
      * owner can no longer build in a region they don't own.
      */
     fun clearOwnersAndMembers(world: String, regionId: String)
+
+    /**
+     * Sync all [memberUuids] as WG region members. Used to bridge guild
+     * membership into WG so guild members can build in guild-owned stalls
+     * without op or manual `/em stall members add`.
+     */
+    fun syncGuildMembers(world: String, regionId: String, memberUuids: Set<UUID>)
 }
