@@ -61,21 +61,20 @@ open class ContainerTradeService(
         if (preconditions.result != null) return preconditions.result!!
         val (effectiveCost, policyFailure) = resolveEffectiveCost(shop, playerUuid, shop.costAmount.toLong(), preconditions.ctx!!.guildId)
         if (policyFailure != null) return policyFailure
-        if (!canAffordShopCost(preconditions.ctx!!.guildId, preconditions.ownerUuid!!, effectiveCost)) {
+        if (!canAffordShopCost(preconditions.ctx!!.guildId, shop.owner, effectiveCost)) {
             return guildPaymentFailure(preconditions.ctx!!.guildId, "Shop can't afford this")
         }
         return executeBuyTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, effectiveCost)
     }
 
     private data class BuyPreconditions(
-        val ownerUuid: UUID? = null,
         val ctx: TradeContext? = null,
         val sellStack: ItemStack? = null,
         val result: ContainerTradeResult.Failure? = null
     )
 
     private fun buyPreconditions(shop: Shop, playerUuid: UUID): BuyPreconditions {
-        val (ownerUuid, stall) = resolveStallOwner(shop)
+        val stall = resolveStall(shop)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
         if (stall.state == StallState.GRACE)
             return BuyPreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
@@ -85,7 +84,7 @@ open class ContainerTradeService(
             return BuyPreconditions(result = ContainerTradeResult.Failure("You don't have the items to sell"))
         val container = getContainer(shop)
             ?: return BuyPreconditions(result = ContainerTradeResult.Failure("Container missing"))
-        return BuyPreconditions(ownerUuid, TradeContext(ownerUuid, resolveGuildUuid(stall), player, container.inventory), sellStack)
+        return BuyPreconditions(TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory), sellStack)
     }
 
     private fun executeBuyTransaction(
@@ -167,7 +166,7 @@ open class ContainerTradeService(
     )
 
     private fun sellPreconditions(shop: Shop, playerUuid: UUID): SellPreconditions {
-        val (ownerUuid, stall) = resolveStallOwner(shop)
+        val stall = resolveStall(shop)
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
         if (stall.state == StallState.GRACE)
             return SellPreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
@@ -177,7 +176,7 @@ open class ContainerTradeService(
             ?: return SellPreconditions(result = ContainerTradeResult.Failure("Container missing"))
         if (!inventoryHasAtLeast(container.inventory, sellStack, shop.sellAmount))
             return SellPreconditions(result = ContainerTradeResult.Failure("Out of stock"))
-        return SellPreconditions(TradeContext(ownerUuid, resolveGuildUuid(stall), player, container.inventory), sellStack)
+        return SellPreconditions(TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory), sellStack)
     }
 
     @Suppress("ReturnCount")
@@ -300,14 +299,6 @@ open class ContainerTradeService(
         return base
     }
 
-    private fun resolveOwnerUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? {
-        return when (stall.owner.type) {
-            OwnerType.SOLO -> try { UUID.fromString(stall.owner.id) } catch (_: IllegalArgumentException) { null }
-            OwnerType.GUILD -> try { UUID.fromString(stall.owner.id) } catch (_: IllegalArgumentException) { null }
-            OwnerType.NONE -> null
-        }
-    }
-
     /** Resolves the guild UUID when the stall is guild-owned, null otherwise. */
     private fun resolveGuildUuid(stall: net.badgersmc.em.domain.stall.Stall): UUID? {
         return if (stall.owner.type == OwnerType.GUILD) {
@@ -325,7 +316,7 @@ open class ContainerTradeService(
     )
 
     private fun barterPreconditions(shop: Shop, playerUuid: UUID): BarterPreconditions {
-        val (ownerUuid, stall) = resolveStallOwner(shop)
+        val stall = resolveStall(shop)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Stall not found"))
         if (stall.state == StallState.GRACE)
             return BarterPreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
@@ -335,7 +326,7 @@ open class ContainerTradeService(
         val container = validateBarterStock(shop, player, stacks.first, stacks.second)
             ?: return BarterPreconditions(result = ContainerTradeResult.Failure("Out of stock"))
         return BarterPreconditions(
-            TradeContext(ownerUuid, resolveGuildUuid(stall), player, container.inventory),
+            TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory),
             stacks.first, stacks.second
         )
     }
@@ -356,12 +347,9 @@ open class ContainerTradeService(
         return container
     }
 
-    /** Returns owner UUID + stall, or null if stall/owner resolution fails. */
-    private fun resolveStallOwner(shop: Shop): Pair<UUID, net.badgersmc.em.domain.stall.Stall>? {
-        val stall = stallRepository.findById(StallId(shop.stallId)) ?: return null
-        val ownerUuid = resolveOwnerUuid(stall) ?: return null
-        return Pair(ownerUuid, stall)
-    }
+    /** Returns the stall or null. Payment owner is always [Shop.owner], not the stall owner. */
+    private fun resolveStall(shop: Shop): net.badgersmc.em.domain.stall.Stall? =
+        stallRepository.findById(StallId(shop.stallId))
 
     /** Returns online player + deserialized sell stack, or null if either fails. */
     private fun resolvePlayerAndSellStack(shop: Shop, playerUuid: UUID): Pair<Player, ItemStack>? {
@@ -477,7 +465,7 @@ open class ContainerTradeService(
     )
 
     private fun slotTradePreconditions(shop: Shop, playerUuid: UUID): SlotTradePreconditions {
-        val (ownerUuid, stall) = resolveStallOwner(shop)
+        val stall = resolveStall(shop)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall not found"))
         if (stall.state == StallState.GRACE)
             return SlotTradePreconditions(result = ContainerTradeResult.Failure("Stall rent is overdue — owner must pay before trades resume"))
@@ -485,7 +473,7 @@ open class ContainerTradeService(
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Player offline"))
         val (container, sellStack) = resolveContainerStock(shop)
             ?: return SlotTradePreconditions(result = ContainerTradeResult.Failure("Container unavailable"))
-        return SlotTradePreconditions(ctx = SlotTradeContext(player, container, sellStack, ownerUuid, stall))
+        return SlotTradePreconditions(ctx = SlotTradeContext(player, container, sellStack, shop.owner, stall))
     }
 
     private fun resolveContainerStock(shop: Shop): Pair<Container, ItemStack>? {

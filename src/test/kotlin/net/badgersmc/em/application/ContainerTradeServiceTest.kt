@@ -622,23 +622,6 @@ class ContainerTradeServiceTest {
         verify(exactly = 0) { economy.deposit(ownerUuid, any()) }
     }
 
-    // ===== Invalid owner UUID =====
-
-    @Test
-    fun `executeBuy fails with invalid owner UUID`() {
-        val ownerRef = OwnerRef(OwnerRef.solo(ownerUuid).type, "not-a-uuid")
-        val badStall = sampleStall().copy(owner = ownerRef)
-
-        val stallRepo = mockk<StallRepository>(relaxed = true)
-        every { stallRepo.findById(StallId("stall_01")) } returns badStall
-
-        val service = buildService(stallRepo = stallRepo)
-
-        val result = service.executeBuy(testShop(), playerUuid)
-        assertTrue(result is ContainerTradeResult.Failure, "Expected Failure for invalid owner")
-        assertTrue((result as ContainerTradeResult.Failure).reason.contains("Stall not found", ignoreCase = true))
-    }
-
     // ===== Guild-owned stalls =====
     // Shops no longer carry guildId — guild ownership is determined by the stall.
     // When a stall is owned by OwnerRef.guild(...), income routes to the guild bank.
