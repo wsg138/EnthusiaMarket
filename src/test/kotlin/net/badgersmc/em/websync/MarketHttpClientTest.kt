@@ -45,6 +45,38 @@ class MarketHttpClientTest {
         }
     }
 
+    @Test
+    fun `authenticated test uses explicit application user agent and verifies response body`() {
+        val agents = mutableListOf<String>()
+        withServer { server ->
+            server.createContext("/internal/v1/test") { exchange ->
+                agents += exchange.requestHeaders.getFirst("User-Agent") ?: ""
+                val response = """{"ok":true,"authenticated":true}""".toByteArray()
+                exchange.sendResponseHeaders(200, response.size.toLong())
+                exchange.responseBody.use { it.write(response) }
+            }
+            server.start()
+            val client = MarketHttpClient(config(server), "EnthusiaMarket/0.2.0")
+            assertEquals(DeliveryOutcome.Success, client.authenticatedTest("epoch"))
+            assertEquals(DeliveryOutcome.Success, client.authenticatedTest("epoch"))
+            assertEquals(listOf("EnthusiaMarket/0.2.0", "EnthusiaMarket/0.2.0"), agents)
+        }
+    }
+
+    @Test
+    fun `HTTP success without authenticated confirmation is rejected safely`() {
+        withServer { server ->
+            server.createContext("/internal/v1/test") { exchange ->
+                val response = """{"ok":true}""".toByteArray()
+                exchange.sendResponseHeaders(200, response.size.toLong())
+                exchange.responseBody.use { it.write(response) }
+            }
+            server.start()
+            assertEquals(DeliveryOutcome.Pause("invalid_test_response"),
+                MarketHttpClient(config(server)).authenticatedTest("epoch"))
+        }
+    }
+
     private fun withServer(block: (HttpServer) -> Unit) {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         try { block(server) } finally { server.stop(0) }

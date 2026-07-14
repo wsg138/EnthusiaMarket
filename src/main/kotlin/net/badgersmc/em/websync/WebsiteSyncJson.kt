@@ -4,7 +4,7 @@ import com.google.gson.GsonBuilder
 import java.nio.charset.StandardCharsets
 
 object WebsiteSyncJson {
-    private val gson = GsonBuilder().disableHtmlEscaping().create()
+    private val gson = GsonBuilder().disableHtmlEscaping().serializeNulls().create()
     private val includedRevisionsType = object : com.google.gson.reflect.TypeToken<List<IncludedRevision>>() {}.type
     fun bytes(value: Any): ByteArray = gson.toJson(value).toByteArray(StandardCharsets.UTF_8)
     fun <T> parse(text: String, type: Class<T>): T = gson.fromJson(text, type)
