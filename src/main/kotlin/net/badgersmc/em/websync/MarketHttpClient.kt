@@ -80,6 +80,7 @@ class MarketHttpClient(private val config: WebsiteSyncConfig) {
                 401 -> "unauthorized"
                 403 -> "forbidden"
                 413 -> "payload_too_large"
+                in 300..399 -> "http_3xx"
                 else -> "http_4xx"
             }
         )

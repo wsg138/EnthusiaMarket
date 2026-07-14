@@ -11,16 +11,15 @@ class IncrementalFullCapture(
     private var cursor = 0
     val stalls = mutableListOf<PublicStall>()
     val capturedGenerations = linkedMapOf<String, Long>()
-    val complete: Boolean get() = cursor == stallIds.size
+    val complete: Boolean get() = cursor >= stallIds.size
 
     fun tick(): Int {
         val started = nanoTime()
         var processed = 0
         while (canProcess(processed, started)) {
-            val id = stallIds[cursor]
+            val id = stallIds[cursor++]
             stalls += capture(id)
             capturedGenerations[id] = generation(id)
-            cursor++
             processed++
         }
         return processed

@@ -9,6 +9,7 @@ class WebsiteSyncMigrationRunner(
     @Suppress("NestedBlockDepth")
     fun runAll() {
         dataSource.connection.use { connection ->
+            val priorAutoCommit = connection.autoCommit
             connection.autoCommit = false
             try {
                 connection.createStatement().use { statement ->
@@ -40,7 +41,7 @@ class WebsiteSyncMigrationRunner(
                 connection.rollback()
                 throw e
             } finally {
-                connection.autoCommit = true
+                connection.autoCommit = priorAutoCommit
             }
         }
     }

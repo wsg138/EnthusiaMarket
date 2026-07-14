@@ -5,7 +5,6 @@ import java.sql.ResultSet
 import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
-import com.google.gson.reflect.TypeToken
 
 enum class DeliveryKind { FULL, STALL }
 data class PendingDelivery(
@@ -154,10 +153,7 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
                     statement.setLong(1, delivery.revision); statement.setString(2, delivery.eventId)
                     statement.executeQuery().use { result ->
                         if (!result.next()) emptyList() else {
-                            val type = object : TypeToken<List<IncludedRevision>>() {}.type
-                            com.google.gson.Gson().fromJson<List<IncludedRevision>>(
-                                result.getBytes(1).toString(Charsets.UTF_8), type
-                            )
+                            WebsiteSyncJson.fromJsonIncludedRevisions(result.getBytes(1))
                         }
                     }
                 }
