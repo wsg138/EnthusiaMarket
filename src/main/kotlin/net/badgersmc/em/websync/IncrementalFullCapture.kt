@@ -1,7 +1,7 @@
 package net.badgersmc.em.websync
 
 class IncrementalFullCapture(
-    private val stallIds: List<String> = (1..71).map { "stall$it" },
+    private val stallIds: List<String>,
     private val generation: (String) -> Long,
     private val capture: (String) -> PublicStall,
     private val maximumPerTick: Int = 1,

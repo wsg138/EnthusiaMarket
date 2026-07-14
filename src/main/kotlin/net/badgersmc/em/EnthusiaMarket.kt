@@ -164,7 +164,8 @@ open class EnthusiaMarket : JavaPlugin() {
             websiteCanonical,
         )
         val websiteService = net.badgersmc.em.websync.WebsiteSyncService(
-            this, websiteConfig, websiteOutbox, websiteProjector, migrationFailure = websiteOutbox == null,
+            this, websiteConfig, websiteOutbox, websiteProjector, websiteCanonical,
+            migrationFailure = websiteOutbox == null,
         )
         websiteSync = websiteService
         websiteDirtyRelay.target = websiteService

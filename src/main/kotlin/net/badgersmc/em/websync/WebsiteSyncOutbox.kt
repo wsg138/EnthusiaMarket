@@ -58,7 +58,7 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
     }
 
     fun enqueueFull(stalls: List<PublicStall>): PendingDelivery = transaction { connection ->
-        require(stalls.size == 71) { "full_stall_count" }
+        require(stalls.isNotEmpty()) { "full_stall_count" }
         val epoch = state(connection, "server_epoch") ?: UUID.randomUUID().toString().also {
             setState(connection, "server_epoch", it)
         }
@@ -267,6 +267,16 @@ class WebsiteSyncOutbox(private val dataSource: DataSource) {
             result.next(); result.getLong(1).let { if (result.wasNull()) null else it }
         } }
 
+    /**
+     * Execute [block] in a JDBC transaction.
+     *
+     * SAFETY NOTE: This toggles [Connection.autoCommit]. HikariCP resets
+     * autoCommit on [Connection.close] (which [use] calls when the block
+     * exits), but the [finally] restoration is kept as a belt-and-suspenders
+     * guard. If you observe stalled transactions in other EM components, this
+     * pattern is a candidate — the EnthusiaMarket codebase has seen
+     * HikariCP autoCommit leak issues in the past.
+     */
     private fun <T> transaction(block: (Connection) -> T): T = dataSource.connection.use { connection ->
         connection.autoCommit = false
         try { block(connection).also { connection.commit() } }

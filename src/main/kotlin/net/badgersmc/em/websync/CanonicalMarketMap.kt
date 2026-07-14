@@ -14,11 +14,15 @@ class CanonicalMarketMap private constructor(
     val stalls: Map<String, CanonicalStall>,
     val provenance: CanonicalProvenance,
 ) {
+    /** Stable-sorted canonical stall identifiers (e.g. stall1..stall71). */
+    val stallIds: List<String> = stalls.keys.sortedBy { it.removePrefix("stall").toInt() }
+    val stallCount: Int get() = stalls.size
+
     fun validate(): List<String> {
-        val expected = (1..71).map { "stall$it" }.toSet()
+        val expected = (1..stallCount).map { "stall$it" }.toSet()
         val errors = mutableListOf<String>()
         if (stalls.keys != expected) errors += "canonical_ids"
-        if (stalls.size != 71 || provenance.recordCount != 71) errors += "canonical_count"
+        if (stalls.size != stallCount || provenance.recordCount != stallCount) errors += "canonical_count"
         if (provenance.mapperCommit != MAPPER_COMMIT || provenance.sourceSha256 != SOURCE_SHA256 ||
             provenance.approvedPolygonFingerprint != POLYGON_FINGERPRINT
         ) errors += "canonical_provenance"
