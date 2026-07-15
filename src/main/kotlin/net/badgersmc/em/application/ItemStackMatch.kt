@@ -11,7 +11,7 @@ object ItemStackMatch {
 
     fun countIn(inventory: Inventory, template: ItemStack): Int {
         val templateBytes = normalizedBytes(template)
-        return inventory.contents.filterNotNull()
+        return inventory.storageContents.filterNotNull()
             .filter { bytesMatch(it, templateBytes) }
             .sumOf { it.amount }
     }
@@ -20,7 +20,7 @@ object ItemStackMatch {
      *  from [ItemStackSerializer.serialize]) — avoids the deserialize→serialize
      *  round-trip which can drop enchantment NBT in some Paper versions. */
     fun countInBytes(inventory: Inventory, templateBytes: ByteArray): Int =
-        inventory.contents.filterNotNull()
+        inventory.storageContents.filterNotNull()
             .filter { bytesMatch(it, templateBytes) }
             .sumOf { it.amount }
 
@@ -29,7 +29,7 @@ object ItemStackMatch {
      *  but ignores repair cost. Use for enchanted items where users may have
      *  anvilled/merged stacks with different repair costs on the same item. */
     fun countSimilar(inventory: Inventory, template: ItemStack): Int =
-        inventory.contents.filterNotNull()
+        inventory.storageContents.filterNotNull()
             .filter { it.isSimilar(template) }
             .sumOf { it.amount }
 
