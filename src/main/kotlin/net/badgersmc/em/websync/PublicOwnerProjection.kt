@@ -37,12 +37,7 @@ class PublicOwnerProjection(
     private fun guild(owner: OwnerRef): Result {
         val guild = guilds.guildById(owner.id)
         val visual = guilds.visualById(owner.id)
-        val banner = visual?.banner?.let { design ->
-            PublicBannerDesign(
-                design.baseColor,
-                design.patterns.take(MAX_BANNER_PATTERNS).map { PublicBannerPattern(it.type, it.color) },
-            )
-        }
+        val banner = visual?.banner?.let(::banner)
         val leaderName = visual?.leaderId?.let(playerName)
         val leaderHead = visual?.leaderId?.let { avatars.resolve(it, leaderName) }
         return Result(
@@ -58,6 +53,11 @@ class PublicOwnerProjection(
             guild == null,
         )
     }
+
+    private fun banner(design: GuildProvider.BannerDesign) = PublicBannerDesign(
+        design.baseColor,
+        design.patterns.take(MAX_BANNER_PATTERNS).map { PublicBannerPattern(it.type, it.color) },
+    )
 
     private companion object {
         const val MAX_BANNER_PATTERNS = 6
