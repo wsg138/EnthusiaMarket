@@ -463,7 +463,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         // Stall awarded to winner
         verify { svc.stallRepo.save(match { stall ->
-            stall.owner == OwnerRef.solo(winner) && stall.state == StallState.OWNED
+            stall.owner == OwnerRef.solo(winner) && stall.state == StallState.OWNED && stall.nextRentAt != null
         }) }
         // Seller paid proceeds minus fee
         verify { svc.economy.deposit(playerUuid, sellerProceeds) }

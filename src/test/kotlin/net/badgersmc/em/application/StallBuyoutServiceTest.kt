@@ -19,6 +19,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class StallBuyoutServiceTest {
@@ -105,8 +106,8 @@ class StallBuyoutServiceTest {
             claimDecision = LimitResolutionService.ClaimDecision.Allowed,
             economyWithdrawOk = true,
         )
-        val result = svc.buy(stallId, player, 100L, "1.2.3.4")
-        assertIs<StallBuyoutService.Result.Purchased>(result)
+        val result = assertIs<StallBuyoutService.Result.Purchased>(svc.buy(stallId, player, 100L, "1.2.3.4"))
+        assertNotNull(result.stall.nextRentAt)
         verify { economy.withdraw(player, 100L) }
     }
 
