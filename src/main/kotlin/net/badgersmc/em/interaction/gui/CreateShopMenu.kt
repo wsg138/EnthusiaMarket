@@ -290,6 +290,10 @@ class CreateShopMenu(
         val pendingPriceInputs: ConcurrentHashMap<UUID, Pair<CreateShopMenu, Instant>> = ConcurrentHashMap()
 
         /** Handle a chat message that might be a custom price input. Returns true if consumed. */
+        /** True when [playerId] has an active custom-price prompt. */
+        fun isWaiting(playerId: UUID): Boolean =
+            pendingPriceInputs.containsKey(playerId)
+
         fun handleChat(player: Player, message: String, lang: LangService): Boolean {
             val entry = pendingPriceInputs.remove(player.uniqueId) ?: return false
             val (menu, promptedAt) = entry
