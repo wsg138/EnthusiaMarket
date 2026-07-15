@@ -147,8 +147,8 @@ class RentCollectionService(
             ProcessResult.Defaulted
         }
         StallState.GRACE -> {
-            val ownerSince = stall.ownerSince
-            if (ownerSince != null && isPastGrace(ownerSince, now)) emergencyAuction(stall, now, rentDue)
+            val graceStartedAt = stall.ownerSince
+            if (graceStartedAt != null && isPastGrace(graceStartedAt, now)) emergencyAuction(stall, now, rentDue)
             else ProcessResult.Skipped
         }
         else -> ProcessResult.Skipped
@@ -194,8 +194,8 @@ class RentCollectionService(
         Duration.ofDays(1)
     }
 
-    private fun isPastGrace(ownerSince: Instant, now: Instant): Boolean {
-        val deadline = ownerSince.plus(RentTimingPolicy.gracePeriod(config))
+    private fun isPastGrace(graceStartedAt: Instant, now: Instant): Boolean {
+        val deadline = graceStartedAt.plus(RentTimingPolicy.gracePeriod(config))
         return now.isAfter(deadline)
     }
 

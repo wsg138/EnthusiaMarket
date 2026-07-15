@@ -24,8 +24,11 @@ object RentTimingPolicy {
         else -> null
     }
 
-    fun graceEndsAt(stall: Stall, config: EnthusiaMarketConfig): Instant? =
-        stall.ownerSince?.takeIf { stall.state == StallState.GRACE }?.plus(gracePeriod(config))
+    fun graceEndsAt(stall: Stall, config: EnthusiaMarketConfig): Instant? {
+        // Mirrors RentCollectionService: GRACE repurposes ownerSince as its start time.
+        val graceStartedAt = stall.ownerSince?.takeIf { stall.state == StallState.GRACE }
+        return graceStartedAt?.plus(gracePeriod(config))
+    }
 
     private fun positiveDuration(raw: String, fallback: Duration): Duration =
         runCatching { Duration.parse(raw) }

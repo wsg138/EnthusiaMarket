@@ -10,6 +10,10 @@ data class Stall(
     val world: String,
     val state: StallState,
     val owner: OwnerRef,
+    /**
+     * Ownership start time. While [state] is [StallState.GRACE], the rent
+     * system repurposes this as the grace-start timestamp.
+     */
     val ownerSince: Instant?,
     val winningBid: Long,
     val rentTerms: RentTerms,

@@ -15,7 +15,6 @@ import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Bukkit
 import java.time.Clock
-import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.logging.Logger
@@ -256,12 +255,6 @@ class StallBuyoutService(
 
         fireStateChanged(stallId.value, previousState, updated.state)
         return Result.Purchased(updated, price, owner)
-    }
-
-    private fun collectionInterval(): Duration = try {
-        Duration.parse(config.rent.collectionInterval)
-    } catch (_: java.time.format.DateTimeParseException) {
-        Duration.ofDays(1)
     }
 
     private fun fireStateChanged(

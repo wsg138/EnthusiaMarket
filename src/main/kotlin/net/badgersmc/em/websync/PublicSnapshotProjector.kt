@@ -8,6 +8,7 @@ import net.badgersmc.em.domain.ports.RegionProvider
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.stall.StallState
 import org.bukkit.Bukkit
 
 class PublicSnapshotProjector(
@@ -86,7 +87,7 @@ class PublicSnapshotProjector(
         val owner = projectedOwner.owner
         val effectiveNextRentAt = RentTimingPolicy.effectiveNextRentAt(stall, config)
         val rentTimingStatus = when {
-            stall.state.name !in setOf("OWNED", "GRACE") -> "NOT_APPLICABLE"
+            stall.state != StallState.OWNED && stall.state != StallState.GRACE -> "NOT_APPLICABLE"
             stall.nextRentAt != null -> "PERSISTED"
             effectiveNextRentAt != null -> "LEGACY_DERIVED"
             else -> "UNAVAILABLE"

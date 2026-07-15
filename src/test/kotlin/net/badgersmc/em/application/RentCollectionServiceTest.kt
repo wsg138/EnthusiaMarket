@@ -2,6 +2,7 @@ package net.badgersmc.em.application
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.Auction
@@ -177,19 +178,39 @@ class RentCollectionServiceTest {
     // --- tick: insufficient balance marks GRACE (defaulted) on first failure ---
 
     @Test
-    fun `tick insufficient balance marks GRACE on first failure`() {
-        val svc = buildService(stalls = listOf(ownedStall), economyWithdrawOk = false)
+    fun `tick failed payment gives a long owned stall its full grace window`() {
+        val graceStartedAt = now.plus(Duration.ofDays(10))
+        val dueStall = ownedStall.copy(
+            ownerSince = graceStartedAt.minus(Duration.ofDays(30)),
+            nextRentAt = graceStartedAt.minus(Duration.ofMinutes(1)),
+        )
+        val svc = buildService(stalls = listOf(dueStall), economyWithdrawOk = false)
 
-        val report = svc.service.tick()
+        val report = svc.service.tick(graceStartedAt)
 
         assertEquals(0, report.collected)
         assertEquals(1, report.defaults)
         assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
 
-        verify { svc.stallRepo.save(match { it.state == StallState.GRACE }) }
+        val saved = slot<Stall>()
+        verify { svc.stallRepo.save(capture(saved)) }
+        val graceStall = saved.captured
+        assertEquals(StallState.GRACE, graceStall.state)
+        assertEquals(graceStartedAt, graceStall.ownerSince)
+        val deadline = graceStartedAt.plus(Duration.ofDays(3))
+        assertEquals(deadline, RentTimingPolicy.graceEndsAt(graceStall, svc.config))
         // Shops must be frozen on GRACE entry
-        verify { svc.shopRepo.freezeByStall(ownedStall.id.value, true) }
+        verify { svc.shopRepo.freezeByStall(dueStall.id.value, true) }
+
+        every { svc.stallRepo.all() } returns listOf(graceStall)
+        val beforeDeadline = svc.service.tick(deadline.minusSeconds(1))
+        assertEquals(0, beforeDeadline.evictions)
+        verify(exactly = 0) { svc.auctionRepo.create(any()) }
+
+        val afterDeadline = svc.service.tick(deadline.plusSeconds(1))
+        assertEquals(1, afterDeadline.evictions)
+        verify(exactly = 1) { svc.auctionRepo.create(any()) }
     }
 
     // --- tick: GRACE + grace expired starts emergency auction ---
