@@ -25,16 +25,11 @@ object RentTimingPolicy {
     }
 
     fun graceEndsAt(stall: Stall, config: EnthusiaMarketConfig): Instant? {
-        // Mirrors RentCollectionService: GRACE grace window starts at nextRentAt
-        // (when rent was actually due), not ownerSince (which is preserved from
-        // original purchase and no longer reset on GRACE entry).
-        val graceStartedAt = when {
-            stall.nextRentAt != null -> stall.nextRentAt
-            // Legacy stall with no nextRentAt: use ownerSince directly (matches RentCollectionService L163).
-            // CR#1 anchors nextRentAt=now on GRACE entry, so this fallback is a last resort.
-            stall.state == StallState.GRACE && stall.ownerSince != null -> stall.ownerSince
-            else -> null
-        }
+        if (stall.state != StallState.GRACE) return null
+
+        // nextRentAt records the GRACE-entry rent deadline. ownerSince is retained
+        // only as the legacy fallback for GRACE stalls that predate nextRentAt.
+        val graceStartedAt = stall.nextRentAt ?: stall.ownerSince
         return graceStartedAt?.plus(gracePeriod(config))
     }
 

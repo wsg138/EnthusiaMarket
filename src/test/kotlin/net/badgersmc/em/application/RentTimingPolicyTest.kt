@@ -28,7 +28,22 @@ class RentTimingPolicyTest {
     }
 
     @Test
-    fun `grace stall exposes configured deadline rather than a rent estimate`() {
+    fun `owned stall with rent deadline has no grace deadline`() {
+        val stall = stall(StallState.OWNED, nextRentAt = ownerSince.plusSeconds(2 * 86_400L))
+
+        assertNull(RentTimingPolicy.graceEndsAt(stall, config))
+    }
+
+    @Test
+    fun `grace stall uses rent deadline as grace start`() {
+        val nextRentAt = ownerSince.plusSeconds(2 * 86_400L)
+        val stall = stall(StallState.GRACE, nextRentAt = nextRentAt)
+
+        assertEquals(nextRentAt.plusSeconds(3 * 86_400L), RentTimingPolicy.graceEndsAt(stall, config))
+    }
+
+    @Test
+    fun `grace stall without rent deadline falls back to owner timestamp`() {
         val stall = stall(StallState.GRACE, nextRentAt = null)
 
         assertNull(RentTimingPolicy.effectiveNextRentAt(stall, config))
@@ -36,8 +51,8 @@ class RentTimingPolicyTest {
     }
 
     @Test
-    fun `emergency auction has no grace deadline`() {
-        val stall = stall(StallState.EMERGENCY_AUCTIONING, nextRentAt = null)
+    fun `emergency auction with rent deadline has no grace deadline`() {
+        val stall = stall(StallState.EMERGENCY_AUCTIONING, nextRentAt = ownerSince.plusSeconds(2 * 86_400L))
 
         assertNull(RentTimingPolicy.graceEndsAt(stall, config))
     }
