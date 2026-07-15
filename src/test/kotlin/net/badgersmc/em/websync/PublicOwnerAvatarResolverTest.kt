@@ -20,21 +20,21 @@ class PublicOwnerAvatarResolverTest {
     }
 
     @Test
-    fun `proxy UUID uses valid player name instead of non-Mojang UUID`() {
+    fun `proxy UUID keeps generic fallback instead of querying a Java skin service`() {
         val uuid = UUID.fromString("00000000-0000-0000-0009-000000000001")
         val result = PublicOwnerAvatarResolver { false }.resolve(uuid, "*Synthetic Bedrock")
 
         assertEquals("PROXY", result.source)
-        assertEquals("https://minotar.net/helm/%2ASynthetic%20Bedrock/96.png", result.url)
+        assertNull(result.url)
     }
 
     @Test
-    fun `Floodgate identity uses name as best effort`() {
+    fun `Floodgate identity keeps generic fallback until supported skin bytes are available`() {
         val uuid = UUID.randomUUID()
         val result = PublicOwnerAvatarResolver { true }.resolve(uuid, "SyntheticBedrock")
 
         assertEquals("FLOODGATE", result.source)
-        assertEquals("https://minotar.net/helm/SyntheticBedrock/96.png", result.url)
+        assertNull(result.url)
     }
 
     @Test

@@ -658,7 +658,12 @@ class AuctionLifecycleService(
         //     so it can be re-auctioned later. The winner is made whole either
         //     way; no money is created or destroyed.
         val awardAt = clock.instant()
-        val updatedStall = stall.awardTo(OwnerRef.solo(bid.bidder), bid.amount, awardAt)
+        val updatedStall = stall.awardTo(
+            OwnerRef.solo(bid.bidder),
+            bid.amount,
+            awardAt,
+            awardAt.plus(RentTimingPolicy.collectionInterval(config)),
+        )
         auctionRepository.save(auction.close())
         try {
             stallRepository.save(updatedStall)

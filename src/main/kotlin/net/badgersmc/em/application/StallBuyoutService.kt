@@ -193,8 +193,7 @@ class StallBuyoutService(
         val previousState = stall.state
         val updated = try {
             val now = clock.instant()
-            val awarded = stall.awardTo(owner, price, now)
-                .copy(nextRentAt = now.plus(collectionInterval()))
+            val awarded = stall.awardTo(owner, price, now, now.plus(RentTimingPolicy.collectionInterval(config)))
             stalls.save(awarded)
             // Defensive: if a sell offer somehow lingered on an UNOWNED
             // stall, clean it up so a follow-up click doesn't trip the

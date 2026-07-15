@@ -1,6 +1,8 @@
 package net.badgersmc.em.websync
 
 import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.application.RentTimingPolicy
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.RegionProvider
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -15,6 +17,7 @@ class PublicSnapshotProjector(
     private val guilds: GuildProvider,
     private val availability: ShopAvailabilityCalculator,
     private val canonical: CanonicalMarketMap,
+    private val config: EnthusiaMarketConfig,
     private val items: PublicItemSerializer = PublicItemSerializer(),
     avatars: PublicOwnerAvatarResolver = PublicOwnerAvatarResolver(),
     private val ownerProjection: PublicOwnerProjection = PublicOwnerProjection(guilds, avatars),
@@ -81,14 +84,24 @@ class PublicSnapshotProjector(
         val projectedOwner = ownerProjection.project(stall.owner)
         if (projectedOwner.unresolved) diagnostics.unresolvedOwners++
         val owner = projectedOwner.owner
+        val effectiveNextRentAt = RentTimingPolicy.effectiveNextRentAt(stall, config)
+        val rentTimingStatus = when {
+            stall.state.name !in setOf("OWNED", "GRACE") -> "NOT_APPLICABLE"
+            stall.nextRentAt != null -> "PERSISTED"
+            effectiveNextRentAt != null -> "LEGACY_DERIVED"
+            else -> "UNAVAILABLE"
+        }
         return PublicStall(
             id = stallId,
             buildingId = mapping.buildingId,
             floor = mapping.floor,
             location = center,
             owner = owner,
+            stallState = stall.state.name,
             ownerSince = stall.ownerSince?.toString(),
-            nextRentAt = stall.nextRentAt?.toString(),
+            nextRentAt = effectiveNextRentAt?.toString(),
+            graceEndsAt = RentTimingPolicy.graceEndsAt(stall, config)?.toString(),
+            rentTimingStatus = rentTimingStatus,
             members = members,
             shops = publicShops,
         )

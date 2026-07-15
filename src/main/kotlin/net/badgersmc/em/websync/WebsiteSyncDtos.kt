@@ -80,6 +80,9 @@ data class PublicStall(
     val nextRentAt: String?,
     val members: List<String>,
     val shops: List<PublicShop>,
+    val stallState: String = "UNOWNED",
+    val graceEndsAt: String? = null,
+    val rentTimingStatus: String = "NOT_APPLICABLE",
 )
 data class RevisionedStall(val revision: Long, val stall: PublicStall)
 data class StallUpdateRequest(

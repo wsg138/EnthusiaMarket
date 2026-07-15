@@ -127,7 +127,7 @@ class RentCollectionService(
 
     /** Payment succeeded — advance the rent timer and, if in GRACE, restore to OWNED and unfreeze all shops. */
     private fun collect(stall: Stall, now: Instant): ProcessResult {
-        val nextRent = now.plus(collectionInterval())
+        val nextRent = now.plus(RentTimingPolicy.collectionInterval(config))
         if (stall.state == StallState.GRACE) {
             // Save stall FIRST so shop unfreeze failure doesn't leave a GRACE stall with unfrozen shops.
             stallRepository.save(stall.copy(state = StallState.OWNED, ownerSince = now, nextRentAt = nextRent))
@@ -194,22 +194,8 @@ class RentCollectionService(
         Duration.ofDays(1)
     }
 
-    private fun collectionInterval(): Duration = try {
-        Duration.parse(config.rent.collectionInterval)
-            .takeIf { !it.isZero && !it.isNegative }
-            ?: Duration.ofDays(1)
-    } catch (_: java.time.format.DateTimeParseException) {
-        Duration.ofDays(1)
-    }
-
     private fun isPastGrace(ownerSince: Instant, now: Instant): Boolean {
-        val graceDuration = try {
-            Duration.parse(config.rent.gracePeriod)
-        } catch (e: java.time.format.DateTimeParseException) {
-            // Invalid config — fall back to 3-day default
-            Duration.ofDays(3)
-        }
-        val deadline = ownerSince.plus(graceDuration)
+        val deadline = ownerSince.plus(RentTimingPolicy.gracePeriod(config))
         return now.isAfter(deadline)
     }
 
