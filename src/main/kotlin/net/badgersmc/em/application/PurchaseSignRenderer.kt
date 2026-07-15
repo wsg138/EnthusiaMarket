@@ -97,15 +97,16 @@ class PurchaseSignRenderer(
     private fun ownedLines(@Suppress("UnusedParameter") sign: PurchaseSign, stall: Stall): List<Component> {
         val ownerName = owners.displayNameFor(stall.owner)
         val nextRent = stall.nextRentAt ?: fallbackNextRent(stall)
+        val rentAmount = stall.rentTerms.dailyRent(stall.winningBid)
         return listOf(
             lang.msg("purchase_sign.owned.line1", "stall" to stall.id.value),
             lang.msg("purchase_sign.owned.line2", "owner" to ownerName),
-            formatOwnedLine3(nextRent),
-            lang.msg("purchase_sign.owned.line4"),
+            lang.msg("purchase_sign.owned.line3", "rent" to rentAmount),
+            formatCountdown(nextRent),
         )
     }
 
-    private fun formatOwnedLine3(nextRent: Instant): Component {
+    private fun formatCountdown(nextRent: Instant): Component {
         val remaining = Duration.between(Instant.now(), nextRent)
         if (remaining.isZero || remaining.isNegative) return lang.msg("purchase_sign.owned.overdue")
         val days = remaining.toDays()
@@ -117,7 +118,7 @@ class PurchaseSignRenderer(
                 "${hours.toString().padStart(2, '0')}:" +
                 "${minutes.toString().padStart(2, '0')}:" +
                 "${seconds.toString().padStart(2, '0')}"
-        return lang.msg("purchase_sign.owned.line3", "time" to time)
+        return lang.msg("purchase_sign.owned.line4", "time" to time)
     }
 
     private fun missing(sign: PurchaseSign): List<Component> = listOf(

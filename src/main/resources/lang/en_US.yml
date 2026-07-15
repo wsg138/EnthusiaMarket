@@ -80,8 +80,8 @@ purchase_sign:
   owned:
     line1: "<shadow:#000000:1><dark_gray>[<gold>EM</gold>] <aqua><stall></shadow>"
     line2: "<shadow:#000000:1><yellow><owner></shadow>"
-    line3: "<shadow:#000000:1><gray>Rent: <time></shadow>"
-    line4: "<shadow:#000000:1><aqua>Right-click</shadow>"
+    line3: "<shadow:#000000:1><gray>$<rent>/day</shadow>"
+    line4: "<shadow:#000000:1><green><time></shadow>"
     overdue: "<shadow:#000000:1><red>Overdue</shadow>"
   missing:
     line1: "<shadow:#000000:1><dark_gray>[<gold>EM</gold>]</shadow>"
@@ -189,6 +189,7 @@ shop:
     partial_compensation: "<prefix><shadow:#000000:1><gold><completed> of <total> trades completed. <red>Last failed: <error></shadow>"
     compensation_failed: "<prefix><shadow:#000000:1><red>Trade failed: <error></shadow>"
     compensation_note: "<shadow:#000000:1><gray>  Compensation: <compensation></shadow>"
+    multiplier_capped: "<prefix><shadow:#000000:1><yellow>Stock changed while menu was open — buying <available> instead of <asked></shadow>"
   create:
     already_shop: "<shadow:#000000:1><red>This sign is already a shop</shadow>"
     needs_container: "<shadow:#000000:1><red>Sign must be attached to a container (chest, barrel, shulker)</shadow>"

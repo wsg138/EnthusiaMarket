@@ -197,8 +197,11 @@ class RentCollectionServiceTest {
         verify { svc.stallRepo.save(capture(saved)) }
         val graceStall = saved.captured
         assertEquals(StallState.GRACE, graceStall.state)
-        assertEquals(graceStartedAt, graceStall.ownerSince)
-        val deadline = graceStartedAt.plus(Duration.ofDays(3))
+        // ownerSince is preserved (no longer reset on GRACE entry —
+        // grace window now uses nextRentAt instead).
+        assertEquals(dueStall.ownerSince, graceStall.ownerSince)
+        assertEquals(dueStall.nextRentAt, graceStall.nextRentAt)
+        val deadline = dueStall.nextRentAt!!.plus(Duration.ofDays(3))
         assertEquals(deadline, RentTimingPolicy.graceEndsAt(graceStall, svc.config))
         // Shops must be frozen on GRACE entry
         verify { svc.shopRepo.freezeByStall(dueStall.id.value, true) }
@@ -211,6 +214,31 @@ class RentCollectionServiceTest {
         val afterDeadline = svc.service.tick(deadline.plusSeconds(1))
         assertEquals(1, afterDeadline.evictions)
         verify(exactly = 1) { svc.auctionRepo.create(any()) }
+    }
+
+    // --- tick: OWNED stall with nextRentAt past grace → instant emergency auction ---
+
+    @Test
+    fun `tick OWNED stall past grace goes straight to emergency auction`() {
+        // Stall is OWNED but nextRentAt is 4 days ago, gracePeriod is P3D.
+        // Should skip GRACE entirely and fire emergency auction immediately.
+        val pastDue = ownedStall.copy(nextRentAt = now.minus(Duration.ofDays(4)))
+        val svc = buildService(stalls = listOf(pastDue), economyWithdrawOk = false, gracePeriod = "P3D")
+
+        val report = svc.service.tick()
+
+        assertEquals(0, report.collected)
+        assertEquals(0, report.defaults)
+        assertEquals(1, report.evictions)
+        assertEquals(0, report.errors)
+
+        // Should go straight to EMERGENCY_AUCTIONING, never touch GRACE
+        verify { svc.stallRepo.save(match {
+            it.state == StallState.EMERGENCY_AUCTIONING
+        }) }
+        verify { svc.auctionRepo.create(any()) }
+        // Shops must be frozen even on the fast path (GRACE normally does this)
+        verify { svc.shopRepo.freezeByStall(pastDue.id.value, true) }
     }
 
     // --- tick: GRACE + grace expired starts emergency auction ---

@@ -154,14 +154,27 @@ class PurchaseMenu(
             executeTradeFromSlot(player)
             return
         }
+        // Clamp multiplier to actual available trades (stock may have changed
+        // since the GUI rendered). Prevents the confusing "bought N, rest failed"
+        // experience when denormalized stockCount is stale.
+        val available = ShopDisplay.tradesAvailable(shop)
+        if (available <= 0) {
+            player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Out of stock"))
+            return
+        }
+        val effectiveMultiplier = multiplier.coerceAtMost(available)
+        if (effectiveMultiplier < multiplier) {
+            player.sendMessage(lang.msg("shop.trade.multiplier_capped",
+                "asked" to multiplier, "available" to effectiveMultiplier))
+        }
         var lastResult: ContainerTradeResult = ContainerTradeResult.Success("")
         var completed = 0
-        var remaining = multiplier
+        var remaining = effectiveMultiplier
         while (remaining > 0) {
             val result = when (shop.direction) {
                 SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
                 SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
-                else -> break // TRADE handled above
+                else -> break
             }
             lastResult = result
             if (result is ContainerTradeResult.Success) {
@@ -171,7 +184,7 @@ class PurchaseMenu(
                 break
             }
         }
-        reportTradeResult(player, completed, multiplier, lastResult)
+        reportTradeResult(player, completed, effectiveMultiplier, lastResult)
     }
 
     private fun executeTradeFromSlot(player: Player) {

@@ -14,6 +14,7 @@ import org.bukkit.entity.Player
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import java.util.UUID
+import java.util.logging.Logger
 import kotlin.math.roundToLong
 
 sealed class ContainerTradeResult {
@@ -54,11 +55,13 @@ open class ContainerTradeService(
     private val tradePolicy: GuildTradePolicyService? = null,
     private val shopVault: ShopVaultService? = null,
 ) {
+    private val log = Logger.getLogger(ContainerTradeService::class.java.name)
+
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
-        if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
-        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
+        if (shop.frozen) return logFail(playerUuid, shop.id, "buy", "frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return logFail(playerUuid, shop.id, "buy", "invalid amounts")
         val preconditions = buyPreconditions(shop, playerUuid)
-        if (preconditions.result != null) return preconditions.result!!
+        if (preconditions.result != null) return logFail(playerUuid, shop.id, "buy", preconditions.result!!.reason)
         val (effectiveCost, policyFailure) = resolveEffectiveCost(shop, playerUuid, shop.costAmount.toLong(), preconditions.ctx!!.guildId)
         if (policyFailure != null) return policyFailure
         if (!canAffordShopCost(preconditions.ctx!!.guildId, shop.owner, effectiveCost)) {
@@ -136,10 +139,10 @@ open class ContainerTradeService(
     }
 
     fun executeSell(shop: Shop, playerUuid: UUID): ContainerTradeResult {
-        if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
-        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
+        if (shop.frozen) return logFail(playerUuid, shop.id, "sell", "frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return logFail(playerUuid, shop.id, "sell", "invalid amounts")
         val preconditions = sellPreconditions(shop, playerUuid)
-        if (preconditions.result != null) return preconditions.result!!
+        if (preconditions.result != null) return logFail(playerUuid, shop.id, "sell", preconditions.result!!.reason)
         return executeSellTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!)
     }
 
@@ -148,12 +151,12 @@ open class ContainerTradeService(
      * player inventory and container, with economy-based cost bypassed. REQ-298.
      */
     fun executeTrade(shop: Shop, playerUuid: UUID): ContainerTradeResult {
-        if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
-        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
+        if (shop.frozen) return logFail(playerUuid, shop.id, "trade", "frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return logFail(playerUuid, shop.id, "trade", "invalid amounts")
         // Barter trades exchange items without economy transactions.
         // Player gives costItem, receives sellItem from the container.
         val preconditions = barterPreconditions(shop, playerUuid)
-        if (preconditions.result != null) return preconditions.result!!
+        if (preconditions.result != null) return logFail(playerUuid, shop.id, "trade", preconditions.result!!.reason)
         val (_, policyFailure) = resolveEffectiveCost(shop, playerUuid, 0L, preconditions.ctx!!.guildId)
         if (policyFailure != null) return policyFailure
         return executeBarterTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, preconditions.costStack!!)
@@ -284,6 +287,11 @@ open class ContainerTradeService(
     }
 
     private fun fireTransactionEvent(data: TransactionEventData) {
+        log.info(
+            "TRADE shop=${data.shopId} dir=${data.direction} buyer=${data.player.uniqueId} " +
+            "item=${data.item.type} qty=${data.quantity} cost=${data.cost} " +
+            "owner=${data.ownerUuid}"
+        )
         Bukkit.getPluginManager().callEvent(
             net.badgersmc.em.events.PostShopTransactionEvent(
                 buyer = data.player, landlordId = data.ownerUuid,
@@ -422,14 +430,14 @@ open class ContainerTradeService(
     fun executeTradeWithItem(
         shop: Shop, playerUuid: UUID, placedCost: ItemStack, multiplier: Int
     ): ContainerTradeResult {
-        if (shop.frozen) return ContainerTradeResult.Failure("This shop is frozen")
-        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return ContainerTradeResult.Failure("Invalid trade amounts")
-        if (shopVault == null) return ContainerTradeResult.Failure("Vault unavailable")
+        if (shop.frozen) return logFail(playerUuid, shop.id, "trade_item", "frozen")
+        if (shop.sellAmount <= 0 || shop.costAmount <= 0) return logFail(playerUuid, shop.id, "trade_item", "invalid amounts")
+        if (shopVault == null) return logFail(playerUuid, shop.id, "trade_item", "vault unavailable")
         val pre = slotTradePreconditions(shop, playerUuid)
-        if (pre.result != null) return pre.result!!
+        if (pre.result != null) return logFail(playerUuid, shop.id, "trade_item", pre.result!!.reason)
         val amounts = SlotTradeAmounts(shop.sellAmount * multiplier, shop.costAmount * multiplier)
         val validFail = validateSlotTrade(shop, pre.ctx!!, placedCost, amounts, playerUuid)
-        if (validFail != null) return validFail
+        if (validFail != null) return logFail(playerUuid, shop.id, "trade_item", validFail.reason)
         return executeSlotTradeTransfer(pre.ctx, shop, placedCost, amounts)
     }
 
@@ -548,6 +556,11 @@ open class ContainerTradeService(
             return ContainerTradeResult.Failure("Guild bank is unavailable")
         }
         return ContainerTradeResult.Failure(defaultMessage)
+    }
+
+    private fun logFail(playerUuid: UUID, shopId: Long, dir: String, reason: String): ContainerTradeResult.Failure {
+        log.info("TRADE_FAIL shop=$shopId dir=$dir buyer=$playerUuid reason=$reason")
+        return ContainerTradeResult.Failure(reason)
     }
 
     /**

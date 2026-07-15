@@ -25,8 +25,15 @@ object RentTimingPolicy {
     }
 
     fun graceEndsAt(stall: Stall, config: EnthusiaMarketConfig): Instant? {
-        // Mirrors RentCollectionService: GRACE repurposes ownerSince as its start time.
-        val graceStartedAt = stall.ownerSince?.takeIf { stall.state == StallState.GRACE }
+        // Mirrors RentCollectionService: GRACE grace window starts at nextRentAt
+        // (when rent was actually due), not ownerSince (which is preserved from
+        // original purchase and no longer reset on GRACE entry).
+        val graceStartedAt = when {
+            stall.nextRentAt != null -> stall.nextRentAt
+            stall.state == StallState.GRACE && stall.ownerSince != null ->
+                stall.ownerSince.plus(collectionInterval(config))
+            else -> null
+        }
         return graceStartedAt?.plus(gracePeriod(config))
     }
 
