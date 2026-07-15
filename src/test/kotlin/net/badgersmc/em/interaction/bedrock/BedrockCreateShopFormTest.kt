@@ -31,7 +31,8 @@ class BedrockCreateShopFormTest {
             "dummyBase64",
             mockk<ShopRepository>(relaxed = true),
             mockk<Logger>(relaxed = true),
-            mockk(relaxed = true)
+            mockk(relaxed = true),
+            mockk<net.badgersmc.em.application.ShopSignRenderer>(relaxed = true),
         )
         assertNotNull(form)
     }
@@ -50,7 +51,8 @@ class BedrockCreateShopFormTest {
             "dummyBase64",
             mockk<ShopRepository>(relaxed = true),
             mockk<Logger>(relaxed = true),
-            mockk(relaxed = true)
+            mockk(relaxed = true),
+            mockk<net.badgersmc.em.application.ShopSignRenderer>(relaxed = true),
         )
         val built = form.buildForm()
         assertNotNull(built)
