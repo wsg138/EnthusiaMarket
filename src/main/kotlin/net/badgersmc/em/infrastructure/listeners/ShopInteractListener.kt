@@ -19,7 +19,7 @@ import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 
 /**
- * Listens for right-click on registered shop signs and opens the PurchaseMenu (REQ-013).
+ * Listens for player interaction with registered shop signs and opens the PurchaseMenu (REQ-013).
  */
 @net.badgersmc.nexus.paper.listeners.Listener
 @Component
@@ -47,11 +47,15 @@ open class ShopInteractListener(
             loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ
         ) ?: return
 
-        // Cancel right-click to prevent vanilla sign edit; deny left-click
-        // item use to suppress held-item abilities (e.g. spear lunge).
-        if (isLeft) event.setUseItemInHand(org.bukkit.event.Event.Result.DENY)
-        else event.isCancelled = true
+        // Left-click: only suppress held-item abilities (e.g. spear lunge).
+        // Do NOT open the shop — the owner needs to be able to break the sign.
+        if (isLeft) {
+            event.setUseItemInHand(org.bukkit.event.Event.Result.DENY)
+            return
+        }
 
+        // Right-click: open the shop.
+        event.isCancelled = true
         openShop(event.player, shop)
     }
 
@@ -74,15 +78,10 @@ open class ShopInteractListener(
         }
     }
 
-    /**
-     * Open the PurchaseMenu for the given player and shop.
-     * Open for testability — override or spy in tests to verify invocation.
-     */
     open fun openPurchaseMenu(player: Player, shop: Shop) {
         PurchaseMenu(shop, tradeService, lang).open(player)
     }
 
-    /** Open the Bedrock purchase form with trade callbacks. Open for testability. */
     open fun openBedrockPurchaseForm(player: Player, shop: Shop) {
         val uuid = player.uniqueId
         net.badgersmc.em.interaction.bedrock.BedrockPurchaseForm(

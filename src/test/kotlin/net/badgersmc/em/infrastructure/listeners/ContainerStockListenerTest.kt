@@ -103,6 +103,7 @@ class ContainerStockListenerTest {
     private fun mockContainerAt(world: World, contents: Array<ItemStack?>) {
         val containerInv = mockk<Inventory>(relaxed = true)
         every { containerInv.contents } returns contents
+        every { containerInv.storageContents } returns contents
         val container = mockk<Container>(relaxed = true)
         every { container.inventory } returns containerInv
         val contLoc = mockk<Location>(relaxed = true)
@@ -407,6 +408,7 @@ class ContainerStockListenerTest {
 
         val liveInv = mockk<Inventory>(relaxed = true)
         every { liveInv.contents } returns arrayOf(contItem)
+        every { liveInv.storageContents } returns arrayOf(contItem)
         val container = mockk<Container>(relaxed = true)
         every { container.inventory } returns liveInv
         val chestBlock = mockk<Block>(relaxed = true)
@@ -445,6 +447,7 @@ class ContainerStockListenerTest {
         // Container.inventory on a double chest half returns full 54-slot inventory.
         val combinedInv = mockk<Inventory>(relaxed = true)
         every { combinedInv.contents } returns arrayOf(leftItem, rightItem)
+        every { combinedInv.storageContents } returns arrayOf(leftItem, rightItem)
 
         val container = mockk<Container>(relaxed = true)
         every { container.inventory } returns combinedInv

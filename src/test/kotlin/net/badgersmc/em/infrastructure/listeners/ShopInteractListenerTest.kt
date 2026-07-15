@@ -113,7 +113,7 @@ class ShopInteractListenerTest {
     }
 
     @Test
-    fun `left-click on shop sign opens PurchaseMenu and denies item use`() {
+    fun `left-click on shop sign denies item use but does not open shop`() {
         val player: Player = mockk(relaxed = true)
         val block = signBlock()
         var purchaseMenuOpened = false
@@ -123,7 +123,7 @@ class ShopInteractListenerTest {
         val event = interactEvent(player, action = Action.LEFT_CLICK_BLOCK, block = block)
         listener.onSignInteract(event)
         assert(event.useItemInHand() == org.bukkit.event.Event.Result.DENY) { "Should deny item use for left-click on shop sign" }
-        assert(purchaseMenuOpened) { "Left-click on shop sign should open PurchaseMenu" }
+        assert(!purchaseMenuOpened) { "Left-click should NOT open shop — owner must be able to break sign" }
     }
 
     @Test

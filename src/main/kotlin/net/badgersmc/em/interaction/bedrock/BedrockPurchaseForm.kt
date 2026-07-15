@@ -1,6 +1,7 @@
 package net.badgersmc.em.interaction.bedrock
 
 import net.badgersmc.em.domain.shop.Shop
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.nexus.i18n.LangService
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
@@ -10,7 +11,8 @@ import java.util.logging.Logger
 
 /**
  * Bedrock Cumulus SimpleForm for shop purchases (REQ-013).
- * Displays the shop's item, price, owner, and status, with BUY/SELL/Back buttons.
+ * Shows the direction-appropriate action button: BUY for SELL shops,
+ * SELL for BUY shops.
  */
 class BedrockPurchaseForm(
     player: Player,
@@ -24,11 +26,10 @@ class BedrockPurchaseForm(
     override fun buildForm(): SimpleForm {
         val ownerName = Bukkit.getOfflinePlayer(shop.owner).name
             ?: lang.legacy("common.unknown_player")
-        // Status placeholder is a raw MiniMessage fragment so the outer template can deserialize it.
         val statusKey = if (shop.frozen) "bedrock.purchase.status_frozen" else "bedrock.purchase.status_active"
         val statusMm = lang.raw(statusKey)
 
-        return SimpleForm.builder()
+        val builder = SimpleForm.builder()
             .title(lang.legacy("bedrock.purchase.title"))
             .content(lang.legacy(
                 "bedrock.purchase.content",
@@ -37,14 +38,24 @@ class BedrockPurchaseForm(
                 "owner" to ownerName,
                 "status" to statusMm
             ))
-            .button(lang.legacy("bedrock.purchase.button_buy"))
-            .button(lang.legacy("bedrock.purchase.button_sell"))
-            .button(lang.legacy("bedrock.purchase.button_back"))
+
+        // Show the direction-appropriate action button
+        builder.button(
+            if (shop.direction == SignDirection.BUY)
+                lang.legacy("bedrock.purchase.button_sell")
+            else
+                lang.legacy("bedrock.purchase.button_buy")
+        )
+        // Back button — always index 1
+        builder.button(lang.legacy("bedrock.purchase.button_back"))
+
+        return builder
             .validResultHandler { response: SimpleFormResponse ->
                 when (response.clickedButtonId()) {
-                    0 -> onBuy()
-                    1 -> onSell()
-                    2 -> { /* back */ }
+                    0 -> {
+                        if (shop.direction == SignDirection.BUY) onSell() else onBuy()
+                    }
+                    1 -> { /* back */ }
                 }
             }
             .build()

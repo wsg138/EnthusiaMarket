@@ -32,6 +32,7 @@ open class ShopCreateListener(
     private val shopRepository: ShopRepository,
     private val lang: LangService,
     private val menuFactory: net.badgersmc.em.interaction.MenuFactory,
+    private val shopSignRenderer: net.badgersmc.em.application.ShopSignRenderer,
     private val guildProvider: GuildProvider? = null
 ) : Listener {
 
@@ -93,7 +94,7 @@ open class ShopCreateListener(
         if (menuFactory.shouldUseBedrockMenus(player)) {
             net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
                 player, player.uniqueId, stall.id.value, signLoc, containerLoc,
-                sellItemB64, shopRepository, logger, lang,
+                sellItemB64, shopRepository, logger, lang, shopSignRenderer,
             ).open(player)
         } else {
             net.badgersmc.em.interaction.gui.CreateShopMenu(
