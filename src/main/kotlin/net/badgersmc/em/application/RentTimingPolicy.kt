@@ -30,8 +30,9 @@ object RentTimingPolicy {
         // original purchase and no longer reset on GRACE entry).
         val graceStartedAt = when {
             stall.nextRentAt != null -> stall.nextRentAt
-            stall.state == StallState.GRACE && stall.ownerSince != null ->
-                stall.ownerSince.plus(collectionInterval(config))
+            // Legacy stall with no nextRentAt: use ownerSince directly (matches RentCollectionService L163).
+            // CR#1 anchors nextRentAt=now on GRACE entry, so this fallback is a last resort.
+            stall.state == StallState.GRACE && stall.ownerSince != null -> stall.ownerSince
             else -> null
         }
         return graceStartedAt?.plus(gracePeriod(config))

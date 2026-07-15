@@ -68,6 +68,7 @@ open class ContainerTradeService(
             return guildPaymentFailure(preconditions.ctx!!.guildId, "Shop can't afford this")
         }
         return executeBuyTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, effectiveCost)
+            .logFail(playerUuid, shop.id, "buy")
     }
 
     private data class BuyPreconditions(
@@ -144,6 +145,7 @@ open class ContainerTradeService(
         val preconditions = sellPreconditions(shop, playerUuid)
         if (preconditions.result != null) return logFail(playerUuid, shop.id, "sell", preconditions.result!!.reason)
         return executeSellTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!)
+            .logFail(playerUuid, shop.id, "sell")
     }
 
     /**
@@ -160,6 +162,7 @@ open class ContainerTradeService(
         val (_, policyFailure) = resolveEffectiveCost(shop, playerUuid, 0L, preconditions.ctx!!.guildId)
         if (policyFailure != null) return policyFailure
         return executeBarterTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, preconditions.costStack!!)
+            .logFail(playerUuid, shop.id, "trade")
     }
 
     private data class SellPreconditions(
@@ -439,6 +442,7 @@ open class ContainerTradeService(
         val validFail = validateSlotTrade(shop, pre.ctx!!, placedCost, amounts, playerUuid)
         if (validFail != null) return logFail(playerUuid, shop.id, "trade_item", validFail.reason)
         return executeSlotTradeTransfer(pre.ctx, shop, placedCost, amounts)
+            .logFail(playerUuid, shop.id, "trade_item")
     }
 
     private fun validateSlotTrade(
@@ -561,6 +565,17 @@ open class ContainerTradeService(
     private fun logFail(playerUuid: UUID, shopId: Long, dir: String, reason: String): ContainerTradeResult.Failure {
         log.info("TRADE_FAIL shop=$shopId dir=$dir buyer=$playerUuid reason=$reason")
         return ContainerTradeResult.Failure(reason)
+    }
+
+    /** Wraps execution-phase failures (Failure / CompensationFailed) so the
+     *  new TRADE log covers mid-transaction failures, not just preconditions. */
+    private fun ContainerTradeResult.logFail(playerUuid: UUID, shopId: Long, dir: String): ContainerTradeResult {
+        when (this) {
+            is ContainerTradeResult.Failure -> log.info("TRADE_FAIL shop=$shopId dir=$dir buyer=$playerUuid reason=$reason")
+            is ContainerTradeResult.CompensationFailed -> log.info("TRADE_FAIL shop=$shopId dir=$dir buyer=$playerUuid reason=$error compensation=$compensation")
+            else -> { /* success — already logged in fireTransactionEvent */ }
+        }
+        return this
     }
 
     /**

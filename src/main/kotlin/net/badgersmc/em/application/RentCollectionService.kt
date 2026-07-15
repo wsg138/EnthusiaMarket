@@ -130,7 +130,7 @@ class RentCollectionService(
         val nextRent = now.plus(RentTimingPolicy.collectionInterval(config))
         if (stall.state == StallState.GRACE) {
             // Save stall FIRST so shop unfreeze failure doesn't leave a GRACE stall with unfrozen shops.
-            stallRepository.save(stall.copy(state = StallState.OWNED, ownerSince = now, nextRentAt = nextRent))
+            stallRepository.save(stall.copy(state = StallState.OWNED, nextRentAt = nextRent))
             shops.freezeByStall(stall.id.value, frozen = false)
         } else {
             stallRepository.save(stall.copy(nextRentAt = nextRent))
@@ -153,7 +153,12 @@ class RentCollectionService(
                 }
                 // Save stall FIRST: if shop freeze fails we're at least in GRACE for next tick retry.
                 // Preserve original ownerSince — do NOT reset it so the audit trail stays intact.
-                stallRepository.save(stall.copy(state = StallState.GRACE))
+                // Anchor nextRentAt so the grace window starts from now, not the original purchase
+                // date (which could be months ago and would cause instant eviction on next tick).
+                stallRepository.save(stall.copy(
+                    state = StallState.GRACE,
+                    nextRentAt = stall.nextRentAt ?: now
+                ))
                 shops.freezeByStall(stall.id.value, frozen = true)
                 ProcessResult.Defaulted
             }

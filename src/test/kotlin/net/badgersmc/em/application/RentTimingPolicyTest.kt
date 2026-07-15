@@ -32,8 +32,7 @@ class RentTimingPolicyTest {
         val stall = stall(StallState.GRACE, nextRentAt = null)
 
         assertNull(RentTimingPolicy.effectiveNextRentAt(stall, config))
-        // Grace window starts at ownerSince + collectionInterval (2d), then + gracePeriod (3d) = 5d
-        assertEquals(ownerSince.plusSeconds(5 * 86_400L), RentTimingPolicy.graceEndsAt(stall, config))
+        assertEquals(ownerSince.plusSeconds(3 * 86_400L), RentTimingPolicy.graceEndsAt(stall, config))
     }
 
     @Test
