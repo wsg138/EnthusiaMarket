@@ -141,7 +141,12 @@ class SellOfferService(
         val proceedsGuildId = stall.owner.id // valid only when sellerIsGuild
         try {
             val now = Instant.now()
-            val updated = stall.awardTo(OwnerRef.solo(buyer), offer.price, now)
+            val updated = stall.awardTo(
+                OwnerRef.solo(buyer),
+                offer.price,
+                now,
+                now.plus(RentTimingPolicy.collectionInterval(config)),
+            )
             stalls.save(updated)
             offers.delete(stallId)
             Bukkit.getServer()?.pluginManager?.callEvent(

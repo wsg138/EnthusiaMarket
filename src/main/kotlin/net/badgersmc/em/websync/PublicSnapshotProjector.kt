@@ -1,14 +1,15 @@
 package net.badgersmc.em.websync
 
 import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.application.RentTimingPolicy
+import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.RegionProvider
 import net.badgersmc.em.domain.shop.ShopRepository
-import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.stall.StallState
 import org.bukkit.Bukkit
-import java.util.UUID
 
 class PublicSnapshotProjector(
     private val stalls: StallRepository,
@@ -17,7 +18,10 @@ class PublicSnapshotProjector(
     private val guilds: GuildProvider,
     private val availability: ShopAvailabilityCalculator,
     private val canonical: CanonicalMarketMap,
+    private val config: EnthusiaMarketConfig,
     private val items: PublicItemSerializer = PublicItemSerializer(),
+    avatars: PublicOwnerAvatarResolver = PublicOwnerAvatarResolver(),
+    private val ownerProjection: PublicOwnerProjection = PublicOwnerProjection(guilds, avatars),
 ) {
     data class ValidationResult(val errors: List<String>, val diagnostics: List<String>)
     data class Diagnostics(
@@ -78,23 +82,15 @@ class PublicSnapshotProjector(
             PublicNameResolver.delegatedMember(member) { Bukkit.getOfflinePlayer(it).name }
                 ?.take(64) ?: run { diagnostics.unresolvedMembers++; null }
         }.distinct().sorted().take(256)
-        val owner = when (stall.owner.type) {
-            OwnerType.NONE -> PublicOwner("NONE", null, null, "Unowned", avatar = PublicAvatar("NONE"))
-            OwnerType.SOLO -> {
-                val uuid = runCatching { UUID.fromString(stall.owner.id) }.getOrNull()
-                val resolved = uuid?.let { Bukkit.getOfflinePlayer(it).name }
-                if (resolved == null) diagnostics.unresolvedOwners++
-                val name = if (uuid == null) "Unknown Player" else PublicNameResolver.player(uuid) { resolved }
-                PublicOwner("PLAYER", stall.owner.id, uuid?.toString(), name.take(64),
-                    avatar = PublicAvatar("MINECRAFT_HEAD", "JAVA", true))
-            }
-            OwnerType.GUILD -> {
-                val guild = guilds.guildById(stall.owner.id)
-                if (guild == null) diagnostics.unresolvedOwners++
-                PublicOwner("GUILD", stall.owner.id, null,
-                    PublicNameResolver.guild(stall.owner.id) { guild?.name }.take(64),
-                    avatar = PublicAvatar("GUILD"))
-            }
+        val projectedOwner = ownerProjection.project(stall.owner)
+        if (projectedOwner.unresolved) diagnostics.unresolvedOwners++
+        val owner = projectedOwner.owner
+        val effectiveNextRentAt = RentTimingPolicy.effectiveNextRentAt(stall, config)
+        val rentTimingStatus = when {
+            stall.state != StallState.OWNED && stall.state != StallState.GRACE -> "NOT_APPLICABLE"
+            stall.nextRentAt != null -> "PERSISTED"
+            effectiveNextRentAt != null -> "LEGACY_DERIVED"
+            else -> "UNAVAILABLE"
         }
         return PublicStall(
             id = stallId,
@@ -102,8 +98,11 @@ class PublicSnapshotProjector(
             floor = mapping.floor,
             location = center,
             owner = owner,
+            stallState = stall.state.name,
             ownerSince = stall.ownerSince?.toString(),
-            nextRentAt = stall.nextRentAt?.toString(),
+            nextRentAt = effectiveNextRentAt?.toString(),
+            graceEndsAt = RentTimingPolicy.graceEndsAt(stall, config)?.toString(),
+            rentTimingStatus = rentTimingStatus,
             members = members,
             shops = publicShops,
         )

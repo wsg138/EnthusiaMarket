@@ -258,7 +258,7 @@ class SellOfferServiceTest {
         // System sink — no tax deposit.
         verify(exactly = 0) { economy.deposit(taxAccount, any()) }
         // Ownership transferred.
-        verify { stalls.save(match { it.owner == OwnerRef.solo(buyer) }) }
+        verify { stalls.save(match { it.owner == OwnerRef.solo(buyer) && it.nextRentAt != null }) }
         // Offer closed.
         verify { offers.delete(stallId) }
     }

@@ -38,22 +38,26 @@ class StallTest {
     @Test fun `awarding a stall transitions to OWNED with bid and timestamp`() {
         val now = Instant.parse("2026-05-15T10:00:00Z")
         val owner = OwnerRef.solo(UUID.randomUUID())
-        val awarded = baseStall.awardTo(owner, winningBid = 1000L, at = now)
+        val nextRentAt = now.plusSeconds(86_400)
+        val awarded = baseStall.awardTo(owner, winningBid = 1000L, at = now, nextRentAt = nextRentAt)
         assertEquals(StallState.OWNED, awarded.state)
         assertEquals(owner, awarded.owner)
         assertEquals(1000L, awarded.winningBid)
         assertEquals(now, awarded.ownerSince)
+        assertEquals(nextRentAt, awarded.nextRentAt)
     }
 
     @Test fun `awarding requires a non-unowned owner`() {
         assertFailsWith<IllegalArgumentException> {
-            baseStall.awardTo(OwnerRef.unowned(), winningBid = 1L, at = Instant.now())
+            val now = Instant.now()
+            baseStall.awardTo(OwnerRef.unowned(), winningBid = 1L, at = now, nextRentAt = now.plusSeconds(1))
         }
     }
 
     @Test fun `awarding requires a positive winning bid`() {
         assertFailsWith<IllegalArgumentException> {
-            baseStall.awardTo(OwnerRef.solo(UUID.randomUUID()), winningBid = 0L, at = Instant.now())
+            val now = Instant.now()
+            baseStall.awardTo(OwnerRef.solo(UUID.randomUUID()), winningBid = 0L, at = now, nextRentAt = now.plusSeconds(1))
         }
     }
 

@@ -163,6 +163,7 @@ open class EnthusiaMarket : JavaPlugin() {
             ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class),
             websiteAvailability,
             websiteCanonical,
+            cfg,
         )
         val websiteService = net.badgersmc.em.websync.WebsiteSyncService(
             this, websiteConfig, websiteOutbox, websiteProjector, websiteCanonical,

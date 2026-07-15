@@ -51,6 +51,9 @@ class WebsiteSyncContractFixtureTest {
         assertTrue(publicStall.getAsJsonObject("owner").get("avatarUrl").isJsonNull)
         assertTrue(publicStall.get("ownerSince").isJsonNull)
         assertTrue(publicStall.get("nextRentAt").isJsonNull)
+        assertEquals("UNOWNED", publicStall.get("stallState").asString)
+        assertTrue(publicStall.get("graceEndsAt").isJsonNull)
+        assertEquals("NOT_APPLICABLE", publicStall.get("rentTimingStatus").asString)
         assertTrue(publicStall.getAsJsonArray("shops")[0].asJsonObject
             .getAsJsonObject("sellItem").get("icon").isJsonNull)
 
@@ -71,14 +74,27 @@ class WebsiteSyncContractFixtureTest {
     private fun stall(id: String, owner: PublicOwner, shops: List<PublicShop> = emptyList()) = PublicStall(
         id, "building-1", 1, PublicLocation("world", 1, 64, 2), owner,
         null, null, emptyList(), shops,
+        stallState = if (owner.type == "NONE") "UNOWNED" else "OWNED",
+        rentTimingStatus = if (owner.type == "NONE") "NOT_APPLICABLE" else "UNAVAILABLE",
     )
 
     private fun unowned() = PublicOwner("NONE", null, null, "Unowned", null, PublicAvatar("NONE"))
     private fun solo() = PublicOwner(
         "PLAYER", PROXY_STYLE_UUID, UUID.fromString(PROXY_STYLE_UUID).toString(),
-        "P2wn", null, PublicAvatar("MINECRAFT_HEAD", "JAVA", true),
+        "P2wn", null, PublicAvatar("MINECRAFT_HEAD", "PROXY", true),
     )
-    private fun guild() = PublicOwner("GUILD", "guild-1", null, "Example Guild", null, PublicAvatar("GUILD"))
+    private fun guild() = PublicOwner(
+        "GUILD", "guild-1", null, "Example Guild", null,
+        PublicAvatar(
+            "GUILD_BANNER", "LUMAGUILDS", banner = PublicBannerDesign(
+                "BLUE",
+                listOf(
+                    PublicBannerPattern("STRIPE_TOP", "WHITE"),
+                    PublicBannerPattern("CROSS", "RED"),
+                ),
+            ),
+        ),
+    )
 
     companion object {
         private const val SECRET = "contract-test-secret"

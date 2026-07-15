@@ -15,7 +15,6 @@ import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Bukkit
 import java.time.Clock
-import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.logging.Logger
@@ -193,8 +192,7 @@ class StallBuyoutService(
         val previousState = stall.state
         val updated = try {
             val now = clock.instant()
-            val awarded = stall.awardTo(owner, price, now)
-                .copy(nextRentAt = now.plus(collectionInterval()))
+            val awarded = stall.awardTo(owner, price, now, now.plus(RentTimingPolicy.collectionInterval(config)))
             stalls.save(awarded)
             // Defensive: if a sell offer somehow lingered on an UNOWNED
             // stall, clean it up so a follow-up click doesn't trip the
@@ -257,12 +255,6 @@ class StallBuyoutService(
 
         fireStateChanged(stallId.value, previousState, updated.state)
         return Result.Purchased(updated, price, owner)
-    }
-
-    private fun collectionInterval(): Duration = try {
-        Duration.parse(config.rent.collectionInterval)
-    } catch (_: java.time.format.DateTimeParseException) {
-        Duration.ofDays(1)
     }
 
     private fun fireStateChanged(

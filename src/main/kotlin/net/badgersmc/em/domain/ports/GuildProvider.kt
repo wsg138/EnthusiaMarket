@@ -3,6 +3,12 @@ package net.badgersmc.em.domain.ports
 import java.util.UUID
 
 interface GuildProvider {
+    data class BannerPattern(val type: String, val color: String)
+
+    data class BannerDesign(val baseColor: String, val patterns: List<BannerPattern>)
+
+    data class GuildVisual(val leaderId: UUID?, val banner: BannerDesign?)
+
     /**
      * @property tag the guild's display tag (may be MiniMessage-formatted);
      *   empty when the guild has none. Used by the purchase-sign renderer's
@@ -18,6 +24,9 @@ interface GuildProvider {
 
     fun guildOf(player: UUID): GuildRef?
     fun guildById(id: String): GuildRef?
+
+    /** Public visual data when supported by the backing guild plugin. */
+    fun visualById(id: String): GuildVisual? = null
     fun isMember(player: UUID, guildId: String): Boolean
 
     /**

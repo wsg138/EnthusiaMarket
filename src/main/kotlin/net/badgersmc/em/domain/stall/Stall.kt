@@ -10,6 +10,10 @@ data class Stall(
     val world: String,
     val state: StallState,
     val owner: OwnerRef,
+    /**
+     * Ownership start time. While [state] is [StallState.GRACE], the rent
+     * system repurposes this as the grace-start timestamp.
+     */
     val ownerSince: Instant?,
     val winningBid: Long,
     val rentTerms: RentTerms,
@@ -73,14 +77,15 @@ data class Stall(
         return copy(members = members - playerUuid)
     }
 
-    fun awardTo(newOwner: OwnerRef, winningBid: Long, at: Instant): Stall {
+    fun awardTo(newOwner: OwnerRef, winningBid: Long, at: Instant, nextRentAt: Instant): Stall {
         require(newOwner.type != OwnerType.NONE) { "Cannot award stall to nobody" }
         require(winningBid > 0) { "Winning bid must be positive" }
         return copy(
             state = StallState.OWNED,
             owner = newOwner,
             ownerSince = at,
-            winningBid = winningBid
+            winningBid = winningBid,
+            nextRentAt = nextRentAt,
         )
     }
 
