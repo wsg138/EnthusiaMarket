@@ -9,6 +9,7 @@ class PublicOwnerAvatarResolver(
 ) {
     data class Result(val source: String, val url: String?)
 
+    @Suppress("UnusedParameter")
     fun resolve(uuid: UUID, playerName: String?): Result {
         val floodgate = runCatching { floodgatePlayer(uuid) }.getOrDefault(false)
         val proxyStyle = uuid.toString().startsWith(PROXY_UUID_PREFIX)
