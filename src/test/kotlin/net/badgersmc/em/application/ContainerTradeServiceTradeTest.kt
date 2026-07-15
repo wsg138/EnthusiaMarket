@@ -192,25 +192,21 @@ class ContainerTradeServiceTradeTest {
 
         val policyService = mockk<GuildTradePolicyService>(relaxed = true)
         val economy = mockk<EconomyProvider>(relaxed = true)
-        // Shop can afford to buy
-        every { economy.balance(ownerUuid) } returns 500L
-        // Owner pays player
-        every { economy.withdraw(ownerUuid, 100L) } returns true
-        every { economy.deposit(playerUuid, 100L) } returns true
+        every { economy.balance(playerUuid) } returns 500L
+        every { economy.withdraw(playerUuid, 100L) } returns true
+        every { economy.deposit(ownerUuid, 100L) } returns true
 
         val (_, playerInv) = mockOnlinePlayer()
-        every { playerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
-        every { playerInv.removeItem(any()) } returns hashMapOf()
         every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
-        val (container, containerInv) = mockContainerPair()
-        every { containerInv.addItem(any()) } returns hashMapOf()
+        every { playerInv.addItem(any()) } returns hashMapOf()
+        val (container, _) = mockContainerPair()
 
         val service = buildService(stallRepo, economy, tradePolicy = policyService, mockContainer = container)
         val result = service.executeSell(shop, playerUuid)
 
         assertTrue(result is ContainerTradeResult.Success, "Expected Success but got $result")
-        verify { economy.withdraw(ownerUuid, 100L) }
-        verify { economy.deposit(playerUuid, 100L) }
+        verify { economy.withdraw(playerUuid, 100L) }
+        verify { economy.deposit(ownerUuid, 100L) }
         io.mockk.verify(exactly = 0) { policyService.stanceFor(any(), any(), any()) }
     }
 
