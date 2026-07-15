@@ -77,6 +77,9 @@ class WorldGuardRegionProvisioner : RegionProvisioner {
         // Candle lighting — allow members to light candles/campfires
         region.setFlag(Flags.LIGHTER, StateFlag.State.ALLOW)
         region.setFlag(Flags.LIGHTER.regionGroupFlag, RegionGroup.MEMBERS)
+        // Potion splash — deny to prevent effect stacking exploits in stalls
+        region.setFlag(Flags.POTION_SPLASH, StateFlag.State.DENY)
+        region.setFlag(Flags.POTION_SPLASH.regionGroupFlag, RegionGroup.ALL)
     }
 
     private fun setMemberAllow(region: ProtectedRegion, flag: StateFlag) {

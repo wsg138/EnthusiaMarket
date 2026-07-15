@@ -92,7 +92,7 @@ class ShopInteractListenerTest {
         }
 
         val event = interactEvent(player, block = block)
-        listener.onSignRightClick(event)
+        listener.onSignInteract(event)
 
         assert(event.isCancelled) { "Event should be cancelled for registered shop sign" }
         assert(listener.purchaseMenuOpened) { "PurchaseMenu should have been opened" }
@@ -107,19 +107,23 @@ class ShopInteractListenerTest {
 
         val listener = ShopInteractListener(repo, menuFactory, tradeService, mockk(relaxed = true))
         val event = interactEvent(player, block = block)
-        listener.onSignRightClick(event)
+        listener.onSignInteract(event)
 
         assert(!event.isCancelled) { "Event should not be cancelled for non-shop sign" }
     }
 
     @Test
-    fun `left-click does not trigger PurchaseMenu`() {
+    fun `left-click on shop sign opens PurchaseMenu and denies item use`() {
         val player: Player = mockk(relaxed = true)
         val block = signBlock()
-        val listener = ShopInteractListener(repo, menuFactory, tradeService, mockk(relaxed = true))
+        var purchaseMenuOpened = false
+        val listener = object : ShopInteractListener(repo, menuFactory, tradeService, mockk(relaxed = true)) {
+            override fun openPurchaseMenu(p: Player, shop: Shop) { purchaseMenuOpened = true }
+        }
         val event = interactEvent(player, action = Action.LEFT_CLICK_BLOCK, block = block)
-        listener.onSignRightClick(event)
-        assert(!event.isCancelled) { "Left-click should not cancel event" }
+        listener.onSignInteract(event)
+        assert(event.useItemInHand() == org.bukkit.event.Event.Result.DENY) { "Should deny item use for left-click on shop sign" }
+        assert(purchaseMenuOpened) { "Left-click on shop sign should open PurchaseMenu" }
     }
 
     @Test
@@ -128,7 +132,7 @@ class ShopInteractListenerTest {
         val block = nonSignBlock()
         val listener = ShopInteractListener(repo, menuFactory, tradeService, mockk(relaxed = true))
         val event = interactEvent(player, block = block)
-        listener.onSignRightClick(event)
+        listener.onSignInteract(event)
         assert(!event.isCancelled) { "Should not cancel for non-sign blocks" }
     }
 
@@ -138,7 +142,7 @@ class ShopInteractListenerTest {
         val block = signBlock()
         val listener = ShopInteractListener(repo, menuFactory, tradeService, mockk(relaxed = true))
         val event = interactEvent(player, block = block, hand = EquipmentSlot.OFF_HAND)
-        listener.onSignRightClick(event)
+        listener.onSignInteract(event)
         assert(!event.isCancelled) { "Off-hand should not cancel event" }
     }
 }

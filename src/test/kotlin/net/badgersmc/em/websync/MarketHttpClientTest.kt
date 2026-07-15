@@ -77,6 +77,34 @@ class MarketHttpClientTest {
         }
     }
 
+    @Test
+    fun `approved validation paths are normalized without response values`() {
+        withServer { server ->
+            server.createContext("/internal/v1/test") { exchange ->
+                val response = """{"ok":false,"error":{"code":"invalid_request","diagnostic":{"category":"invalid_field","issues":[{"path":"stalls[45].stall.owner.uuid","value":"must-not-appear"}]}}}""".toByteArray()
+                exchange.sendResponseHeaders(400, response.size.toLong())
+                exchange.responseBody.use { it.write(response) }
+            }
+            server.start()
+            assertEquals(DeliveryOutcome.Pause("invalid_field:stalls[].stall.owner.uuid"),
+                MarketHttpClient(config(server)).authenticatedTest("epoch"))
+        }
+    }
+
+    @Test
+    fun `unapproved validation paths are never exposed`() {
+        withServer { server ->
+            server.createContext("/internal/v1/test") { exchange ->
+                val response = """{"ok":false,"error":{"code":"invalid_request","diagnostic":{"category":"invalid_field","issues":[{"path":"privateOwnerName"}]}}}""".toByteArray()
+                exchange.sendResponseHeaders(400, response.size.toLong())
+                exchange.responseBody.use { it.write(response) }
+            }
+            server.start()
+            assertEquals(DeliveryOutcome.Pause("bad_request"),
+                MarketHttpClient(config(server)).authenticatedTest("epoch"))
+        }
+    }
+
     private fun withServer(block: (HttpServer) -> Unit) {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         try { block(server) } finally { server.stop(0) }

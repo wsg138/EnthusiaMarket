@@ -33,9 +33,10 @@ open class ShopInteractListener(
     private val logger = java.util.logging.Logger.getLogger(ShopInteractListener::class.java.name)
 
     @EventHandler
-    fun onSignRightClick(event: PlayerInteractEvent) {
-        // Only right-click on blocks with main hand
-        if (event.action != Action.RIGHT_CLICK_BLOCK) return
+    fun onSignInteract(event: PlayerInteractEvent) {
+        val isRight = event.action == Action.RIGHT_CLICK_BLOCK
+        val isLeft = event.action == Action.LEFT_CLICK_BLOCK
+        if (!isRight && !isLeft) return
         if (event.hand != EquipmentSlot.HAND) return
 
         val block = event.clickedBlock ?: return
@@ -46,10 +47,15 @@ open class ShopInteractListener(
             loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ
         ) ?: return
 
-        event.isCancelled = true
+        // Cancel right-click to prevent vanilla sign edit; deny left-click
+        // item use to suppress held-item abilities (e.g. spear lunge).
+        if (isLeft) event.setUseItemInHand(org.bukkit.event.Event.Result.DENY)
+        else event.isCancelled = true
 
-        val player = event.player
+        openShop(event.player, shop)
+    }
 
+    private fun openShop(player: Player, shop: Shop) {
         // Shift-right-click → info card (ItemShops parity SP6)
         if (player.isSneaking) {
             val owner = org.bukkit.Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"

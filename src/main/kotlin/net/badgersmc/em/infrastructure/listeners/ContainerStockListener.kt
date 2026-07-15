@@ -24,11 +24,11 @@ import java.util.concurrent.ConcurrentHashMap
  * **Trade path** — [onTransaction] fires after every successful [PostShopTransactionEvent]:
  * recomputes raw stock, stages the DB write for the next timer flush, and updates the sign.
  *
- * **Timer path** — [refreshAllSigns] is called every 20 ticks from [EnthusiaMarket.onEnable].
- * Iterates all shops, reads the live container inventory for loaded chunks only (never
- * force-loads), flushes batched stock writes to SQLite, and updates sign text when the
- * raw stock changes. This catches stock drift from shift-click, hopper, or other-plugin
- * inventory mutations without needing per-event listeners.
+ * **Timer path** — [refreshBatch] is called every tick from [EnthusiaMarket.onEnable].
+ * Processes 50 shops per tick with a rotating cursor so a full cycle completes in
+ * ~1s at current scale and ~3s at 3000+ shops. Flushes batched stock writes to
+ * SQLite at cycle end. This catches stock drift from shift-click, hopper, or
+ * other-plugin inventory mutations without needing per-event listeners.
  */
 @Listener
 @Component
@@ -59,16 +59,31 @@ class ContainerStockListener(
         loadedSign(shop)?.let { updateSignStock(it, shop, trades) }
     }
 
-    // ── Timer path (called from EnthusiaMarket.onEnable every 20t) ─────
+    // ── Timer path (called from EnthusiaMarket.onEnable every tick) ─────
 
-    /** Recompute stock for every shop whose container chunk is loaded,
-     *  then flush all batched stock writes to DB in one pass. */
+    /** Shops per tick for incremental refresh (scales to 1000+ shops). */
+    private var cursor = 0
+
+    /** Recompute stock for a batch of shops and flush on cycle completion. */
+    fun refreshBatch(batchSize: Int = 50) {
+        val shops = shopRepository.all().toList()
+        if (shops.isEmpty()) return
+        val end = (cursor + batchSize).coerceAtMost(shops.size)
+        for (i in cursor until end) {
+            val shop = shops[i]
+            val inventory = liveContainerInventory(shop) ?: continue
+            refreshOne(shop, inventory)
+        }
+        cursor = if (end >= shops.size) 0 else end
+        if (cursor == 0) flushDirtyStock()  // full cycle complete → persist
+    }
+
+    /** Recompute stock for every shop whose container chunk is loaded (admin resync). */
     fun refreshAllSigns() {
         for (shop in shopRepository.all()) {
             val inventory = liveContainerInventory(shop) ?: continue
             refreshOne(shop, inventory)
         }
-        // Flush batched stock writes from both trade + timer paths (PERF-5).
         flushDirtyStock()
     }
 

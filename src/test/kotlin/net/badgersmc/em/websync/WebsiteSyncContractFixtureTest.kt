@@ -3,6 +3,7 @@ package net.badgersmc.em.websync
 import com.google.gson.JsonParser
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -74,9 +75,8 @@ class WebsiteSyncContractFixtureTest {
 
     private fun unowned() = PublicOwner("NONE", null, null, "Unowned", null, PublicAvatar("NONE"))
     private fun solo() = PublicOwner(
-        "PLAYER", "00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000001",
-        "P2wn", "https://minotar.net/helm/00000000-0000-4000-8000-000000000001/96.png",
-        PublicAvatar("MINECRAFT_HEAD", "JAVA", true),
+        "PLAYER", PROXY_STYLE_UUID, UUID.fromString(PROXY_STYLE_UUID).toString(),
+        "P2wn", null, PublicAvatar("MINECRAFT_HEAD", "PROXY", true),
     )
     private fun guild() = PublicOwner(
         "GUILD", "guild-1", null, "Example Guild", null,
@@ -96,5 +96,6 @@ class WebsiteSyncContractFixtureTest {
         private const val TEST_EVENT = "00000000-0000-4000-8000-000000000010"
         private const val STALL_EVENT = "00000000-0000-4000-8000-000000000011"
         private const val FULL_EVENT = "00000000-0000-4000-8000-000000000012"
+        private const val PROXY_STYLE_UUID = "00000000-0000-0009-0000-000000000001"
     }
 }
