@@ -47,11 +47,13 @@ class BlockProtectionListener(
                     shop.owner == player.uniqueId -> {
                         management.delete(player.uniqueId, shop.id)
                         player.sendMessage(lang.msg("shop.protect.sign_broken_deleted"))
+                        event.isCancelled = false  // ensure break proceeds
                     }
                     // Admin in break-others mode -> admin delete and allow the break.
                     player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId) -> {
                         management.adminDelete(shop.id)
                         player.sendMessage(lang.msg("shop.admin.breakothers.deleted"))
+                        event.isCancelled = false  // ensure break proceeds
                     }
                     // Anyone else -> protect the sign from being broken.
                     else -> cancelSignBreak(event, shop, event.player)
