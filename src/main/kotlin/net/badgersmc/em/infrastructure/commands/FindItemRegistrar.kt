@@ -40,6 +40,7 @@ object FindItemRegistrar {
             }
 
             val node: LiteralCommandNode<CommandSourceStack> = Commands.literal("finditem")
+                .requires { src -> src.sender.hasPermission("enthusiamarket.shop.use") }
                 .then(
                     RequiredArgumentBuilder.argument<CommandSourceStack, String>("query", StringArgumentType.word())
                         .suggests(itemProvider)
