@@ -59,27 +59,10 @@ private fun trimLoaded(value: HeadIndex): Boolean {
     return trimmed
 }
 
-private fun validFileBounds(file: File): Boolean {
-    if (!file.isFile) return false
-    return file.length() in 1..BedrockHeadRenderer.MAX_PNG_BYTES.toLong()
-}
-
-private fun validPngFile(file: File, hash: String): Boolean {
-    val bytes = runCatching { file.readBytes() }.getOrNull() ?: return false
-    if (sha256(bytes) != hash) return false
-    val image = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return false
-    return validHeadImage(image)
-}
-
 private fun validHeadImage(image: java.awt.image.BufferedImage): Boolean {
     if (image.width != BedrockHeadRenderer.OUTPUT_SIZE) return false
     if (image.height != BedrockHeadRenderer.OUTPUT_SIZE) return false
     return image.colorModel.hasAlpha()
-}
-
-private fun validPendingFile(pendingDirectory: File, pending: Pending): Boolean {
-    val file = File(pendingDirectory, "${pending.hash}.png")
-    return validFileBounds(file) && validPngFile(file, pending.hash)
 }
 
 sealed interface PendingFileRead {
@@ -159,14 +142,17 @@ class BedrockHeadStore(
     init {
         root.mkdirs()
         pendingDirectory.mkdirs()
-        val invalidHashes = index.pending.values.groupBy(Pending::hash)
-            .filterValues { aliases -> aliases.any { !validPendingFile(pendingDirectory, it) } }
-            .keys
+        val pendingHashes = index.pending.values.map(Pending::hash).toSet()
+        val pendingFiles = pendingHashes.associateWith { hash -> pendingFileReader.read(File(pendingDirectory, "$hash.png"), hash) }
+        val invalidHashes = pendingFiles.filterValues { it is PendingFileRead.Invalid }.keys
+        val ioFailure = pendingFiles.values.any { it is PendingFileRead.IoFailure }
         if (invalidHashes.isNotEmpty()) {
             index.pending.entries.removeIf { it.value.hash in invalidHashes }
             invalidHashes.forEach { hash -> runCatching { Files.deleteIfExists(File(pendingDirectory, "$hash.png").toPath()) } }
             persist()
             lastError = "pending_file_invalid"
+        } else if (ioFailure) {
+            lastError = "pending_file_io"
         } else if (lastError == "index_invalid") {
             persist()
         }

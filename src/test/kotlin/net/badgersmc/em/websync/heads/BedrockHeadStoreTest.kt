@@ -197,6 +197,31 @@ class BedrockHeadStoreTest {
     }
 
     @Test
+    fun `startup read failure keeps pending aliases for a later retry`() {
+        val ioFailure = AtomicBoolean(false)
+        val reader = PendingFileReader { file, _ ->
+            if (ioFailure.get()) PendingFileRead.IoFailure else PendingFileRead.Valid(file.readBytes())
+        }
+        val player = UUID.randomUUID()
+        val first = store(upload = { DeliveryOutcome.Retry() }, reader = reader)
+        first.capture(player, validSkin())
+        await { first.status().pending == 1 }
+        first.close()
+
+        ioFailure.set(true)
+        val now = System.currentTimeMillis() + 1_000_000L
+        val second = store(upload = { DeliveryOutcome.Success }, clock = { now }, reader = reader)
+        assertEquals(1, second.status().pending)
+        assertEquals("pending_file_io", second.status().lastError)
+        assertEquals(1, File(directory, "website-heads/pending").listFiles().orEmpty().size)
+
+        ioFailure.set(false)
+        second.retryPending()
+        await { second.url(player) != null }
+        second.close()
+    }
+
+    @Test
     fun `invalid skin never enters the durable pending cache`() {
         val store = store(upload = { DeliveryOutcome.Success })
         store.capture(UUID.randomUUID(), ByteArray(23))
