@@ -15,10 +15,13 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
-private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes)
-    .joinToString("") { "%02x".format(it) }
+private fun sha256(bytes: ByteArray): String {
+    return MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+}
 
-private fun publicUrl(hash: String) = "https://market-api.enthusia.info/v1/player-heads/$hash.png"
+private fun publicUrl(hash: String): String {
+    return "https://market-api.enthusia.info/v1/player-heads/$hash.png"
+}
 
 private const val MAX_HEAD_ENTRIES = 256
 private val HEAD_HASH = Regex("^[0-9a-f]{64}$")
@@ -29,15 +32,19 @@ private data class HeadIndex(
     val pending: MutableMap<String, Pending> = linkedMapOf(),
 )
 
-private fun validPublished(id: String, entry: Published): Boolean = runCatching {
-    UUID.fromString(id)
-    HEAD_HASH.matches(entry.hash) && entry.url == publicUrl(entry.hash) && entry.capturedAt >= 0
-}.getOrDefault(false)
+private fun validPublished(id: String, entry: Published): Boolean {
+    if (!validPlayerId(id)) return false
+    return HEAD_HASH.matches(entry.hash) && entry.url == publicUrl(entry.hash) && entry.capturedAt >= 0
+}
 
-private fun validPending(id: String, entry: Pending): Boolean = runCatching {
-    UUID.fromString(id)
-    HEAD_HASH.matches(entry.hash) && entry.capturedAt >= 0 && entry.attempts >= 0 && entry.nextAttemptAt >= 0
-}.getOrDefault(false)
+private fun validPending(id: String, entry: Pending): Boolean {
+    if (!validPlayerId(id)) return false
+    return HEAD_HASH.matches(entry.hash) && entry.capturedAt >= 0 && entry.attempts >= 0 && entry.nextAttemptAt >= 0
+}
+
+private fun validPlayerId(id: String): Boolean {
+    return runCatching { UUID.fromString(id) }.isSuccess
+}
 
 private fun trimLoaded(value: HeadIndex): Boolean {
     var trimmed = false
@@ -50,8 +57,10 @@ private fun trimLoaded(value: HeadIndex): Boolean {
     return trimmed
 }
 
-private fun validFileBounds(file: File): Boolean =
-    file.isFile && file.length() in 1..BedrockHeadRenderer.MAX_PNG_BYTES.toLong()
+private fun validFileBounds(file: File): Boolean {
+    if (!file.isFile) return false
+    return file.length() in 1..BedrockHeadRenderer.MAX_PNG_BYTES.toLong()
+}
 
 private fun validPngFile(file: File, hash: String): Boolean {
     val bytes = runCatching { file.readBytes() }.getOrNull() ?: return false
