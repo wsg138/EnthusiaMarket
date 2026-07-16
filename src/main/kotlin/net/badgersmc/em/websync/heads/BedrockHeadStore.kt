@@ -86,10 +86,6 @@ data class BedrockHeadStatus(
     val lastError: String?,
 )
 
-fun interface PublishedHeadLookup {
-    fun url(playerId: UUID): String?
-}
-
 /** Durable, bounded cache for finished public heads. All mutations run on one worker. */
 class BedrockHeadStore(
     dataFolder: File,
