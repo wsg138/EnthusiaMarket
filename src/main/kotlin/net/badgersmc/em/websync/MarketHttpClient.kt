@@ -105,9 +105,13 @@ class MarketHttpClient(
         if (retryable(status)) {
             return DeliveryOutcome.Retry(retryAfter(response.headers().firstValue("Retry-After").orElse(null)))
         }
-        val code = safeCode(response.body())
+        return rejected(status, response.body())
+    }
+
+    private fun rejected(status: Int, body: ByteArray): DeliveryOutcome {
+        val code = safeCode(body)
         if (status == 409 && code in RECONCILE_CODES) return DeliveryOutcome.Reconcile(code!!)
-        val category = if (status == 400) safeDiagnosticCategory(response.body()) else null
+        val category = if (status == 400) safeDiagnosticCategory(body) else null
         return DeliveryOutcome.Pause(category ?: pauseCategory(status))
     }
 

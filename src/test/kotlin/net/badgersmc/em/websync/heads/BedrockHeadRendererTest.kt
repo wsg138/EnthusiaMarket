@@ -44,15 +44,17 @@ class BedrockHeadRendererTest {
 
     @Test
     fun `legacy and high-resolution skins retain their face detail`() {
-        listOf(64 to 32, 128 to 128, 256 to 256).forEach { (width, height) ->
-            val scale = width / 64
-            val skin = skin(width, height)
-            fill(skin, width, Rectangle(8 * scale, 8 * scale, 8 * scale, 8 * scale), argb(255, 20, 40, 60))
-            fill(skin, width, Rectangle(8 * scale, 8 * scale, scale, scale), argb(255, 240, 30, 10))
-            val image = image(BedrockHeadRenderer.render(skin))
-            assertEquals(argb(255, 240, 30, 10), image.getRGB(1, 1))
-            assertEquals(argb(255, 20, 40, 60), image.getRGB(95, 95))
-        }
+        listOf(64 to 32, 128 to 128, 256 to 256).forEach { (width, height) -> assertFaceDetail(width, height) }
+    }
+
+    private fun assertFaceDetail(width: Int, height: Int) {
+        val scale = width / 64
+        val skin = skin(width, height)
+        fill(skin, width, Rectangle(8 * scale, 8 * scale, 8 * scale, 8 * scale), argb(255, 20, 40, 60))
+        fill(skin, width, Rectangle(8 * scale, 8 * scale, scale, scale), argb(255, 240, 30, 10))
+        val image = image(BedrockHeadRenderer.render(skin))
+        assertEquals(argb(255, 240, 30, 10), image.getRGB(1, 1))
+        assertEquals(argb(255, 20, 40, 60), image.getRGB(95, 95))
     }
 
     @Test
