@@ -222,6 +222,80 @@ class BedrockHeadStoreTest {
     }
 
     @Test
+    fun `published fast path removes its orphaned pending PNG`() {
+        val uploads = AtomicInteger()
+        val player = UUID.randomUUID()
+        val store = store(upload = {
+            if (uploads.incrementAndGet() == 1) DeliveryOutcome.Success else DeliveryOutcome.Retry()
+        })
+        store.capture(player, validSkin())
+        await { store.url(player) != null }
+        store.capture(player, validSkin(red = 21.toByte()))
+        await { store.status().pending == 1 }
+        assertEquals(1, pendingFiles().size)
+
+        store.capture(player, validSkin())
+        await { store.status().pending == 0 }
+        assertTrue(pendingFiles().isEmpty())
+        store.close()
+    }
+
+    @Test
+    fun `startup sweep removes malformed-index orphans and retains referenced PNGs`() {
+        val first = store(upload = { DeliveryOutcome.Retry() })
+        first.capture(UUID.randomUUID(), validSkin())
+        await { first.status().pending == 1 }
+        first.close()
+
+        val orphan = "a".repeat(64)
+        val malformed = "b".repeat(64)
+        val pending = File(directory, "website-heads/pending")
+        File(pending, "$orphan.png").writeBytes(byteArrayOf(1))
+        File(pending, "$malformed.png").writeBytes(byteArrayOf(1))
+        File(pending, "keep.txt").writeText("unexpected")
+        val indexFile = File(directory, "website-heads/index.json")
+        val root = JsonParser.parseString(indexFile.readText()).asJsonObject
+        root.getAsJsonObject("pending").add("not-a-uuid", JsonParser.parseString(
+            "{\"hash\":\"$malformed\",\"capturedAt\":0,\"attempts\":0,\"nextAttemptAt\":0}",
+        ))
+        indexFile.writeText(root.toString())
+
+        val second = store(upload = { DeliveryOutcome.Retry() })
+        assertEquals(1, second.status().pending)
+        assertTrue(!File(pending, "$orphan.png").exists())
+        assertTrue(!File(pending, "$malformed.png").exists())
+        assertTrue(File(pending, "keep.txt").isFile)
+        assertEquals(1, pendingFiles().size)
+        second.close()
+    }
+
+    @Test
+    fun `new aliases inherit their hash backoff before grouped retry`() {
+        val calls = AtomicInteger()
+        var now = 0L
+        val first = UUID.randomUUID()
+        val second = UUID.randomUUID()
+        val store = store(upload = { calls.incrementAndGet(); DeliveryOutcome.Retry() }, clock = { now })
+        store.capture(first, validSkin())
+        await { calls.get() == 1 }
+
+        now = 1_000L
+        store.capture(second, validSkin())
+        await { store.status().pending == 2 }
+        assertEquals(setOf("1:10000"), pendingSchedules().values.toSet())
+        now = 9_999L
+        store.retryPending()
+        Thread.sleep(50)
+        assertEquals(1, calls.get())
+
+        now = 10_000L
+        store.retryPending()
+        await { calls.get() == 2 }
+        assertEquals(setOf("2:30000"), pendingSchedules().values.toSet())
+        store.close()
+    }
+
+    @Test
     fun `invalid skin never enters the durable pending cache`() {
         val store = store(upload = { DeliveryOutcome.Success })
         store.capture(UUID.randomUUID(), ByteArray(23))
@@ -267,6 +341,8 @@ class BedrockHeadStoreTest {
             id to "${value.asJsonObject.get("attempts").asInt}:${value.asJsonObject.get("nextAttemptAt").asLong}"
         }
     }
+
+    private fun pendingFiles() = File(directory, "website-heads/pending").listFiles { file -> file.extension == "png" }.orEmpty()
 
     private fun await(condition: () -> Boolean) {
         repeat(200) {

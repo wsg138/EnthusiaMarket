@@ -27,6 +27,7 @@ private fun publicUrl(hash: String): String {
 
 private const val MAX_HEAD_ENTRIES = 256
 private val HEAD_HASH = Regex("^[0-9a-f]{64}$")
+private val PENDING_PNG = Regex("^([0-9a-f]{64})\\.png$")
 private data class Published(val hash: String, val url: String, val capturedAt: Long)
 private data class Pending(val hash: String, val capturedAt: Long, val attempts: Int, val nextAttemptAt: Long)
 private data class HeadIndex(
@@ -156,6 +157,13 @@ class BedrockHeadStore(
         } else if (lastError == "index_invalid") {
             persist()
         }
+        val referenced = index.pending.values.map(Pending::hash).toSet()
+        val orphaned = pendingDirectory.listFiles().orEmpty().mapNotNull { file ->
+            PENDING_PNG.matchEntire(file.name)?.groupValues?.get(1)?.takeIf { file.isFile && it !in referenced }?.let { file }
+        }
+        if (orphaned.any { file -> runCatching { Files.deleteIfExists(file.toPath()) }.getOrDefault(false).not() }) {
+            lastError = "pending_file_cleanup"
+        }
     }
 
     override fun url(playerId: UUID): String? {
@@ -190,9 +198,16 @@ class BedrockHeadStore(
         existingCapture(playerId, hash, now)?.let { return it }
         pendingDirectory.mkdirs()
         atomicBytes(File(pendingDirectory, "$hash.png"), png)
-        val uploadRequired = index.pending.values.none { it.hash == hash }
-        val previous = index.pending.put(playerId.toString(), Pending(hash, now, 0, now))
-        removeOrphan(previous, hash)
+        val aliases = index.pending.values.filter { it.hash == hash }
+        val uploadRequired = aliases.isEmpty()
+        val pending = if (uploadRequired) Pending(hash, now, 0, now) else Pending(
+            hash = hash,
+            capturedAt = now,
+            attempts = aliases.maxOf(Pending::attempts),
+            nextAttemptAt = aliases.maxOf(Pending::nextAttemptAt),
+        )
+        val previous = index.pending.put(playerId.toString(), pending)
+        removeOrphan(previous)
         trim()
         persist()
         lastError = null
@@ -203,15 +218,16 @@ class BedrockHeadStore(
         val key = playerId.toString()
         if (index.published[key]?.hash == hash) {
             index.published[key] = Published(hash, publicUrl(hash), now)
-            index.pending.remove(key)
+            val previous = index.pending.remove(key)
+            removeOrphan(previous)
             persist()
             return CaptureAction.PUBLISHED
         }
         return CaptureAction.NONE.takeIf { index.pending[key]?.hash == hash }
     }
 
-    private fun removeOrphan(previous: Pending?, replacementHash: String) {
-        if (previous == null || previous.hash == replacementHash || index.pending.values.any { it.hash == previous.hash }) return
+    private fun removeOrphan(previous: Pending?) {
+        if (previous == null || index.pending.values.any { it.hash == previous.hash }) return
         runCatching { Files.deleteIfExists(File(pendingDirectory, "${previous.hash}.png").toPath()) }
     }
 
