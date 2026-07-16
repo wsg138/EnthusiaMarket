@@ -53,12 +53,18 @@ private fun trimLoaded(value: HeadIndex): Boolean {
 private fun validFileBounds(file: File): Boolean =
     file.isFile && file.length() in 1..BedrockHeadRenderer.MAX_PNG_BYTES.toLong()
 
-private fun validPngFile(file: File, hash: String): Boolean = runCatching {
-    if (sha256(file.readBytes()) != hash) return@runCatching false
-    val image = javax.imageio.ImageIO.read(file) ?: return@runCatching false
-    image.width == BedrockHeadRenderer.OUTPUT_SIZE && image.height == BedrockHeadRenderer.OUTPUT_SIZE &&
-        image.colorModel.hasAlpha()
-}.getOrDefault(false)
+private fun validPngFile(file: File, hash: String): Boolean {
+    val bytes = runCatching { file.readBytes() }.getOrNull() ?: return false
+    if (sha256(bytes) != hash) return false
+    val image = runCatching { javax.imageio.ImageIO.read(file) }.getOrNull() ?: return false
+    return validHeadImage(image)
+}
+
+private fun validHeadImage(image: java.awt.image.BufferedImage): Boolean {
+    if (image.width != BedrockHeadRenderer.OUTPUT_SIZE) return false
+    if (image.height != BedrockHeadRenderer.OUTPUT_SIZE) return false
+    return image.colorModel.hasAlpha()
+}
 
 private fun validPendingFile(pendingDirectory: File, pending: Pending): Boolean {
     val file = File(pendingDirectory, "${pending.hash}.png")
