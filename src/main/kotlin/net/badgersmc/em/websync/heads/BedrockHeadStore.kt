@@ -194,9 +194,11 @@ class BedrockHeadStore(
         }
     }
 
-    fun status(): BedrockHeadStatus = synchronized(lock) { BedrockHeadStatus(
-        index.published.size, index.pending.size, lastSuccessAt, lastError,
-    ) }
+    fun status(): BedrockHeadStatus {
+        return synchronized(lock) {
+            BedrockHeadStatus(index.published.size, index.pending.size, lastSuccessAt, lastError)
+        }
+    }
 
     private fun upload(playerId: UUID) {
         val cfg = config()
