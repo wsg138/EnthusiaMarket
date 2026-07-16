@@ -16,23 +16,28 @@ class GeyserSessionSkinListener(private val capture: BedrockSkinCapture) : Event
 
     private fun onSkin(event: SessionSkinApplyEvent) {
         try {
-            if (!event.bedrock()) return
-            val skinData = event.skinData()
-            val geometry = skinData.geometry()
-            if (geometry.geometryData().isNotBlank() ||
-                geometry.geometryName() != SkinGeometry.WIDE.geometryName() &&
-                geometry.geometryName() != SkinGeometry.SLIM.geometryName()) return
-            val skin = skinData.skin()
-            if (skin.failed()) return
-            if (skin.skinData().isEmpty()) return
-            // The event-owned array may be reused; copy before returning from the callback.
-            capture.capture(event.uuid(), skin.skinData().copyOf())
+            captureSkin(event)
         } catch (_: LinkageError) {
             // An incompatible optional Geyser API must not affect Market runtime behavior.
         } catch (_: Exception) {
             // Invalid event data keeps the generic Bedrock fallback.
         }
     }
+
+    private fun captureSkin(event: SessionSkinApplyEvent) {
+        if (!event.bedrock()) return
+        val skinData = event.skinData()
+        if (!standardGeometry(skinData.geometry())) return
+        val skin = skinData.skin()
+        if (skin.failed() || skin.skinData().isEmpty()) return
+        // The event-owned array may be reused; copy before returning from the callback.
+        capture.capture(event.uuid(), skin.skinData().copyOf())
+    }
+
+    private fun standardGeometry(geometry: SkinGeometry): Boolean =
+        geometry.geometryData().isBlank() &&
+            (geometry.geometryName() == SkinGeometry.WIDE.geometryName() ||
+                geometry.geometryName() == SkinGeometry.SLIM.geometryName())
 
     override fun close() {
         eventBus.unregisterAll(this)

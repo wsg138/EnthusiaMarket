@@ -15,6 +15,70 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
+private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes)
+    .joinToString("") { "%02x".format(it) }
+
+private fun publicUrl(hash: String) = "https://market-api.enthusia.info/v1/player-heads/$hash.png"
+
+private const val MAX_HEAD_ENTRIES = 256
+private val HEAD_HASH = Regex("^[0-9a-f]{64}$")
+private data class Published(val hash: String, val url: String, val capturedAt: Long)
+private data class Pending(val hash: String, val capturedAt: Long, val attempts: Int, val nextAttemptAt: Long)
+private data class HeadIndex(
+    val published: MutableMap<String, Published> = linkedMapOf(),
+    val pending: MutableMap<String, Pending> = linkedMapOf(),
+)
+
+private fun validPublished(id: String, entry: Published): Boolean = runCatching {
+    UUID.fromString(id)
+    HEAD_HASH.matches(entry.hash) && entry.url == publicUrl(entry.hash) && entry.capturedAt >= 0
+}.getOrDefault(false)
+
+private fun validPending(id: String, entry: Pending): Boolean = runCatching {
+    UUID.fromString(id)
+    HEAD_HASH.matches(entry.hash) && entry.capturedAt >= 0 && entry.attempts >= 0 && entry.nextAttemptAt >= 0
+}.getOrDefault(false)
+
+private fun trimLoaded(value: HeadIndex): Boolean {
+    var trimmed = false
+    while (value.published.size + value.pending.size > MAX_HEAD_ENTRIES) {
+        val oldest = value.published.minByOrNull { it.value.capturedAt }
+        if (oldest != null) value.published.remove(oldest.key)
+        else value.pending.minByOrNull { it.value.capturedAt }?.let { value.pending.remove(it.key) } ?: break
+        trimmed = true
+    }
+    return trimmed
+}
+
+private fun validFileBounds(file: File): Boolean =
+    file.isFile && file.length() in 1..BedrockHeadRenderer.MAX_PNG_BYTES.toLong()
+
+private fun validPngFile(file: File, hash: String): Boolean = runCatching {
+    if (sha256(file.readBytes()) != hash) return@runCatching false
+    val image = javax.imageio.ImageIO.read(file) ?: return@runCatching false
+    image.width == BedrockHeadRenderer.OUTPUT_SIZE && image.height == BedrockHeadRenderer.OUTPUT_SIZE &&
+        image.colorModel.hasAlpha()
+}.getOrDefault(false)
+
+private fun validPendingFile(pendingDirectory: File, pending: Pending): Boolean {
+    val file = File(pendingDirectory, "${pending.hash}.png")
+    return validFileBounds(file) && validPngFile(file, pending.hash)
+}
+
+private fun atomicBytes(target: File, bytes: ByteArray) {
+    val temp = File(target.parentFile, ".${target.name}.tmp")
+    temp.writeBytes(bytes)
+    replace(temp, target)
+}
+
+private fun replace(temp: File, target: File) {
+    try {
+        Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+    } catch (_: AtomicMoveNotSupportedException) {
+        Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+}
+
 data class BedrockHeadStatus(
     val captured: Int,
     val pending: Int,
@@ -34,12 +98,7 @@ class BedrockHeadStore(
     private val published: (UUID) -> Unit,
     private val clock: () -> Long = System::currentTimeMillis,
 ) : PublishedHeadLookup, AutoCloseable {
-    private data class Published(val hash: String, val url: String, val capturedAt: Long)
-    private data class Pending(val hash: String, val capturedAt: Long, val attempts: Int, val nextAttemptAt: Long)
-    private data class Index(
-        val published: MutableMap<String, Published> = linkedMapOf(),
-        val pending: MutableMap<String, Pending> = linkedMapOf(),
-    )
+    private enum class CaptureAction { PUBLISHED, UPLOAD, NONE }
 
     private val root = File(dataFolder, "website-heads")
     private val pendingDirectory = File(root, "pending")
@@ -58,7 +117,7 @@ class BedrockHeadStore(
     init {
         root.mkdirs()
         pendingDirectory.mkdirs()
-        val invalid = index.pending.filterValues { !validPendingFile(it) }.keys
+        val invalid = index.pending.filterValues { !validPendingFile(pendingDirectory, it) }.keys
         if (invalid.isNotEmpty()) {
             invalid.forEach(index.pending::remove)
             persist()
@@ -74,44 +133,53 @@ class BedrockHeadStore(
     }
 
     fun capture(playerId: UUID, copiedSkin: ByteArray) {
-        submit {
-            try {
-                val png = BedrockHeadRenderer.render(copiedSkin)
-                val hash = sha256(png)
-                val now = clock()
-                var alreadyPublished = false
-                var uploadRequired = true
-                synchronized(lock) {
-                    val key = playerId.toString()
-                    if (index.published[key]?.hash == hash) {
-                        index.published[key] = Published(hash, publicUrl(hash), now)
-                        index.pending.remove(key)
-                        persist()
-                        alreadyPublished = true
-                        return@synchronized
-                    }
-                    if (index.pending[key]?.hash == hash) {
-                        uploadRequired = false
-                        return@synchronized
-                    }
-                    pendingDirectory.mkdirs()
-                    atomicBytes(File(pendingDirectory, "$hash.png"), png)
-                    if (index.pending.values.any { it.hash == hash }) uploadRequired = false
-                    val previous = index.pending.put(key, Pending(hash, now, 0, now))
-                    if (previous != null && previous.hash != hash && index.pending.values.none { it.hash == previous.hash }) {
-                        runCatching { Files.deleteIfExists(File(pendingDirectory, "${previous.hash}.png").toPath()) }
-                    }
-                    trim()
-                    persist()
-                    lastError = null
-                }
-                if (alreadyPublished) published(playerId) else if (uploadRequired) upload(playerId)
-            } catch (_: IllegalArgumentException) {
-                synchronized(lock) { lastError = "invalid_skin" }
-            } catch (_: Exception) {
-                synchronized(lock) { lastError = "capture_failure" }
+        submit { captureInBackground(playerId, copiedSkin) }
+    }
+
+    private fun captureInBackground(playerId: UUID, copiedSkin: ByteArray) {
+        try {
+            val png = BedrockHeadRenderer.render(copiedSkin)
+            val hash = sha256(png)
+            val action = synchronized(lock) { recordCapture(playerId, hash, png, clock()) }
+            when (action) {
+                CaptureAction.PUBLISHED -> published(playerId)
+                CaptureAction.UPLOAD -> upload(playerId)
+                CaptureAction.NONE -> Unit
             }
+        } catch (_: IllegalArgumentException) {
+            setError("invalid_skin")
+        } catch (_: Exception) {
+            setError("capture_failure")
         }
+    }
+
+    private fun recordCapture(playerId: UUID, hash: String, png: ByteArray, now: Long): CaptureAction {
+        existingCapture(playerId, hash, now)?.let { return it }
+        pendingDirectory.mkdirs()
+        atomicBytes(File(pendingDirectory, "$hash.png"), png)
+        val uploadRequired = index.pending.values.none { it.hash == hash }
+        val previous = index.pending.put(playerId.toString(), Pending(hash, now, 0, now))
+        removeOrphan(previous, hash)
+        trim()
+        persist()
+        lastError = null
+        return if (uploadRequired) CaptureAction.UPLOAD else CaptureAction.NONE
+    }
+
+    private fun existingCapture(playerId: UUID, hash: String, now: Long): CaptureAction? {
+        val key = playerId.toString()
+        if (index.published[key]?.hash == hash) {
+            index.published[key] = Published(hash, publicUrl(hash), now)
+            index.pending.remove(key)
+            persist()
+            return CaptureAction.PUBLISHED
+        }
+        return CaptureAction.NONE.takeIf { index.pending[key]?.hash == hash }
+    }
+
+    private fun removeOrphan(previous: Pending?, replacementHash: String) {
+        if (previous == null || previous.hash == replacementHash || index.pending.values.any { it.hash == previous.hash }) return
+        runCatching { Files.deleteIfExists(File(pendingDirectory, "${previous.hash}.png").toPath()) }
     }
 
     fun retryPending() {
@@ -134,18 +202,23 @@ class BedrockHeadStore(
         val cfg = config()
         if (cfg?.configuredEnabled != true || !cfg.secretConfigured) return
         val pending = synchronized(lock) { index.pending[playerId.toString()] } ?: return
-        val file = File(pendingDirectory, "${pending.hash}.png")
-        val png = runCatching { file.readBytes() }.getOrNull()
-        if (png == null || png.size !in 1..BedrockHeadRenderer.MAX_PNG_BYTES || sha256(png) != pending.hash) {
-            synchronized(lock) { lastError = "pending_file_invalid" }
-            return
-        }
-        when (uploader(cfg, playerId, pending.hash, png)) {
+        val png = pendingBytes(pending) ?: return setError("pending_file_invalid")
+        handleDelivery(playerId, pending, uploader(cfg, playerId, pending.hash, png))
+    }
+
+    private fun handleDelivery(playerId: UUID, pending: Pending, outcome: DeliveryOutcome) {
+        when (outcome) {
             DeliveryOutcome.Success -> complete(pending)
             is DeliveryOutcome.Retry -> defer(playerId, pending, "upload_retry")
             is DeliveryOutcome.Pause -> defer(playerId, pending, "upload_rejected")
             is DeliveryOutcome.Reconcile -> defer(playerId, pending, "upload_rejected")
         }
+    }
+
+    private fun pendingBytes(pending: Pending): ByteArray? {
+        val bytes = runCatching { File(pendingDirectory, "${pending.hash}.png").readBytes() }.getOrNull() ?: return null
+        if (bytes.size !in 1..BedrockHeadRenderer.MAX_PNG_BYTES || sha256(bytes) != pending.hash) return null
+        return bytes
     }
 
     private fun complete(pending: Pending) {
@@ -178,69 +251,36 @@ class BedrockHeadStore(
         }
     }
 
-    private fun load(): Index {
-        if (!indexFile.isFile) return Index()
+    private fun load(): HeadIndex {
+        if (!indexFile.isFile) return HeadIndex()
         return runCatching {
-            val type = object : TypeToken<Index>() {}.type
-            gson.fromJson<Index>(indexFile.readText(), type).also(::removeMalformedEntries)
-        }.getOrElse { Index().also { lastError = "index_invalid" } }
+            val type = object : TypeToken<HeadIndex>() {}.type
+            gson.fromJson<HeadIndex>(indexFile.readText(), type).also(::removeMalformedEntries)
+        }.getOrElse { HeadIndex().also { lastError = "index_invalid" } }
     }
 
-    private fun removeMalformedEntries(value: Index) {
-        var removed = false
-        value.published.entries.removeIf { entry ->
-            val valid = runCatching {
-                UUID.fromString(entry.key)
-                HASH.matches(entry.value.hash) && entry.value.url == publicUrl(entry.value.hash) &&
-                    entry.value.capturedAt >= 0
-            }.getOrDefault(false)
-            if (!valid) removed = true
-            !valid
-        }
-        value.pending.entries.removeIf { entry ->
-            val valid = runCatching {
-                UUID.fromString(entry.key)
-                HASH.matches(entry.value.hash) && entry.value.capturedAt >= 0 && entry.value.attempts >= 0 &&
-                    entry.value.nextAttemptAt >= 0
-            }.getOrDefault(false)
-            if (!valid) removed = true
-            !valid
-        }
-        while (value.published.size + value.pending.size > MAX_ENTRIES) {
-            val oldest = value.published.minByOrNull { it.value.capturedAt }
-            if (oldest != null) value.published.remove(oldest.key) else {
-                value.pending.minByOrNull { it.value.capturedAt }?.let { value.pending.remove(it.key) } ?: break
-            }
-            removed = true
-        }
-        if (removed) lastError = "index_invalid"
-    }
-
-    private fun validPendingFile(pending: Pending): Boolean {
-        val file = File(pendingDirectory, "${pending.hash}.png")
-        if (!file.isFile || file.length() !in 1..BedrockHeadRenderer.MAX_PNG_BYTES.toLong()) return false
-        return runCatching {
-            val bytes = file.readBytes()
-            if (sha256(bytes) != pending.hash) return@runCatching false
-            val image = javax.imageio.ImageIO.read(file) ?: return@runCatching false
-            image.width == BedrockHeadRenderer.OUTPUT_SIZE && image.height == BedrockHeadRenderer.OUTPUT_SIZE &&
-                image.colorModel.hasAlpha()
-        }.getOrDefault(false)
+    private fun removeMalformedEntries(value: HeadIndex) {
+        val publishedRemoved = value.published.entries.removeIf { !validPublished(it.key, it.value) }
+        val pendingRemoved = value.pending.entries.removeIf { !validPending(it.key, it.value) }
+        val trimmed = trimLoaded(value)
+        if (publishedRemoved || pendingRemoved || trimmed) lastError = "index_invalid"
     }
 
     private fun trim() {
-        while (index.published.size + index.pending.size > MAX_ENTRIES) {
-            val publishedOldest = index.published.minByOrNull { it.value.capturedAt }
-            if (publishedOldest != null) {
-                index.published.remove(publishedOldest.key)
-            } else {
-                val pendingOldest = index.pending.minByOrNull { it.value.capturedAt } ?: break
-                val removed = index.pending.remove(pendingOldest.key) ?: continue
-                if (index.pending.values.none { it.hash == removed.hash }) {
-                    runCatching { Files.deleteIfExists(File(pendingDirectory, "${removed.hash}.png").toPath()) }
-                }
-            }
+        while (index.published.size + index.pending.size > MAX_HEAD_ENTRIES) {
+            if (!evictOldest()) break
         }
+    }
+
+    private fun evictOldest(): Boolean {
+        val publishedOldest = index.published.minByOrNull { it.value.capturedAt }
+        if (publishedOldest != null) return index.published.remove(publishedOldest.key) != null
+        val pendingOldest = index.pending.minByOrNull { it.value.capturedAt } ?: return false
+        val removed = index.pending.remove(pendingOldest.key) ?: return false
+        if (index.pending.values.none { it.hash == removed.hash }) {
+            runCatching { Files.deleteIfExists(File(pendingDirectory, "${removed.hash}.png").toPath()) }
+        }
+        return true
     }
 
     private fun persist() {
@@ -250,22 +290,12 @@ class BedrockHeadStore(
         replace(temp, indexFile)
     }
 
-    private fun atomicBytes(target: File, bytes: ByteArray) {
-        val temp = File(target.parentFile, ".${target.name}.tmp")
-        temp.writeBytes(bytes)
-        replace(temp, target)
-    }
-
-    private fun replace(temp: File, target: File) {
-        try {
-            Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-        } catch (_: AtomicMoveNotSupportedException) {
-            Files.move(temp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
-    }
-
     private fun submit(block: () -> Unit) {
         runCatching { executor.execute(block) }.onFailure { synchronized(lock) { lastError = "executor_saturated" } }
+    }
+
+    private fun setError(category: String) {
+        synchronized(lock) { lastError = category }
     }
 
     override fun close() {
@@ -279,15 +309,8 @@ class BedrockHeadStore(
     }
 
     private companion object {
-        const val MAX_ENTRIES = 256
         const val INITIAL_RETRY_MILLIS = 5_000L
         const val MAX_RETRY_EXPONENT = 8
         const val MAX_RETRY_MULTIPLIER = 256L
-        val HASH = Regex("^[0-9a-f]{64}$")
-
-        fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes)
-            .joinToString("") { "%02x".format(it) }
-
-        fun publicUrl(hash: String) = "https://market-api.enthusia.info/v1/player-heads/$hash.png"
     }
 }

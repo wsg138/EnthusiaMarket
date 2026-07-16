@@ -2,6 +2,7 @@
 
 package net.badgersmc.em.websync.heads
 
+import java.awt.Rectangle
 import java.io.ByteArrayInputStream
 import javax.imageio.ImageIO
 import kotlin.test.Test
@@ -13,7 +14,7 @@ class BedrockHeadRendererTest {
     @Test
     fun `transparent outer layer preserves base face`() {
         val skin = skin(64, 64)
-        fill(skin, 64, 8, 8, 8, argb(255, 30, 80, 140))
+        fill(skin, 64, Rectangle(8, 8, 8, 8), argb(255, 30, 80, 140))
 
         val image = image(BedrockHeadRenderer.render(skin))
 
@@ -23,15 +24,18 @@ class BedrockHeadRendererTest {
     }
 
     @Test
-    fun `opaque and translucent outer layers use source-over composition`() {
+    fun `opaque outer layer replaces the base face`() {
         val opaque = skin(64, 64)
-        fill(opaque, 64, 8, 8, 8, argb(255, 255, 0, 0))
-        fill(opaque, 64, 40, 8, 8, argb(255, 0, 0, 255))
+        fill(opaque, 64, Rectangle(8, 8, 8, 8), argb(255, 255, 0, 0))
+        fill(opaque, 64, Rectangle(40, 8, 8, 8), argb(255, 0, 0, 255))
         assertEquals(argb(255, 0, 0, 255), image(BedrockHeadRenderer.render(opaque)).getRGB(10, 10))
+    }
 
+    @Test
+    fun `translucent outer layer uses source-over composition`() {
         val translucent = skin(64, 64)
-        fill(translucent, 64, 8, 8, 8, argb(255, 255, 0, 0))
-        fill(translucent, 64, 40, 8, 8, argb(128, 0, 0, 255))
+        fill(translucent, 64, Rectangle(8, 8, 8, 8), argb(255, 255, 0, 0))
+        fill(translucent, 64, Rectangle(40, 8, 8, 8), argb(128, 0, 0, 255))
         val color = image(BedrockHeadRenderer.render(translucent)).getRGB(10, 10)
         assertEquals(255, color ushr 24)
         assertTrue((color ushr 16 and 0xff) in 126..127)
@@ -43,8 +47,8 @@ class BedrockHeadRendererTest {
         listOf(64 to 32, 128 to 128, 256 to 256).forEach { (width, height) ->
             val scale = width / 64
             val skin = skin(width, height)
-            fill(skin, width, 8 * scale, 8 * scale, 8 * scale, argb(255, 20, 40, 60))
-            fill(skin, width, 8 * scale, 8 * scale, scale, argb(255, 240, 30, 10))
+            fill(skin, width, Rectangle(8 * scale, 8 * scale, 8 * scale, 8 * scale), argb(255, 20, 40, 60))
+            fill(skin, width, Rectangle(8 * scale, 8 * scale, scale, scale), argb(255, 240, 30, 10))
             val image = image(BedrockHeadRenderer.render(skin))
             assertEquals(argb(255, 240, 30, 10), image.getRGB(1, 1))
             assertEquals(argb(255, 20, 40, 60), image.getRGB(95, 95))
@@ -54,7 +58,7 @@ class BedrockHeadRendererTest {
     @Test
     fun `output is deterministic bounded RGBA PNG and invalid dimensions fail`() {
         val skin = skin(64, 64)
-        fill(skin, 64, 8, 8, 8, argb(255, 1, 2, 3))
+        fill(skin, 64, Rectangle(8, 8, 8, 8), argb(255, 1, 2, 3))
         val first = BedrockHeadRenderer.render(skin)
         val second = BedrockHeadRenderer.render(skin)
         assertTrue(first.contentEquals(second))
@@ -65,8 +69,8 @@ class BedrockHeadRendererTest {
 
     private fun skin(width: Int, height: Int) = ByteArray(width * height * 4)
 
-    private fun fill(bytes: ByteArray, width: Int, startX: Int, startY: Int, size: Int, argb: Int) {
-        for (y in startY until startY + size) for (x in startX until startX + size) {
+    private fun fill(bytes: ByteArray, width: Int, area: Rectangle, argb: Int) {
+        for (y in area.y until area.y + area.height) for (x in area.x until area.x + area.width) {
             val offset = (y * width + x) * 4
             bytes[offset] = (argb ushr 16).toByte()
             bytes[offset + 1] = (argb ushr 8).toByte()

@@ -24,10 +24,13 @@ class MarketHttpClientTest {
                 val expected = MarketRequestSigner.sign(
                     "unit,test-secret", "PUT", exchange.requestURI.path, "enthusia-main", timestamp, eventId, body,
                 )
-                val valid = exchange.requestMethod == "PUT" &&
-                    exchange.requestHeaders.getFirst("Content-Type") == "image/png" &&
-                    exchange.requestHeaders.getFirst("X-Enthusia-Player-Id") == playerId.toString() &&
-                    exchange.requestHeaders.getFirst("X-Enthusia-Signature") == expected && body.contentEquals(png)
+                val valid = listOf(
+                    exchange.requestMethod == "PUT",
+                    exchange.requestHeaders.getFirst("Content-Type") == "image/png",
+                    exchange.requestHeaders.getFirst("X-Enthusia-Player-Id") == playerId.toString(),
+                    exchange.requestHeaders.getFirst("X-Enthusia-Signature") == expected,
+                    body.contentEquals(png),
+                ).all { it }
                 val hash = "a".repeat(64)
                 val response = """{"ok":true,"hash":"$hash","url":"https://market-api.enthusia.info/v1/player-heads/$hash.png","duplicate":false}""".toByteArray()
                 exchange.sendResponseHeaders(if (valid) 200 else 400, if (valid) response.size.toLong() else -1)

@@ -13,6 +13,15 @@ object BedrockHeadRenderer {
         val (width, height) = dimensions(skin.size)
         val scale = width / 64
         require(height >= 32 * scale) { "unsupported_skin_dimensions" }
+        val composed = compose(skin, width, scale)
+        val image = scale(composed, 8 * scale)
+        return ByteArrayOutputStream().use { output ->
+            check(ImageIO.write(image, "png", output)) { "png_writer_unavailable" }
+            output.toByteArray().also { require(it.size <= MAX_PNG_BYTES) { "head_png_limit" } }
+        }
+    }
+
+    private fun compose(skin: ByteArray, width: Int, scale: Int): IntArray {
         val faceSize = 8 * scale
         val composed = IntArray(faceSize * faceSize)
         for (y in 0 until faceSize) {
@@ -22,16 +31,17 @@ object BedrockHeadRenderer {
                 composed[y * faceSize + x] = sourceOver(base, outer)
             }
         }
+        return composed
+    }
+
+    private fun scale(composed: IntArray, faceSize: Int): BufferedImage {
         val image = BufferedImage(OUTPUT_SIZE, OUTPUT_SIZE, BufferedImage.TYPE_INT_ARGB)
         for (y in 0 until OUTPUT_SIZE) {
             for (x in 0 until OUTPUT_SIZE) {
                 image.setRGB(x, y, composed[(y * faceSize / OUTPUT_SIZE) * faceSize + x * faceSize / OUTPUT_SIZE])
             }
         }
-        return ByteArrayOutputStream().use { output ->
-            check(ImageIO.write(image, "png", output)) { "png_writer_unavailable" }
-            output.toByteArray().also { require(it.size <= MAX_PNG_BYTES) { "head_png_limit" } }
-        }
+        return image
     }
 
     private fun dimensions(bytes: Int): Pair<Int, Int> = when (bytes) {

@@ -99,16 +99,10 @@ class MarketHttpClient(
         responseValidator: ((ByteArray) -> Boolean)?,
     ): DeliveryOutcome {
         val status = response.statusCode()
-        if (status in 200..299) {
-            if (requireAuthenticated && !authenticated(response.body())) return DeliveryOutcome.Pause("invalid_test_response")
-            if (responseValidator != null && !responseValidator(response.body())) {
-                return DeliveryOutcome.Pause("invalid_head_response")
-            }
-            return DeliveryOutcome.Success
-        }
+        if (status in 200..299) return successful(response.body(), requireAuthenticated, responseValidator)
         // Check transient/retryable statuses first — a 429/5xx body may coincidentally
         // contain a reconciliation-code string, but we must back off, not reconcile.
-        if (status == 408 || status == 429 || status >= 500) {
+        if (retryable(status)) {
             return DeliveryOutcome.Retry(retryAfter(response.headers().firstValue("Retry-After").orElse(null)))
         }
         val code = safeCode(response.body())
@@ -116,6 +110,18 @@ class MarketHttpClient(
         val category = if (status == 400) safeDiagnosticCategory(response.body()) else null
         return DeliveryOutcome.Pause(category ?: pauseCategory(status))
     }
+
+    private fun successful(
+        body: ByteArray,
+        requireAuthenticated: Boolean,
+        responseValidator: ((ByteArray) -> Boolean)?,
+    ): DeliveryOutcome {
+        if (requireAuthenticated && !authenticated(body)) return DeliveryOutcome.Pause("invalid_test_response")
+        if (responseValidator != null && !responseValidator(body)) return DeliveryOutcome.Pause("invalid_head_response")
+        return DeliveryOutcome.Success
+    }
+
+    private fun retryable(status: Int): Boolean = status == 408 || status == 429 || status >= 500
 
     private fun authenticated(bytes: ByteArray): Boolean = runCatching {
         if (bytes.size > 64 * 1024) return@runCatching false
