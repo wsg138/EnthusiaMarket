@@ -127,9 +127,11 @@ class BedrockHeadStore(
         }
     }
 
-    override fun url(playerId: UUID): String? = synchronized(lock) {
-        val entry = index.published[playerId.toString()] ?: return@synchronized null
-        entry.url.takeIf { it == publicUrl(entry.hash) }
+    override fun url(playerId: UUID): String? {
+        return synchronized(lock) {
+            val entry = index.published[playerId.toString()] ?: return@synchronized null
+            entry.url.takeIf { it == publicUrl(entry.hash) }
+        }
     }
 
     fun capture(playerId: UUID, copiedSkin: ByteArray) {
