@@ -766,6 +766,11 @@ class AdminCommands(
             "oldest=${age(status.oldestPendingAgeMillis)}, snapshot=${status.snapshotRevision}")
         sender.sendMessage("Last full=${instant(status.lastFullSuccess)}, last stall=${instant(status.lastStallSuccess)}, " +
             "status=${status.errorCategory ?: "ok"}")
+        status.bedrockHeads?.let { heads ->
+            sender.sendMessage("Bedrock heads: geyser=${yesNo(status.geyserApiAvailable)}, " +
+                "capture=${yesNo(status.bedrockCaptureEnabled)}, published=${heads.captured}, pending=${heads.pending}, " +
+                "last=${instant(heads.lastSuccessAt)}, status=${heads.lastError ?: "ok"}")
+        }
     }
 
     @Subcommand("websync secret")

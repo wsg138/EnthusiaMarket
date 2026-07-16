@@ -30,6 +30,9 @@ open class EnthusiaMarket : JavaPlugin() {
     private var nexus: NexusContext? = null
     private var scheduler: NexusScheduler? = null
     private var websiteSync: net.badgersmc.em.websync.WebsiteSyncService? = null
+    private var bedrockHeadStore: net.badgersmc.em.websync.heads.BedrockHeadStore? = null
+    private var geyserHeadIntegration: AutoCloseable? = null
+    private var headUploadClientCache: net.badgersmc.em.websync.HeadUploadClientCache? = null
 
     @Suppress("LongMethod", "TooGenericExceptionThrown")
     override fun onEnable() {
@@ -152,24 +155,54 @@ open class EnthusiaMarket : JavaPlugin() {
             logger.warning("Website synchronization canonical map is unavailable (safe category: canonical)")
             net.badgersmc.em.websync.CanonicalMarketMap.unavailable()
         }
+        val guildProvider = ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class)
         val websiteAvailability = net.badgersmc.em.websync.ShopAvailabilityCalculator(
             ctx.getBean(net.badgersmc.em.domain.ports.EconomyProvider::class),
-            ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class),
+            guildProvider,
         )
+        lateinit var websiteService: net.badgersmc.em.websync.WebsiteSyncService
+        lateinit var headDirtyMarker: net.badgersmc.em.websync.heads.BedrockHeadDirtyMarker
+        val headClientCache = net.badgersmc.em.websync.HeadUploadClientCache { syncConfig ->
+            net.badgersmc.em.websync.MarketHttpClient(syncConfig, "EnthusiaMarket/${pluginMeta.version}")
+        }
+        headUploadClientCache = headClientCache
+        val headStore = net.badgersmc.em.websync.heads.BedrockHeadStore(
+            dataFolder = dataFolder,
+            config = websiteConfig::current,
+            uploader = { syncConfig, playerId, hash, png ->
+                headClientCache.client(syncConfig).uploadPlayerHead(playerId, hash, png)
+            },
+            published = { playerId ->
+                Bukkit.getScheduler().runTask(this, Runnable { headDirtyMarker.mark(playerId) })
+            },
+        )
+        bedrockHeadStore = headStore
+        val websiteAvatars = net.badgersmc.em.websync.PublicOwnerAvatarResolver(capturedHead = headStore::url)
         val websiteProjector = net.badgersmc.em.websync.PublicSnapshotProjector(
             stallRepository,
             shopRepository,
             ctx.getBean(net.badgersmc.em.domain.ports.RegionProvider::class),
-            ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class),
+            guildProvider,
             websiteAvailability,
             websiteCanonical,
             cfg,
+            avatars = websiteAvatars,
         )
-        val websiteService = net.badgersmc.em.websync.WebsiteSyncService(
+        websiteService = net.badgersmc.em.websync.WebsiteSyncService(
             this, websiteConfig, websiteOutbox, websiteProjector, websiteCanonical,
             migrationFailure = websiteOutbox == null,
+            bedrockHeadStatus = headStore::status,
+            geyserStatus = {
+                val enabled = geyserHeadIntegration != null
+                enabled to enabled
+            },
         )
         websiteSync = websiteService
+        headDirtyMarker = net.badgersmc.em.websync.heads.BedrockHeadDirtyMarker(
+            stallRepository,
+            guildProvider,
+            websiteService,
+        )
         websiteDirtyRelay.target = websiteService
         ctx.registerBean("websiteSyncService", net.badgersmc.em.websync.WebsiteSyncService::class, websiteService)
 
@@ -237,6 +270,11 @@ open class EnthusiaMarket : JavaPlugin() {
         ctx.getBean<AuctionScheduler>()
         ctx.getBean<ShopAuditScheduler>()
         websiteService.start()
+        geyserHeadIntegration = net.badgersmc.em.websync.heads.GeyserHeadIntegration.start(
+            this,
+            net.badgersmc.em.websync.heads.BedrockSkinCapture(headStore::capture),
+        )
+        Bukkit.getScheduler().runTaskTimerAsynchronously(this, Runnable(headStore::retryPending), 20L, 400L)
 
 
         // PlaceholderAPI expansions (no-ops if PAPI absent).
@@ -414,6 +452,9 @@ open class EnthusiaMarket : JavaPlugin() {
         }
 
     override fun onDisable() {
+        runCatching { geyserHeadIntegration?.close() }
+        bedrockHeadStore?.close()
+        headUploadClientCache?.clear()
         websiteSync?.close()
         scheduler?.cancelAll()
         nexus?.close()

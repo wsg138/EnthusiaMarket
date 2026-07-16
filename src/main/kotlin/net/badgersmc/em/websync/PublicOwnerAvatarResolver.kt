@@ -5,6 +5,7 @@ import java.util.UUID
 
 /** Produces bounded, public head metadata without resolving skin bytes server-side. */
 class PublicOwnerAvatarResolver(
+    private val capturedHead: (UUID) -> String? = { null },
     private val floodgatePlayer: (UUID) -> Boolean = ::isFloodgatePlayer,
 ) {
     data class Result(val source: String, val url: String?)
@@ -14,6 +15,7 @@ class PublicOwnerAvatarResolver(
         val floodgate = runCatching { floodgatePlayer(uuid) }.getOrDefault(false)
         val proxyStyle = uuid.toString().startsWith(PROXY_UUID_PREFIX)
         if (floodgate || proxyStyle) {
+            capturedHead(uuid)?.let { return Result("BEDROCK_CAPTURED", it) }
             val source = if (floodgate) "FLOODGATE" else "PROXY"
             return Result(source, null)
         }

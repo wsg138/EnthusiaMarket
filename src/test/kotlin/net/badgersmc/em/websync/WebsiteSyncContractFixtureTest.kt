@@ -81,7 +81,8 @@ class WebsiteSyncContractFixtureTest {
     private fun unowned() = PublicOwner("NONE", null, null, "Unowned", null, PublicAvatar("NONE"))
     private fun solo() = PublicOwner(
         "PLAYER", PROXY_STYLE_UUID, UUID.fromString(PROXY_STYLE_UUID).toString(),
-        "P2wn", null, PublicAvatar("MINECRAFT_HEAD", "PROXY", true),
+        "P2wn", CAPTURED_HEAD_URL,
+        PublicAvatar("MINECRAFT_HEAD", "BEDROCK_CAPTURED", true, CAPTURED_HEAD_URL),
     )
     private fun guild() = PublicOwner(
         "GUILD", "guild-1", null, "Example Guild", null,
@@ -102,5 +103,7 @@ class WebsiteSyncContractFixtureTest {
         private const val STALL_EVENT = "00000000-0000-4000-8000-000000000011"
         private const val FULL_EVENT = "00000000-0000-4000-8000-000000000012"
         private const val PROXY_STYLE_UUID = "00000000-0000-0009-0000-000000000001"
+        private const val CAPTURED_HEAD_URL =
+            "https://market-api.enthusia.info/v1/player-heads/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
     }
 }

@@ -7,6 +7,7 @@ data class PublicAvatar(
     val kind: String,
     val source: String? = null,
     val includesOuterLayer: Boolean? = null,
+    val url: String? = null,
     val banner: PublicBannerDesign? = null,
 )
 data class PublicOwner(

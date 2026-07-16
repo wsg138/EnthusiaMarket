@@ -64,6 +64,8 @@ dependencies {
     compileOnly("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.11.0")
     testImplementation("com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit:2.11.0")
     compileOnly("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
+    compileOnly(group = "org.geysermc.geyser", name = "api", version = "2.11.0-SNAPSHOT")
+    testImplementation(group = "org.geysermc.geyser", name = "api", version = "2.11.0-SNAPSHOT")
     compileOnly("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
     testImplementation("org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT")
     testImplementation("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")

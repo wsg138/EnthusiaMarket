@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer
 import java.net.InetSocketAddress
 import java.net.URI
 import java.time.Duration
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,6 +12,38 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class MarketHttpClientTest {
+    @Test
+    fun `player head upload signs raw PNG bytes and sends canonical player identity`() {
+        val playerId = UUID.randomUUID()
+        val png = byteArrayOf(1, 2, 3, 4)
+        withServer { server ->
+            server.createContext("/internal/v1/player-heads/${"a".repeat(64)}.png") { exchange ->
+                val body = exchange.requestBody.readBytes()
+                val timestamp = exchange.requestHeaders.getFirst("X-Enthusia-Timestamp")
+                val eventId = exchange.requestHeaders.getFirst("X-Enthusia-Event-Id")
+                val expected = MarketRequestSigner.sign(
+                    "unit,test-secret", "PUT", exchange.requestURI.path, "enthusia-main", timestamp, eventId, body,
+                )
+                val valid = listOf(
+                    exchange.requestMethod == "PUT",
+                    exchange.requestHeaders.getFirst("Content-Type") == "image/png",
+                    exchange.requestHeaders.getFirst("X-Enthusia-Player-Id") == playerId.toString(),
+                    exchange.requestHeaders.getFirst("X-Enthusia-Signature") == expected,
+                    body.contentEquals(png),
+                ).all { it }
+                val hash = "a".repeat(64)
+                val response = """{"ok":true,"hash":"$hash","url":"https://market-api.enthusia.info/v1/player-heads/$hash.png","duplicate":false}""".toByteArray()
+                exchange.sendResponseHeaders(if (valid) 200 else 400, if (valid) response.size.toLong() else -1)
+                if (valid) exchange.responseBody.use { it.write(response) } else exchange.close()
+            }
+            server.start()
+            assertEquals(
+                DeliveryOutcome.Success,
+                MarketHttpClient(config(server)).uploadPlayerHead(playerId, "a".repeat(64), png),
+            )
+        }
+    }
+
     @Test
     fun `redirects are never followed and signature is sent`() {
         val followed = AtomicInteger()

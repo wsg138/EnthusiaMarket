@@ -28,7 +28,7 @@ class PublicOwnerProjection(
         return Result(
             PublicOwner(
                 "PLAYER", owner.id, uuid?.toString(), name.take(64), head?.url,
-                PublicAvatar("MINECRAFT_HEAD", head?.source ?: "UNRESOLVED", true),
+                PublicAvatar("MINECRAFT_HEAD", head?.source ?: "UNRESOLVED", true, head?.url),
             ),
             resolved == null,
         )
@@ -46,7 +46,7 @@ class PublicOwnerProjection(
                 avatarUrl = if (banner == null) leaderHead?.url else null,
                 avatar = when {
                     banner != null -> PublicAvatar("GUILD_BANNER", "LUMAGUILDS", banner = banner)
-                    leaderHead?.url != null -> PublicAvatar("MINECRAFT_HEAD", leaderHead.source, true)
+                    leaderHead?.url != null -> PublicAvatar("MINECRAFT_HEAD", leaderHead.source, true, leaderHead.url)
                     else -> PublicAvatar("GUILD")
                 },
             ),
