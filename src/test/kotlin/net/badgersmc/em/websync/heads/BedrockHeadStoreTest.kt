@@ -10,6 +10,8 @@ import java.net.URI
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
+import com.google.gson.JsonParser
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -65,6 +67,136 @@ class BedrockHeadStoreTest {
     }
 
     @Test
+    fun `retry processes each due hash once and synchronizes every alias`() {
+        val calls = AtomicInteger()
+        var now = 0L
+        val first = UUID.randomUUID()
+        val second = UUID.randomUUID()
+        val store = store(upload = { calls.incrementAndGet(); DeliveryOutcome.Retry() }, clock = { now })
+        store.capture(first, validSkin())
+        await { calls.get() == 1 }
+        store.capture(second, validSkin())
+        await { store.status().pending == 2 }
+
+        now = 10_000L
+        store.retryPending()
+        await { calls.get() == 2 }
+        assertEquals(2, calls.get())
+        assertEquals(2, pendingSchedules().size)
+        assertEquals(1, pendingSchedules().values.toSet().size)
+        store.close()
+    }
+
+    @Test
+    fun `successful grouped delivery publishes every alias`() {
+        val calls = AtomicInteger()
+        var now = 0L
+        val first = UUID.randomUUID()
+        val second = UUID.randomUUID()
+        val store = store(upload = {
+            if (calls.incrementAndGet() == 1) DeliveryOutcome.Retry() else DeliveryOutcome.Success
+        }, clock = { now })
+        store.capture(first, validSkin())
+        await { calls.get() == 1 }
+        store.capture(second, validSkin())
+        await { store.status().pending == 2 }
+
+        now = 10_000L
+        store.retryPending()
+        await { store.url(first) != null && store.url(second) != null }
+        assertEquals(2, calls.get())
+        assertEquals(0, store.status().pending)
+        store.close()
+    }
+
+    @Test
+    fun `different hashes receive separate grouped uploads`() {
+        val calls = AtomicInteger()
+        val store = store(upload = { calls.incrementAndGet(); DeliveryOutcome.Retry() })
+        store.capture(UUID.randomUUID(), validSkin())
+        await { calls.get() == 1 }
+        store.capture(UUID.randomUUID(), validSkin(red = 21.toByte()))
+        await { calls.get() == 2 }
+        assertEquals(2, calls.get())
+        store.close()
+    }
+
+    @Test
+    fun `completion leaves an alias changed during delivery pending`() {
+        val first = UUID.randomUUID()
+        val second = UUID.randomUUID()
+        val started = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val uploads = AtomicInteger()
+        val store = store(upload = {
+            if (uploads.incrementAndGet() == 1) {
+                started.countDown()
+                release.await()
+                DeliveryOutcome.Success
+            } else {
+                DeliveryOutcome.Retry()
+            }
+        })
+        store.capture(first, validSkin())
+        assertTrue(started.await(2, java.util.concurrent.TimeUnit.SECONDS))
+        store.capture(second, validSkin(red = 21.toByte()))
+        release.countDown()
+        await { store.url(first) != null }
+        await { store.status().pending == 1 }
+        assertNull(store.url(second))
+        store.close()
+    }
+
+    @Test
+    fun `corrupt pending hash removes every alias without invoking uploader`() {
+        val calls = AtomicInteger()
+        var now = 0L
+        val store = store(upload = { calls.incrementAndGet(); DeliveryOutcome.Retry() }, clock = { now })
+        store.capture(UUID.randomUUID(), validSkin())
+        await { calls.get() == 1 }
+        store.capture(UUID.randomUUID(), validSkin())
+        await { store.status().pending == 2 }
+        File(directory, "website-heads/pending").listFiles()!!.single().writeBytes(byteArrayOf(1))
+
+        now = 10_000L
+        store.retryPending()
+        await { store.status().pending == 0 }
+        assertEquals(1, calls.get())
+        assertTrue(File(directory, "website-heads/pending").listFiles().orEmpty().isEmpty())
+        store.close()
+
+        val reloaded = store(upload = { DeliveryOutcome.Success })
+        assertEquals(0, reloaded.status().pending)
+        reloaded.close()
+    }
+
+    @Test
+    fun `transient pending read failure defers every alias and preserves file`() {
+        val calls = AtomicInteger()
+        val ioFailure = AtomicBoolean(false)
+        var now = 0L
+        val reader = PendingFileReader { file, hash ->
+            if (ioFailure.get()) PendingFileRead.IoFailure
+            else PendingFileRead.Valid(file.readBytes())
+        }
+        val store = store(upload = { calls.incrementAndGet(); DeliveryOutcome.Retry() }, clock = { now }, reader = reader)
+        store.capture(UUID.randomUUID(), validSkin())
+        await { calls.get() == 1 }
+        store.capture(UUID.randomUUID(), validSkin())
+        await { store.status().pending == 2 }
+        ioFailure.set(true)
+
+        now = 10_000L
+        store.retryPending()
+        await { store.status().lastError == "pending_file_io" }
+        assertEquals(2, store.status().pending)
+        assertEquals(1, pendingSchedules().values.toSet().size)
+        assertEquals(1, File(directory, "website-heads/pending").listFiles().orEmpty().size)
+        assertEquals(1, calls.get())
+        store.close()
+    }
+
+    @Test
     fun `invalid skin never enters the durable pending cache`() {
         val store = store(upload = { DeliveryOutcome.Success })
         store.capture(UUID.randomUUID(), ByteArray(23))
@@ -77,12 +209,14 @@ class BedrockHeadStoreTest {
         upload: () -> DeliveryOutcome,
         published: (UUID) -> Unit = {},
         clock: () -> Long = System::currentTimeMillis,
+        reader: PendingFileReader = defaultPendingFileReader,
     ) = BedrockHeadStore(
         directory,
         { config() },
         { _, _, _, _ -> upload() },
         published,
         clock,
+        reader,
     )
 
     private fun config() = WebsiteSyncConfig(
@@ -91,13 +225,21 @@ class BedrockHeadStoreTest {
         Duration.ofSeconds(5), Duration.ofSeconds(10), 1, Duration.ofSeconds(5), Duration.ofMinutes(5), false, false,
     )
 
-    private fun validSkin() = ByteArray(64 * 64 * 4).also { bytes ->
+    private fun validSkin(red: Byte = 20) = ByteArray(64 * 64 * 4).also { bytes ->
         for (y in 8 until 16) for (x in 8 until 16) {
             val offset = (y * 64 + x) * 4
-            bytes[offset] = 20
+            bytes[offset] = red
             bytes[offset + 1] = 40
             bytes[offset + 2] = 60
             bytes[offset + 3] = 0xff.toByte()
+        }
+    }
+
+    private fun pendingSchedules(): Map<String, String> {
+        val pending = JsonParser.parseString(File(directory, "website-heads/index.json").readText())
+            .asJsonObject.getAsJsonObject("pending")
+        return pending.entrySet().associate { (id, value) ->
+            id to "${value.asJsonObject.get("attempts").asInt}:${value.asJsonObject.get("nextAttemptAt").asLong}"
         }
     }
 

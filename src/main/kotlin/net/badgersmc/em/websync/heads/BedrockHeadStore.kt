@@ -5,6 +5,8 @@ import com.google.gson.reflect.TypeToken
 import net.badgersmc.em.websync.DeliveryOutcome
 import net.badgersmc.em.websync.WebsiteSyncConfig
 import java.io.File
+import java.io.IOException
+import java.io.ByteArrayInputStream
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -80,6 +82,34 @@ private fun validPendingFile(pendingDirectory: File, pending: Pending): Boolean 
     return validFileBounds(file) && validPngFile(file, pending.hash)
 }
 
+sealed interface PendingFileRead {
+    data class Valid(val bytes: ByteArray) : PendingFileRead
+    data object Invalid : PendingFileRead
+    data object IoFailure : PendingFileRead
+}
+
+fun interface PendingFileReader {
+    fun read(file: File, hash: String): PendingFileRead
+}
+
+internal val defaultPendingFileReader = PendingFileReader { file, hash ->
+    if (!file.isFile) {
+        PendingFileRead.Invalid
+    } else {
+        try {
+            val bytes = file.readBytes()
+            if (bytes.size !in 1..BedrockHeadRenderer.MAX_PNG_BYTES || sha256(bytes) != hash) {
+                PendingFileRead.Invalid
+            } else {
+                val image = runCatching { javax.imageio.ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
+                if (image == null || !validHeadImage(image)) PendingFileRead.Invalid else PendingFileRead.Valid(bytes)
+            }
+        } catch (_: IOException) {
+            PendingFileRead.IoFailure
+        }
+    }
+}
+
 private fun atomicBytes(target: File, bytes: ByteArray) {
     val temp = File(target.parentFile, ".${target.name}.tmp")
     temp.writeBytes(bytes)
@@ -108,6 +138,7 @@ class BedrockHeadStore(
     private val uploader: (WebsiteSyncConfig, UUID, String, ByteArray) -> DeliveryOutcome,
     private val published: (UUID) -> Unit,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val pendingFileReader: PendingFileReader = defaultPendingFileReader,
 ) : PublishedHeadLookup, AutoCloseable {
     private enum class CaptureAction { PUBLISHED, UPLOAD, NONE }
 
@@ -128,9 +159,12 @@ class BedrockHeadStore(
     init {
         root.mkdirs()
         pendingDirectory.mkdirs()
-        val invalid = index.pending.filterValues { !validPendingFile(pendingDirectory, it) }.keys
-        if (invalid.isNotEmpty()) {
-            invalid.forEach(index.pending::remove)
+        val invalidHashes = index.pending.values.groupBy(Pending::hash)
+            .filterValues { aliases -> aliases.any { !validPendingFile(pendingDirectory, it) } }
+            .keys
+        if (invalidHashes.isNotEmpty()) {
+            index.pending.entries.removeIf { it.value.hash in invalidHashes }
+            invalidHashes.forEach { hash -> runCatching { Files.deleteIfExists(File(pendingDirectory, "$hash.png").toPath()) } }
             persist()
             lastError = "pending_file_invalid"
         } else if (lastError == "index_invalid") {
@@ -156,7 +190,7 @@ class BedrockHeadStore(
             val action = synchronized(lock) { recordCapture(playerId, hash, png, clock()) }
             when (action) {
                 CaptureAction.PUBLISHED -> published(playerId)
-                CaptureAction.UPLOAD -> upload(playerId)
+                CaptureAction.UPLOAD -> uploadHash(hash)
                 CaptureAction.NONE -> Unit
             }
         } catch (_: IllegalArgumentException) {
@@ -199,11 +233,12 @@ class BedrockHeadStore(
         val cfg = config()
         if (cfg?.configuredEnabled != true || !cfg.secretConfigured) return
         submit {
-            val due = synchronized(lock) {
-                index.pending.entries.filter { it.value.nextAttemptAt <= clock() }
-                    .mapNotNull { runCatching { UUID.fromString(it.key) }.getOrNull() }
+            val dueHashes = synchronized(lock) {
+                index.pending.values.groupBy(Pending::hash)
+                    .filterValues { aliases -> aliases.minOf(Pending::nextAttemptAt) <= clock() }
+                    .keys.sorted()
             }
-            due.forEach(::upload)
+            dueHashes.forEach(::uploadHash)
         }
     }
 
@@ -213,42 +248,41 @@ class BedrockHeadStore(
         }
     }
 
-    private fun upload(playerId: UUID) {
+    private fun uploadHash(hash: String) {
         val cfg = config()
         if (cfg?.configuredEnabled != true || !cfg.secretConfigured) return
-        val pending = synchronized(lock) { index.pending[playerId.toString()] } ?: return
-        val png = pendingBytes(pending) ?: return setError("pending_file_invalid")
-        handleDelivery(playerId, pending, uploader(cfg, playerId, pending.hash, png))
-    }
-
-    private fun handleDelivery(playerId: UUID, pending: Pending, outcome: DeliveryOutcome) {
-        when (outcome) {
-            DeliveryOutcome.Success -> complete(pending)
-            is DeliveryOutcome.Retry -> defer(playerId, pending, "upload_retry")
-            is DeliveryOutcome.Pause -> defer(playerId, pending, "upload_rejected")
-            is DeliveryOutcome.Reconcile -> defer(playerId, pending, "upload_rejected")
+        val representative = synchronized(lock) {
+            index.pending.filterValues { it.hash == hash }.keys.minOrNull()?.let(UUID::fromString)
+        } ?: return
+        when (val file = pendingFileReader.read(File(pendingDirectory, "$hash.png"), hash)) {
+            is PendingFileRead.Valid -> handleDelivery(hash, uploader(cfg, representative, hash, file.bytes))
+            PendingFileRead.Invalid -> removeInvalidHash(hash)
+            PendingFileRead.IoFailure -> deferHash(hash, "pending_file_io")
         }
     }
 
-    private fun pendingBytes(pending: Pending): ByteArray? {
-        val bytes = runCatching { File(pendingDirectory, "${pending.hash}.png").readBytes() }.getOrNull() ?: return null
-        if (bytes.size !in 1..BedrockHeadRenderer.MAX_PNG_BYTES || sha256(bytes) != pending.hash) return null
-        return bytes
+    private fun handleDelivery(hash: String, outcome: DeliveryOutcome) {
+        when (outcome) {
+            DeliveryOutcome.Success -> completeHash(hash)
+            is DeliveryOutcome.Retry -> deferHash(hash, "upload_retry")
+            is DeliveryOutcome.Pause -> deferHash(hash, "upload_rejected")
+            is DeliveryOutcome.Reconcile -> deferHash(hash, "upload_rejected")
+        }
     }
 
-    private fun complete(pending: Pending) {
+    private fun completeHash(hash: String) {
         val publishedPlayers: List<UUID>
         synchronized(lock) {
-            publishedPlayers = index.pending.filterValues { it.hash == pending.hash }.mapNotNull { (id, entry) ->
+            publishedPlayers = index.pending.filterValues { it.hash == hash }.mapNotNull { (id, entry) ->
                 runCatching { UUID.fromString(id) }.getOrNull()?.also {
                     index.published[id] = Published(entry.hash, publicUrl(entry.hash), entry.capturedAt)
                 }
             }
-            index.pending.entries.removeIf { it.value.hash == pending.hash }
+            index.pending.entries.removeIf { it.value.hash == hash }
             trim()
             persist()
-            if (index.pending.values.none { it.hash == pending.hash }) {
-                runCatching { Files.deleteIfExists(File(pendingDirectory, "${pending.hash}.png").toPath()) }
+            if (index.pending.values.none { it.hash == hash }) {
+                runCatching { Files.deleteIfExists(File(pendingDirectory, "$hash.png").toPath()) }
             }
             lastSuccessAt = clock()
             lastError = null
@@ -256,13 +290,28 @@ class BedrockHeadStore(
         publishedPlayers.forEach(published)
     }
 
-    private fun defer(playerId: UUID, pending: Pending, category: String) {
+    private fun deferHash(hash: String, category: String) {
         synchronized(lock) {
-            val attempts = (pending.attempts + 1).coerceAtMost(MAX_RETRY_EXPONENT)
+            val aliases = index.pending.filterValues { it.hash == hash }
+            if (aliases.isEmpty()) return
+            val attempts = (aliases.values.maxOf(Pending::attempts) + 1).coerceAtMost(MAX_RETRY_EXPONENT)
             val delay = INITIAL_RETRY_MILLIS * (1L shl attempts).coerceAtMost(MAX_RETRY_MULTIPLIER)
-            index.pending[playerId.toString()] = pending.copy(attempts = attempts, nextAttemptAt = clock() + delay)
+            val nextAttemptAt = clock() + delay
+            aliases.forEach { (id, pending) ->
+                index.pending[id] = pending.copy(attempts = attempts, nextAttemptAt = nextAttemptAt)
+            }
             persist()
             lastError = category
+        }
+    }
+
+    private fun removeInvalidHash(hash: String) {
+        synchronized(lock) {
+            if (index.pending.entries.removeIf { it.value.hash == hash }) {
+                persist()
+            }
+            runCatching { Files.deleteIfExists(File(pendingDirectory, "$hash.png").toPath()) }
+            lastError = "pending_file_invalid"
         }
     }
 

@@ -32,6 +32,7 @@ open class EnthusiaMarket : JavaPlugin() {
     private var websiteSync: net.badgersmc.em.websync.WebsiteSyncService? = null
     private var bedrockHeadStore: net.badgersmc.em.websync.heads.BedrockHeadStore? = null
     private var geyserHeadIntegration: AutoCloseable? = null
+    private var headUploadClientCache: net.badgersmc.em.websync.HeadUploadClientCache? = null
 
     @Suppress("LongMethod", "TooGenericExceptionThrown")
     override fun onEnable() {
@@ -161,14 +162,15 @@ open class EnthusiaMarket : JavaPlugin() {
         )
         lateinit var websiteService: net.badgersmc.em.websync.WebsiteSyncService
         lateinit var headDirtyMarker: net.badgersmc.em.websync.heads.BedrockHeadDirtyMarker
+        val headClientCache = net.badgersmc.em.websync.HeadUploadClientCache { syncConfig ->
+            net.badgersmc.em.websync.MarketHttpClient(syncConfig, "EnthusiaMarket/${pluginMeta.version}")
+        }
+        headUploadClientCache = headClientCache
         val headStore = net.badgersmc.em.websync.heads.BedrockHeadStore(
             dataFolder = dataFolder,
             config = websiteConfig::current,
             uploader = { syncConfig, playerId, hash, png ->
-                net.badgersmc.em.websync.MarketHttpClient(
-                    syncConfig,
-                    "EnthusiaMarket/${pluginMeta.version}",
-                ).uploadPlayerHead(playerId, hash, png)
+                headClientCache.client(syncConfig).uploadPlayerHead(playerId, hash, png)
             },
             published = { playerId ->
                 Bukkit.getScheduler().runTask(this, Runnable { headDirtyMarker.mark(playerId) })
@@ -452,6 +454,7 @@ open class EnthusiaMarket : JavaPlugin() {
     override fun onDisable() {
         runCatching { geyserHeadIntegration?.close() }
         bedrockHeadStore?.close()
+        headUploadClientCache?.clear()
         websiteSync?.close()
         scheduler?.cancelAll()
         nexus?.close()
