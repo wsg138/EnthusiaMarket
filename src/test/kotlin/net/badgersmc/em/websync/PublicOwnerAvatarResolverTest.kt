@@ -44,4 +44,19 @@ class PublicOwnerAvatarResolverTest {
         assertEquals("FLOODGATE", result.source)
         assertNull(result.url)
     }
+
+    @Test
+    fun `captured Bedrock head takes precedence for Floodgate and proxy identities`() {
+        val floodgateId = UUID.randomUUID()
+        val proxyId = UUID.fromString("00000000-0000-0000-0009-000000000001")
+        val url: (UUID) -> String? = { "https://market-api.enthusia.info/v1/player-heads/${"a".repeat(64)}.png" }
+
+        listOf(
+            PublicOwnerAvatarResolver(url) { true }.resolve(floodgateId, "SyntheticBedrock"),
+            PublicOwnerAvatarResolver(url) { false }.resolve(proxyId, "SyntheticProxy"),
+        ).forEach { result ->
+            assertEquals("BEDROCK_CAPTURED", result.source)
+            assertTrue(result.url!!.startsWith("https://market-api.enthusia.info/v1/player-heads/"))
+        }
+    }
 }

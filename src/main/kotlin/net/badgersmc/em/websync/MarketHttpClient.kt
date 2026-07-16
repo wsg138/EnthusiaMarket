@@ -42,6 +42,19 @@ class MarketHttpClient(
         return send("POST", "/internal/v1/test", eventId, body, requireAuthenticated = true)
     }
 
+    fun uploadPlayerHead(playerId: java.util.UUID, hash: String, png: ByteArray): DeliveryOutcome {
+        val eventId = java.util.UUID.randomUUID().toString()
+        return send(
+            method = "PUT",
+            path = "/internal/v1/player-heads/$hash.png",
+            eventId = eventId,
+            body = png,
+            contentType = "image/png",
+            extraHeaders = mapOf("X-Enthusia-Player-Id" to playerId.toString()),
+            responseValidator = { validPlayerHeadResponse(it, hash) },
+        )
+    }
+
     @Suppress("TooGenericExceptionCaught")
     private fun send(
         method: String,
@@ -49,21 +62,25 @@ class MarketHttpClient(
         eventId: String,
         body: ByteArray,
         requireAuthenticated: Boolean = false,
+        contentType: String = "application/json",
+        extraHeaders: Map<String, String> = emptyMap(),
+        responseValidator: ((ByteArray) -> Boolean)? = null,
     ): DeliveryOutcome {
         return try {
             val timestamp = System.currentTimeMillis().toString()
             val signature = MarketRequestSigner.sign(config.secret, method, path, config.serverId, timestamp, eventId, body)
-            val request = HttpRequest.newBuilder(config.endpoint.resolve(path))
+            val builder = HttpRequest.newBuilder(config.endpoint.resolve(path))
                 .timeout(config.requestTimeout)
-                .header("Content-Type", "application/json")
+                .header("Content-Type", contentType)
                 .header("User-Agent", userAgent)
                 .header("X-Enthusia-Server-Id", config.serverId)
                 .header("X-Enthusia-Timestamp", timestamp)
                 .header("X-Enthusia-Event-Id", eventId)
                 .header("X-Enthusia-Signature", signature)
                 .method(method, HttpRequest.BodyPublishers.ofByteArray(body))
-                .build()
-            classify(client.send(request, HttpResponse.BodyHandlers.ofByteArray()), requireAuthenticated)
+            extraHeaders.forEach(builder::header)
+            val request = builder.build()
+            classify(client.send(request, HttpResponse.BodyHandlers.ofByteArray()), requireAuthenticated, responseValidator)
         } catch (_: java.net.http.HttpTimeoutException) {
             DeliveryOutcome.Retry()
         } catch (_: java.io.IOException) {
@@ -76,11 +93,18 @@ class MarketHttpClient(
         }
     }
 
-    private fun classify(response: HttpResponse<ByteArray>, requireAuthenticated: Boolean): DeliveryOutcome {
+    private fun classify(
+        response: HttpResponse<ByteArray>,
+        requireAuthenticated: Boolean,
+        responseValidator: ((ByteArray) -> Boolean)?,
+    ): DeliveryOutcome {
         val status = response.statusCode()
         if (status in 200..299) {
-            if (!requireAuthenticated || authenticated(response.body())) return DeliveryOutcome.Success
-            return DeliveryOutcome.Pause("invalid_test_response")
+            if (requireAuthenticated && !authenticated(response.body())) return DeliveryOutcome.Pause("invalid_test_response")
+            if (responseValidator != null && !responseValidator(response.body())) {
+                return DeliveryOutcome.Pause("invalid_head_response")
+            }
+            return DeliveryOutcome.Success
         }
         // Check transient/retryable statuses first — a 429/5xx body may coincidentally
         // contain a reconciliation-code string, but we must back off, not reconcile.
@@ -97,6 +121,14 @@ class MarketHttpClient(
         if (bytes.size > 64 * 1024) return@runCatching false
         JsonParser.parseString(bytes.toString(Charsets.UTF_8)).asJsonObject
             .get("authenticated")?.asBoolean == true
+    }.getOrDefault(false)
+
+    private fun validPlayerHeadResponse(bytes: ByteArray, hash: String): Boolean = runCatching {
+        if (bytes.size > 64 * 1024) return@runCatching false
+        val root = JsonParser.parseString(bytes.toString(Charsets.UTF_8)).asJsonObject
+        root.get("ok")?.asBoolean == true && root.get("hash")?.asString == hash &&
+            root.get("url")?.asString == "https://market-api.enthusia.info/v1/player-heads/$hash.png" &&
+            root.get("duplicate")?.isJsonPrimitive == true && root.get("duplicate").asJsonPrimitive.isBoolean
     }.getOrDefault(false)
 
     private fun pauseCategory(status: Int): String = when (status) {

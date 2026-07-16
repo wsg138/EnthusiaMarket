@@ -51,6 +51,7 @@ class PublicOwnerProjectionTest {
         assertEquals("MINECRAFT_HEAD", owner.avatar.kind)
         assertEquals(true, owner.avatar.includesOuterLayer)
         assertTrue(owner.avatarUrl!!.contains(leaderId.toString()))
+        assertEquals(owner.avatarUrl, owner.avatar.url)
     }
 
     @Test
@@ -75,5 +76,25 @@ class PublicOwnerProjectionTest {
         assertEquals("MINECRAFT_HEAD", owner.avatar.kind)
         assertEquals("JAVA", owner.avatar.source)
         assertEquals(true, owner.avatar.includesOuterLayer)
+    }
+
+    @Test
+    fun `captured Bedrock URL is projected consistently for solo and guild leader heads`() {
+        val playerId = UUID.randomUUID()
+        val headUrl = "https://market-api.enthusia.info/v1/player-heads/${"b".repeat(64)}.png"
+        val resolver = PublicOwnerAvatarResolver(capturedHead = { headUrl }, floodgatePlayer = { true })
+        every { guilds.guildById(guildId.toString()) } returns GuildProvider.GuildRef(guildId.toString(), "Synthetic Guild")
+        every { guilds.visualById(guildId.toString()) } returns GuildProvider.GuildVisual(playerId, null)
+        val projection = PublicOwnerProjection(guilds, resolver) { "SyntheticBedrock" }
+
+        listOf(
+            projection.project(OwnerRef.solo(playerId)).owner,
+            projection.project(OwnerRef.guild(guildId.toString())).owner,
+        ).forEach { owner ->
+            assertEquals("BEDROCK_CAPTURED", owner.avatar.source)
+            assertEquals(headUrl, owner.avatarUrl)
+            assertEquals(headUrl, owner.avatar.url)
+            assertEquals(true, owner.avatar.includesOuterLayer)
+        }
     }
 }

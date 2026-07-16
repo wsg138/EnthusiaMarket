@@ -35,6 +35,10 @@ dependencies:
       load: BEFORE
       required: false
       join-classpath: true
+    Geyser-Spigot:
+      load: BEFORE
+      required: false
+      join-classpath: true
     PlaceholderAPI:
       load: BEFORE
       required: false
