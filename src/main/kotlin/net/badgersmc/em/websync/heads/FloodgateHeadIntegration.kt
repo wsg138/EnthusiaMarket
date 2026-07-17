@@ -11,8 +11,7 @@ object FloodgateHeadIntegration {
     fun start(plugin: JavaPlugin, capture: FloodgateTextureCapture): AutoCloseable? {
         if (!Bukkit.getPluginManager().isPluginEnabled("floodgate")) return null
         return try {
-            Class.forName("net.badgersmc.em.websync.heads.FloodgateSkinListener", true, plugin.javaClass.classLoader)
-                .getConstructor(FloodgateTextureCapture::class.java).newInstance(capture) as AutoCloseable
+            FloodgateSkinListener(capture)
         } catch (_: LinkageError) {
             plugin.logger.warning("Bedrock head capture is unavailable (safe category: floodgate_api)")
             null
