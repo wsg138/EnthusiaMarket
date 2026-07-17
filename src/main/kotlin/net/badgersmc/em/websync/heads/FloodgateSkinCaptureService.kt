@@ -16,9 +16,9 @@ class FloodgateSkinCaptureService(
     )
 
     override fun capture(playerId: UUID, value: String, signature: String?) {
-        val textureUrl = FloodgateTexturePropertyParser.parse(value) ?: return
+        val texture = FloodgateTexturePropertyParser.parse(value) ?: return
         executor.execute {
-            runCatching { BedrockHeadRenderer.render(fetcher.fetch(textureUrl)) }
+            runCatching { BedrockHeadRenderer.render(fetcher.fetch(texture)) }
                 .onSuccess { store.captureRendered(playerId, it) }
         }
     }

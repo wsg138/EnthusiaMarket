@@ -10,21 +10,18 @@ import javax.imageio.ImageIO
 /** Fetches a bounded Mojang skin texture identified by its validated texture hash. */
 fun interface SkinTextureFetcher {
     @Throws(IOException::class, IllegalArgumentException::class)
-    fun fetch(textureHash: String): BufferedImage
+    fun fetch(texture: MojangTexture): BufferedImage
 }
 
 object DefaultSkinTextureFetcher : SkinTextureFetcher {
     private const val MAX_BYTES = 2 * 1024 * 1024
     private const val HOST = "textures.minecraft.net"
-    private val textureHash = Regex("^[0-9a-f]{64}$")
-
-    override fun fetch(textureHash: String): BufferedImage {
-        require(this.textureHash.matches(textureHash)) { "invalid_texture_hash" }
-        return connection(textureHash).useConnection { decodeSkin(readPng(it)) }
+    override fun fetch(texture: MojangTexture): BufferedImage {
+        return connection(texture).useConnection { decodeSkin(readPng(it)) }
     }
 
-    private fun connection(textureHash: String): HttpURLConnection =
-        (URL("https", HOST, "/texture/$textureHash").openConnection() as HttpURLConnection).apply {
+    private fun connection(texture: MojangTexture): HttpURLConnection =
+        (URL("https", HOST, "/texture/${texture.hash}").openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             instanceFollowRedirects = false
             connectTimeout = 5_000

@@ -10,7 +10,7 @@ class FloodgateTexturePropertyParserTest {
 
     @Test
     fun `accepts a normalized Mojang texture URL`() {
-        assertEquals(hash, FloodgateTexturePropertyParser.parse(property("https://textures.minecraft.net/texture/$hash")))
+        assertEquals(hash, FloodgateTexturePropertyParser.parse(property("https://textures.minecraft.net/texture/$hash"))?.hash)
     }
 
     @Test

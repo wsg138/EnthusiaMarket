@@ -5,13 +5,20 @@ import java.net.URI
 import java.util.Base64
 
 /** Extracts the exact Mojang texture hash from a bounded Floodgate textures property. */
+data class MojangTexture private constructor(val hash: String) {
+    companion object {
+        private val validHash = Regex("^[0-9a-f]{64}$")
+        fun fromHash(hash: String): MojangTexture? = MojangTexture(hash).takeIf { validHash.matches(hash) }
+    }
+}
+
 object FloodgateTexturePropertyParser {
     const val MAX_ENCODED = 32 * 1024
     const val MAX_DECODED = 16 * 1024
     const val MAX_SIGNATURE = 4096
     private val texturePath = Regex("^/texture/([0-9a-f]{64})$")
 
-    fun parse(value: String): String? = decode(value)?.let(::skinUrl)?.let(::textureHash)
+    fun parse(value: String): MojangTexture? = decode(value)?.let(::skinUrl)?.let(::textureHash)?.let(MojangTexture::fromHash)
 
     private fun decode(value: String): String? {
         if (value.length !in 1..MAX_ENCODED) return null
@@ -20,9 +27,8 @@ object FloodgateTexturePropertyParser {
         return decoded.toString(Charsets.UTF_8)
     }
 
-    private fun skinUrl(json: String): String? = runCatching {
-        JsonParser.parseString(json).asJsonObject.getAsJsonObject("textures").getAsJsonObject("SKIN").get("url").asString
-    }.getOrNull()
+    private fun skinUrl(json: String): String? = runCatching { JsonParser.parseString(json) }
+        .getOrNull()?.asJsonObject?.getAsJsonObject("textures")?.getAsJsonObject("SKIN")?.get("url")?.asString
 
     private fun textureHash(url: String): String? {
         val uri = runCatching { URI(url) }.getOrNull() ?: return null
@@ -39,17 +45,23 @@ object FloodgateTexturePropertyParser {
         var quoted = false
         var escaped = false
         for (byte in bytes) {
-            when {
-                quoted -> when {
-                    escaped -> escaped = false
-                    byte.toInt().toChar() == '\\' -> escaped = true
-                    byte.toInt().toChar() == '"' -> quoted = false
-                }
-                byte.toInt().toChar() == '"' -> quoted = true
-                byte.toInt().toChar() in "[{" -> if (++depth > maximum) return false
-                byte.toInt().toChar() in "]}" -> if (--depth < 0) return false
-            }
+            val character = byte.toInt().toChar()
+            if (quoted) {
+                val state = quotedState(character, escaped)
+                quoted = state.first
+                escaped = state.second
+            } else if (character == '"') quoted = true
+            else if (character in "[{") {
+                if (++depth > maximum) return false
+            } else if (character in "]}" && --depth < 0) return false
         }
         return !quoted && depth == 0
+    }
+
+    private fun quotedState(character: Char, escaped: Boolean): Pair<Boolean, Boolean> = when {
+        escaped -> true to false
+        character == '\\' -> true to true
+        character == '"' -> false to false
+        else -> true to false
     }
 }
