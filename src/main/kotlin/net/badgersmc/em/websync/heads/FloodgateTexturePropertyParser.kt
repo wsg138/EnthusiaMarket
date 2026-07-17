@@ -41,27 +41,32 @@ object FloodgateTexturePropertyParser {
             uri.port == -1 && uri.query == null && uri.fragment == null && uri.rawPath == uri.path
 
     private fun withinJsonDepth(bytes: ByteArray, maximum: Int): Boolean {
-        var depth = 0
-        var quoted = false
-        var escaped = false
-        for (byte in bytes) {
-            val character = byte.toInt().toChar()
-            if (quoted) {
-                val state = quotedState(character, escaped)
-                quoted = state.first
-                escaped = state.second
-            } else if (character == '"') quoted = true
-            else if (character in "[{") {
-                if (++depth > maximum) return false
-            } else if (character in "]}" && --depth < 0) return false
-        }
-        return !quoted && depth == 0
+        val tracker = JsonDepthTracker(maximum)
+        return bytes.all { tracker.accept(it.toInt().toChar()) } && tracker.complete()
     }
 
-    private fun quotedState(character: Char, escaped: Boolean): Pair<Boolean, Boolean> = when {
-        escaped -> true to false
-        character == '\\' -> true to true
-        character == '"' -> false to false
-        else -> true to false
+    private class JsonDepthTracker(private val maximum: Int) {
+        private var depth = 0
+        private var quoted = false
+        private var escaped = false
+
+        fun accept(character: Char): Boolean {
+            if (quoted) return consumeQuoted(character)
+            if (character == '"') quoted = true
+            else if (character in "[{") depth++
+            else if (character in "]}") depth--
+            return depth in 0..maximum
+        }
+
+        fun complete(): Boolean = !quoted && depth == 0
+
+        private fun consumeQuoted(character: Char): Boolean {
+            when {
+                escaped -> escaped = false
+                character == '\\' -> escaped = true
+                character == '"' -> quoted = false
+            }
+            return true
+        }
     }
 }

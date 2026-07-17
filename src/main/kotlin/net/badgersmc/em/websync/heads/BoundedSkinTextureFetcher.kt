@@ -3,8 +3,11 @@ package net.badgersmc.em.websync.heads
 import java.awt.image.BufferedImage
 import java.io.BufferedInputStream
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.time.Duration
 import javax.imageio.ImageIO
 
 /** Fetches a bounded Mojang skin texture identified by its validated texture hash. */
@@ -17,21 +20,16 @@ object DefaultSkinTextureFetcher : SkinTextureFetcher {
     private const val MAX_BYTES = 2 * 1024 * 1024
     private const val HOST = "textures.minecraft.net"
     override fun fetch(texture: MojangTexture): BufferedImage {
-        return connection(texture).useConnection { decodeSkin(readPng(it)) }
+        return decodeSkin(readPng(texture))
     }
 
-    private fun connection(texture: MojangTexture): HttpURLConnection =
-        (URL("https", HOST, "/texture/${texture.hash}").openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            instanceFollowRedirects = false
-            connectTimeout = 5_000
-            readTimeout = 7_000
-            setRequestProperty("Accept", "image/png")
-        }
-
-    private fun readPng(connection: HttpURLConnection): ByteArray {
-        if (connection.responseCode !in 200..299) throw IOException("skin_http_status")
-        return BufferedInputStream(connection.inputStream).use { input ->
+    private fun readPng(texture: MojangTexture): ByteArray {
+        val request = HttpRequest.newBuilder(URI.create("https://$HOST/texture/${texture.hash}"))
+            .timeout(Duration.ofSeconds(7)).header("Accept", "image/png").GET().build()
+        val response = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5))
+            .followRedirects(HttpClient.Redirect.NEVER).build().send(request, HttpResponse.BodyHandlers.ofInputStream())
+        if (response.statusCode() !in 200..299) throw IOException("skin_http_status")
+        return BufferedInputStream(response.body()).use { input ->
             input.readNBytes(MAX_BYTES + 1).also { require(it.size <= MAX_BYTES) { "skin_size_limit" } }
         }
     }
@@ -58,7 +56,4 @@ object DefaultSkinTextureFetcher : SkinTextureFetcher {
     private fun readInt(bytes: ByteArray, offset: Int): Int =
         (bytes[offset].toInt() and 0xff shl 24) or (bytes[offset + 1].toInt() and 0xff shl 16) or
             (bytes[offset + 2].toInt() and 0xff shl 8) or (bytes[offset + 3].toInt() and 0xff)
-
-    private inline fun <T> HttpURLConnection.useConnection(block: (HttpURLConnection) -> T): T =
-        try { block(this) } finally { disconnect() }
 }
