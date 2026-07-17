@@ -83,6 +83,11 @@ purchase_sign:
     line3: "<shadow:#000000:1><gray>$<rent>/day</shadow>"
     line4: "<shadow:#000000:1><green><time></shadow>"
     overdue: "<shadow:#000000:1><red>Overdue</shadow>"
+  grace:
+    line1: "<shadow:#000000:1><dark_gray>[<dark_red>EM</dark_red>] <aqua><stall></shadow>"
+    line2: "<shadow:#000000:1><yellow><owner></shadow>"
+    line3: "<shadow:#000000:1><red>Expires in…</shadow>"
+    line4: "<shadow:#000000:1><gold><time></shadow>"
   missing:
     line1: "<shadow:#000000:1><dark_gray>[<gold>EM</gold>]</shadow>"
     line2: "<shadow:#000000:1><red>?<stall></shadow>"

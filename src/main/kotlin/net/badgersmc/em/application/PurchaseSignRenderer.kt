@@ -22,9 +22,11 @@ import java.time.Instant
  * - **AUCTIONING**: current bid + "/em bid" — informational, sign
  *   click is a no-op in this state per the one-shot initial-auction
  *   design.
- * - **OWNED / GRACE**: owner display name + time until next rent.
+ * - **OWNED**: owner display name + rent + time until next rent.
  *   Right-click prompts a confirm + extension flow handled by
  *   [StallRentExtensionService].
+ * - **GRACE**: dark-red header + "Expires in…" countdown to
+ *   emergency auction. Right-click still allows rent payment.
  *
  * Returned list is always exactly 4 entries — the Bukkit Sign API
  * requires every line, blanks included.
@@ -59,7 +61,8 @@ class PurchaseSignRenderer(
             StallState.EMERGENCY_AUCTIONING -> emergencyAuction(sign)
             StallState.AUCTIONING, StallState.RE_AUCTIONING ->
                 auctionLive(sign)
-            StallState.OWNED, StallState.GRACE -> ownedLines(sign, stall)
+            StallState.GRACE -> graceLines(sign, stall)
+            StallState.OWNED -> ownedLines(sign, stall)
         }
     }
 
@@ -91,6 +94,17 @@ class PurchaseSignRenderer(
             lang.msg("purchase_sign.emergency_auction.line2", "stall" to sign.stallId.value),
             lang.msg("purchase_sign.emergency_auction.line3", "bid" to currentBid),
             lang.msg("purchase_sign.emergency_auction.line4"),
+        )
+    }
+
+    private fun graceLines(sign: PurchaseSign, stall: Stall): List<Component> {
+        val ownerName = owners.displayNameFor(stall.owner)
+        val graceEnd = RentTimingPolicy.graceEndsAt(stall, config) ?: return ownedLines(sign, stall)
+        return listOf(
+            lang.msg("purchase_sign.grace.line1", "stall" to stall.id.value),
+            lang.msg("purchase_sign.grace.line2", "owner" to ownerName),
+            lang.msg("purchase_sign.grace.line3"),
+            formatCountdown(graceEnd),
         )
     }
 
