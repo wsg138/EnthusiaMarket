@@ -7,7 +7,7 @@ import org.geysermc.floodgate.api.event.skin.SkinApplyEvent
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Optional Floodgate backend listener; it never modifies or cancels SkinApplyEvent. */
-class FloodgateSkinListener(
+class FloodgateSkinListener @JvmOverloads constructor(
     private val capture: FloodgateTextureCapture,
     private val eventBus: FloodgateEventBus = FloodgateApi.getInstance().eventBus,
 ) : AutoCloseable {
