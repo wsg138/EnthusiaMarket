@@ -18,10 +18,12 @@ class FloodgateSkinListener @JvmOverloads constructor(
         if (closed.get()) return
         try {
             val skin = event.newSkin() ?: return
-            val playerId = event.player().correctUniqueId ?: return
+            val player = event.player()
+            val playerId = player.javaUniqueId ?: return
             val value = skin.value()?.takeIf { it.length <= FloodgateTexturePropertyParser.MAX_ENCODED } ?: return
             val signature = skin.signature()?.take(FloodgateTexturePropertyParser.MAX_SIGNATURE)
             capture.capture(playerId, value, signature)
+            player.correctUniqueId?.takeIf { it != playerId }?.let { capture.capture(it, value, signature) }
         } catch (_: LinkageError) {
             close()
         } catch (_: Exception) {
