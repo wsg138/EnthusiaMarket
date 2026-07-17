@@ -273,17 +273,7 @@ open class EnthusiaMarket : JavaPlugin() {
         ctx.getBean<AuctionScheduler>()
         ctx.getBean<ShopAuditScheduler>()
         websiteService.start()
-        geyserHeadIntegration = net.badgersmc.em.websync.heads.GeyserHeadIntegration.start(
-            this,
-            net.badgersmc.em.websync.heads.BedrockSkinCapture(headStore::capture),
-        )
-        val floodgateCapture = net.badgersmc.em.websync.heads.FloodgateSkinCaptureService(headStore)
-        floodgateSkinCapture = floodgateCapture
-        floodgateHeadIntegration = net.badgersmc.em.websync.heads.FloodgateHeadIntegration.start(this, floodgateCapture)
-        if (floodgateHeadIntegration == null) {
-            floodgateCapture.close()
-            floodgateSkinCapture = null
-        }
+        startBedrockHeadProviders(headStore)
         Bukkit.getScheduler().runTaskTimerAsynchronously(this, Runnable(headStore::retryPending), 20L, 400L)
 
 
@@ -294,13 +284,7 @@ open class EnthusiaMarket : JavaPlugin() {
             nexus = ctx,
         )
 
-        // Prune old shop transaction history per config (0 = keep everything).
-        if (cfg.shop.historyRetentionDays > 0) {
-            val txRepo = ctx.getBean<net.badgersmc.em.domain.shop.ShopTransactionRepository>()
-            val cutoff = System.currentTimeMillis() - cfg.shop.historyRetentionDays.toLong() * 86_400_000L
-            val pruned = txRepo.prune(cutoff)
-            if (pruned > 0) logger.info("Pruned $pruned old shop transaction(s)")
-        }
+        pruneTransactionHistory(ctx, cfg)
 
         // M-16: on guild disband, free its stalls + unbind its shops.
         val guildDissolution = ctx.getBean<net.badgersmc.em.application.GuildDissolutionService>()
@@ -460,6 +444,27 @@ open class EnthusiaMarket : JavaPlugin() {
             "not op", "notop", "!op" -> org.bukkit.permissions.PermissionDefault.NOT_OP
             else -> org.bukkit.permissions.PermissionDefault.OP
         }
+
+    private fun startBedrockHeadProviders(headStore: net.badgersmc.em.websync.heads.BedrockHeadStore) {
+        geyserHeadIntegration = net.badgersmc.em.websync.heads.GeyserHeadIntegration.start(
+            this, net.badgersmc.em.websync.heads.BedrockSkinCapture(headStore::capture),
+        )
+        val floodgateCapture = net.badgersmc.em.websync.heads.FloodgateSkinCaptureService(headStore)
+        floodgateSkinCapture = floodgateCapture
+        floodgateHeadIntegration = net.badgersmc.em.websync.heads.FloodgateHeadIntegration.start(this, floodgateCapture)
+        if (floodgateHeadIntegration == null) {
+            floodgateCapture.close()
+            floodgateSkinCapture = null
+        }
+    }
+
+    private fun pruneTransactionHistory(ctx: NexusContext, cfg: EnthusiaMarketConfig) {
+        if (cfg.shop.historyRetentionDays <= 0) return
+        val txRepo = ctx.getBean<net.badgersmc.em.domain.shop.ShopTransactionRepository>()
+        val cutoff = System.currentTimeMillis() - cfg.shop.historyRetentionDays.toLong() * 86_400_000L
+        val pruned = txRepo.prune(cutoff)
+        if (pruned > 0) logger.info("Pruned $pruned old shop transaction(s)")
+    }
 
     override fun onDisable() {
         runCatching { geyserHeadIntegration?.close() }

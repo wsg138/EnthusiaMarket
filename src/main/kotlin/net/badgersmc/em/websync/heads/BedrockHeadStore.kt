@@ -67,6 +67,11 @@ private fun validHeadImage(image: java.awt.image.BufferedImage): Boolean {
     return image.colorModel.hasAlpha()
 }
 
+private fun removeOrphanedPendingFile(previous: Pending?, pending: Collection<Pending>, directory: File) {
+    if (previous == null || pending.any { it.hash == previous.hash }) return
+    runCatching { Files.deleteIfExists(File(directory, "${previous.hash}.png").toPath()) }
+}
+
 sealed interface PendingFileRead {
     data class Valid(val bytes: ByteArray) : PendingFileRead
     data object Invalid : PendingFileRead
@@ -194,9 +199,9 @@ class BedrockHeadStore(
                 CaptureAction.NONE -> Unit
             }
         } catch (_: IllegalArgumentException) {
-            setError("invalid_skin")
+            synchronized(lock) { lastError = "invalid_skin" }
         } catch (_: Exception) {
-            setError("capture_failure")
+            synchronized(lock) { lastError = "capture_failure" }
         }
     }
 
@@ -212,9 +217,9 @@ class BedrockHeadStore(
                 CaptureAction.NONE -> Unit
             }
         } catch (_: IllegalArgumentException) {
-            setError("invalid_skin")
+            synchronized(lock) { lastError = "invalid_skin" }
         } catch (_: Exception) {
-            setError("capture_failure")
+            synchronized(lock) { lastError = "capture_failure" }
         }
     }
 
@@ -231,7 +236,7 @@ class BedrockHeadStore(
             nextAttemptAt = aliases.maxOf(Pending::nextAttemptAt),
         )
         val previous = index.pending.put(playerId.toString(), pending)
-        removeOrphan(previous)
+        removeOrphanedPendingFile(previous, index.pending.values, pendingDirectory)
         trim()
         persist()
         lastError = null
@@ -243,16 +248,11 @@ class BedrockHeadStore(
         if (index.published[key]?.hash == hash) {
             index.published[key] = Published(hash, publicUrl(hash), now)
             val previous = index.pending.remove(key)
-            removeOrphan(previous)
+            removeOrphanedPendingFile(previous, index.pending.values, pendingDirectory)
             persist()
             return CaptureAction.PUBLISHED
         }
         return CaptureAction.NONE.takeIf { index.pending[key]?.hash == hash }
-    }
-
-    private fun removeOrphan(previous: Pending?) {
-        if (previous == null || index.pending.values.any { it.hash == previous.hash }) return
-        runCatching { Files.deleteIfExists(File(pendingDirectory, "${previous.hash}.png").toPath()) }
     }
 
     fun retryPending() {
@@ -382,10 +382,6 @@ class BedrockHeadStore(
 
     private fun submit(block: () -> Unit) {
         runCatching { executor.execute(block) }.onFailure { synchronized(lock) { lastError = "executor_saturated" } }
-    }
-
-    private fun setError(category: String) {
-        synchronized(lock) { lastError = category }
     }
 
     override fun close() {
