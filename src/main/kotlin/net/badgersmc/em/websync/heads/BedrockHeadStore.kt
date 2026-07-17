@@ -16,6 +16,7 @@ import java.util.UUID
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
+import javax.imageio.ImageIO
 
 private fun sha256(bytes: ByteArray): String {
     return MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -64,6 +65,11 @@ private fun validHeadImage(image: java.awt.image.BufferedImage): Boolean {
     if (image.width != BedrockHeadRenderer.OUTPUT_SIZE) return false
     if (image.height != BedrockHeadRenderer.OUTPUT_SIZE) return false
     return image.colorModel.hasAlpha()
+}
+
+private fun removeOrphanedPendingFile(previous: Pending?, pending: Collection<Pending>, directory: File) {
+    if (previous == null || pending.any { it.hash == previous.hash }) return
+    runCatching { Files.deleteIfExists(File(directory, "${previous.hash}.png").toPath()) }
 }
 
 sealed interface PendingFileRead {
@@ -177,6 +183,11 @@ class BedrockHeadStore(
         submit { captureInBackground(playerId, copiedSkin) }
     }
 
+    /** Accepts only the final rendered head; source skin pixels are never persisted. */
+    fun captureRendered(playerId: UUID, png: ByteArray) {
+        submit { captureRenderedInBackground(playerId, png) }
+    }
+
     private fun captureInBackground(playerId: UUID, copiedSkin: ByteArray) {
         try {
             val png = BedrockHeadRenderer.render(copiedSkin)
@@ -188,9 +199,27 @@ class BedrockHeadStore(
                 CaptureAction.NONE -> Unit
             }
         } catch (_: IllegalArgumentException) {
-            setError("invalid_skin")
+            synchronized(lock) { lastError = "invalid_skin" }
         } catch (_: Exception) {
-            setError("capture_failure")
+            synchronized(lock) { lastError = "capture_failure" }
+        }
+    }
+
+    private fun captureRenderedInBackground(playerId: UUID, png: ByteArray) {
+        try {
+            require(png.size in 1..BedrockHeadRenderer.MAX_PNG_BYTES) { "head_png_limit" }
+            val image = ImageIO.read(ByteArrayInputStream(png)) ?: throw IllegalArgumentException("invalid_head_png")
+            require(validHeadImage(image)) { "invalid_head_png" }
+            val hash = sha256(png)
+            when (val action = synchronized(lock) { recordCapture(playerId, hash, png, clock()) }) {
+                CaptureAction.PUBLISHED -> published(playerId)
+                CaptureAction.UPLOAD -> uploadHash(hash)
+                CaptureAction.NONE -> Unit
+            }
+        } catch (_: IllegalArgumentException) {
+            synchronized(lock) { lastError = "invalid_skin" }
+        } catch (_: Exception) {
+            synchronized(lock) { lastError = "capture_failure" }
         }
     }
 
@@ -207,7 +236,7 @@ class BedrockHeadStore(
             nextAttemptAt = aliases.maxOf(Pending::nextAttemptAt),
         )
         val previous = index.pending.put(playerId.toString(), pending)
-        removeOrphan(previous)
+        removeOrphanedPendingFile(previous, index.pending.values, pendingDirectory)
         trim()
         persist()
         lastError = null
@@ -219,16 +248,11 @@ class BedrockHeadStore(
         if (index.published[key]?.hash == hash) {
             index.published[key] = Published(hash, publicUrl(hash), now)
             val previous = index.pending.remove(key)
-            removeOrphan(previous)
+            removeOrphanedPendingFile(previous, index.pending.values, pendingDirectory)
             persist()
             return CaptureAction.PUBLISHED
         }
         return CaptureAction.NONE.takeIf { index.pending[key]?.hash == hash }
-    }
-
-    private fun removeOrphan(previous: Pending?) {
-        if (previous == null || index.pending.values.any { it.hash == previous.hash }) return
-        runCatching { Files.deleteIfExists(File(pendingDirectory, "${previous.hash}.png").toPath()) }
     }
 
     fun retryPending() {
@@ -358,10 +382,6 @@ class BedrockHeadStore(
 
     private fun submit(block: () -> Unit) {
         runCatching { executor.execute(block) }.onFailure { synchronized(lock) { lastError = "executor_saturated" } }
-    }
-
-    private fun setError(category: String) {
-        synchronized(lock) { lastError = category }
     }
 
     override fun close() {
