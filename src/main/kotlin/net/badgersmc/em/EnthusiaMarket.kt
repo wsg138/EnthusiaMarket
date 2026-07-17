@@ -32,6 +32,8 @@ open class EnthusiaMarket : JavaPlugin() {
     private var websiteSync: net.badgersmc.em.websync.WebsiteSyncService? = null
     private var bedrockHeadStore: net.badgersmc.em.websync.heads.BedrockHeadStore? = null
     private var geyserHeadIntegration: AutoCloseable? = null
+    private var floodgateHeadIntegration: AutoCloseable? = null
+    private var floodgateSkinCapture: AutoCloseable? = null
     private var headUploadClientCache: net.badgersmc.em.websync.HeadUploadClientCache? = null
 
     @Suppress("LongMethod", "TooGenericExceptionThrown")
@@ -193,8 +195,9 @@ open class EnthusiaMarket : JavaPlugin() {
             migrationFailure = websiteOutbox == null,
             bedrockHeadStatus = headStore::status,
             geyserStatus = {
-                val enabled = geyserHeadIntegration != null
-                enabled to enabled
+                val geyserEnabled = geyserHeadIntegration != null
+                val floodgateEnabled = floodgateHeadIntegration != null
+                (geyserEnabled || floodgateEnabled) to (geyserEnabled || floodgateEnabled)
             },
         )
         websiteSync = websiteService
@@ -274,6 +277,13 @@ open class EnthusiaMarket : JavaPlugin() {
             this,
             net.badgersmc.em.websync.heads.BedrockSkinCapture(headStore::capture),
         )
+        val floodgateCapture = net.badgersmc.em.websync.heads.FloodgateSkinCaptureService(headStore)
+        floodgateSkinCapture = floodgateCapture
+        floodgateHeadIntegration = net.badgersmc.em.websync.heads.FloodgateHeadIntegration.start(this, floodgateCapture)
+        if (floodgateHeadIntegration == null) {
+            floodgateCapture.close()
+            floodgateSkinCapture = null
+        }
         Bukkit.getScheduler().runTaskTimerAsynchronously(this, Runnable(headStore::retryPending), 20L, 400L)
 
 
@@ -453,6 +463,8 @@ open class EnthusiaMarket : JavaPlugin() {
 
     override fun onDisable() {
         runCatching { geyserHeadIntegration?.close() }
+        runCatching { floodgateHeadIntegration?.close() }
+        runCatching { floodgateSkinCapture?.close() }
         bedrockHeadStore?.close()
         headUploadClientCache?.clear()
         websiteSync?.close()

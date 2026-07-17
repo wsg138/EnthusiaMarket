@@ -69,6 +69,14 @@ class BedrockHeadRendererTest {
         assertFailsWith<IllegalArgumentException> { BedrockHeadRenderer.render(ByteArray(17)) }
     }
 
+    @Test
+    fun `buffered PNG skin is rendered without retaining its source format`() {
+        val source = java.awt.image.BufferedImage(64, 64, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+        source.setRGB(8, 8, argb(255, 4, 5, 6))
+        val output = image(BedrockHeadRenderer.render(source))
+        assertEquals(argb(255, 4, 5, 6), output.getRGB(1, 1))
+    }
+
     private fun skin(width: Int, height: Int) = ByteArray(width * height * 4)
 
     private fun fill(bytes: ByteArray, width: Int, area: Rectangle, argb: Int) {

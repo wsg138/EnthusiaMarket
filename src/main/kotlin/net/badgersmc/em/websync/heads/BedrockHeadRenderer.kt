@@ -21,6 +21,22 @@ object BedrockHeadRenderer {
         }
     }
 
+    fun render(skin: BufferedImage): ByteArray {
+        require(skin.width == 64 && skin.height in setOf(32, 64) || skin.width == skin.height && skin.width in setOf(128, 256)) {
+            "unsupported_skin_dimensions"
+        }
+        val rgba = ByteArray(skin.width * skin.height * 4)
+        var offset = 0
+        for (y in 0 until skin.height) for (x in 0 until skin.width) {
+            val argb = skin.getRGB(x, y)
+            rgba[offset++] = (argb ushr 16).toByte()
+            rgba[offset++] = (argb ushr 8).toByte()
+            rgba[offset++] = argb.toByte()
+            rgba[offset++] = (argb ushr 24).toByte()
+        }
+        return render(rgba)
+    }
+
     private fun compose(skin: ByteArray, width: Int, scale: Int): IntArray {
         val faceSize = 8 * scale
         val composed = IntArray(faceSize * faceSize)
