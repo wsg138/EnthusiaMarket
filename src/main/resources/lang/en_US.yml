@@ -261,9 +261,11 @@ shop:
     line3: "<shadow:#000000:1><gray>Price: <gold><price></shadow>"
     line4: "<shadow:#000000:1><gray>Owner: <yellow><owner></yellow>  <dark_gray>|  <gray>Stock: <aqua><stock></shadow>"
   history:
-    header: "<shadow:#000000:1><gold>Your shop sales <gray>(page <page>)</shadow>"
-    line: "<shadow:#000000:1><gray>- <white><when></white> <dark_gray>| <green><qty>x <item></green> <dark_gray>| <gold><price></gold> <dark_gray>| <yellow><buyer></shadow>"
-    empty: "<shadow:#000000:1><gray>No recorded sales yet.</shadow>"
+    header: "<shadow:#000000:1><gold>Your shop history <gray>(page <page>)</shadow>"
+    sold: "<shadow:#000000:1><gray>- <white><when></white> <dark_gray>| <green>sold <qty>x <item></green> <dark_gray>for <gold><price></gold> <dark_gray>to <yellow><buyer></shadow>"
+    bought: "<shadow:#000000:1><gray>- <white><when></white> <dark_gray>| <green>bought <qty>x <item></green> <dark_gray>for <gold><price></gold> <dark_gray>from <yellow><seller></shadow>"
+    more: "<shadow:#000000:1><gray>More → <click:run_command:'/shop history <page>'><aqua>/shop history <page></aqua></click></shadow>"
+    empty: "<shadow:#000000:1><gray>No transactions yet.</shadow>"
   admin:
     no_target: "<shadow:#000000:1><red>You're not looking at a shop sign or container.</shadow>"
     contents:
