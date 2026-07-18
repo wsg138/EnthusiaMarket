@@ -9,6 +9,8 @@ import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.interaction.gui.PurchaseMethodMenu
+import net.badgersmc.em.interaction.MenuFactory
+import net.badgersmc.em.interaction.bedrock.BedrockPurchaseMethodForm
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component as AdventureComponent
@@ -52,7 +54,10 @@ open class PurchaseSignClickListener(
     private val config: EnthusiaMarketConfig,
     private val lang: LangService,
     private val guildProvider: GuildProvider? = null,
+    private val menuFactory: MenuFactory? = null,
 ) : Listener {
+
+    private val logger = java.util.logging.Logger.getLogger(PurchaseSignClickListener::class.java.name)
 
     private data class ConfirmKey(val player: UUID, val locationKey: String)
 
@@ -117,7 +122,11 @@ open class PurchaseSignClickListener(
 
     /** Overridable for testability — opens the PurchaseMethodMenu. */
     open fun openPurchaseMethodMenu(stallId: net.badgersmc.em.domain.stall.StallId, price: Long, player: org.bukkit.entity.Player) {
-        PurchaseMethodMenu(stallId, price, buyout, guildProvider, lang).open(player)
+        if (menuFactory?.shouldUseBedrockMenus(player) == true) {
+            BedrockPurchaseMethodForm(player, stallId, price, buyout, guildProvider, logger, lang).open(player)
+        } else {
+            PurchaseMethodMenu(stallId, price, buyout, guildProvider, lang).open(player)
+        }
     }
 
     private fun handleExtension(

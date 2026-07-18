@@ -5,7 +5,7 @@ import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
 import net.badgersmc.em.application.StallBuyoutService
-import net.badgersmc.em.domain.stall.OwnerType
+import net.badgersmc.em.interaction.PurchaseFlow
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.blockItemTheft
@@ -44,35 +44,8 @@ class PurchaseConfirmMenu(
         pane.addItem(
             GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("purchase_sign.msg.confirm_yes"))) { event ->
                 event.isCancelled = true
-                val ip = player.address.address.hostAddress ?: "unknown"
-                val result = if (isGuild) {
-                    buyout.buyForGuild(stallId, player.uniqueId, price, ip)
-                } else {
-                    buyout.buy(stallId, player.uniqueId, price, ip)
-                }
-                val msg = when (result) {
-                    is StallBuyoutService.Result.Purchased -> {
-                        val key = if (result.owner.type == OwnerType.GUILD) {
-                            "purchase_sign.msg.purchased_guild"
-                        } else {
-                            "purchase_sign.msg.purchased"
-                        }
-                        lang.msg(key, "stall" to stallId.value, "price" to result.price)
-                    }
-                    is StallBuyoutService.Result.NotFound ->
-                        lang.msg("purchase_sign.msg.stall_missing", "stall" to stallId.value)
-                    is StallBuyoutService.Result.AuctionLive ->
-                        lang.msg("purchase_sign.msg.auction_live", "stall" to stallId.value)
-                    is StallBuyoutService.Result.AlreadyOwned ->
-                        lang.msg("purchase_sign.msg.already_owned", "stall" to stallId.value)
-                    is StallBuyoutService.Result.NotInGuild ->
-                        lang.msg("purchase_sign.msg.not_in_guild")
-                    is StallBuyoutService.Result.NoGuildPermission ->
-                        lang.msg("purchase_sign.msg.no_guild_permission")
-                    is StallBuyoutService.Result.Rejected ->
-                        lang.msg("purchase_sign.msg.rejected", "reason" to result.reason)
-                }
-                player.sendMessage(msg)
+                val result = PurchaseFlow.execute(player, stallId, price, isGuild, buyout)
+                player.sendMessage(PurchaseFlow.message(result, stallId, lang))
                 player.closeInventory()
             },
             3, 2,
