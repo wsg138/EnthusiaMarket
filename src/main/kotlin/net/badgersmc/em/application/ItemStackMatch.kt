@@ -2,6 +2,7 @@ package net.badgersmc.em.application
 
 import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.meta.Damageable
 
 /** Byte-exact item matching for shop stock/cost checks (ignores stack size). */
 object ItemStackMatch {
@@ -26,11 +27,13 @@ object ItemStackMatch {
 
     /** Counts inventory items matching [template] via [ItemStack.isSimilar],
      *  which compares material, damage, and ItemMeta (enchantments, name, lore)
-     *  but ignores repair cost. Use for enchanted items where users may have
-     *  anvilled/merged stacks with different repair costs on the same item. */
+     *  but ignores repair cost. Also normalises Damage tags: freshly crafted
+     *  items lack a Damage tag (null in CraftMetaItem) while anvil-combined
+     *  items carry an explicit Damage:0 — [isSimilar] treats null != 0 and
+     *  rejects them as non-matching even when both are undamaged. */
     fun countSimilar(inventory: Inventory, template: ItemStack): Int =
         inventory.storageContents.filterNotNull()
-            .filter { it.isSimilar(template) }
+            .filter { isSimilarIgnoringDamageNullZero(it, template) }
             .sumOf { it.amount }
 
     fun containsAtLeast(inventory: Inventory, template: ItemStack, amount: Int): Boolean =
@@ -65,7 +68,7 @@ object ItemStackMatch {
 
     private fun freeSpaceSimilar(slot: ItemStack?, template: ItemStack, maxStack: Int): Int {
         if (slot == null || slot.type.isAir) return maxStack
-        return if (slot.isSimilar(template)) (maxStack - slot.amount).coerceAtLeast(0) else 0
+        return if (isSimilarIgnoringDamageNullZero(slot, template)) (maxStack - slot.amount).coerceAtLeast(0) else 0
     }
 
     private fun freeSpaceInSlot(slot: ItemStack?, templateBytes: ByteArray, maxStack: Int): Int {
@@ -75,6 +78,31 @@ object ItemStackMatch {
 
     private fun bytesMatch(stack: ItemStack, templateBytes: ByteArray): Boolean =
         normalizedBytes(stack).contentEquals(templateBytes)
+
+    /** Returns true when [a] and [b] are [ItemStack.isSimilar], including the
+     *  edge case where both items are undamaged but one carries an explicit
+     *  `Damage:0` NBT tag while the other has no Damage tag at all — Bukkit's
+     *  [CraftMetaItem.equals] treats `null != 0` and rejects them. */
+    internal fun isSimilarIgnoringDamageNullZero(a: ItemStack, b: ItemStack): Boolean {
+        if (a.isSimilar(b)) return true
+        val aMeta = a.itemMeta
+        val bMeta = b.itemMeta
+        if (aMeta is Damageable && bMeta is Damageable) {
+            if (!aMeta.hasDamage() && !bMeta.hasDamage()) {
+                // Both undamaged; force damage to 0 on both and retry.
+                val aClone = a.clone()
+                val bClone = b.clone()
+                val aDamageMeta = aClone.itemMeta as Damageable
+                aDamageMeta.damage = 0
+                aClone.itemMeta = aDamageMeta
+                val bDamageMeta = bClone.itemMeta as Damageable
+                bDamageMeta.damage = 0
+                bClone.itemMeta = bDamageMeta
+                return aClone.isSimilar(bClone)
+            }
+        }
+        return false
+    }
 
     private fun normalizedBytes(stack: ItemStack): ByteArray {
         val single = stack.clone()

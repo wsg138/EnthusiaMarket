@@ -614,7 +614,7 @@ open class ContainerTradeService(
             var remaining = amount
             for (item in contents) {
                 if (item == null) continue
-                if (!item.isSimilar(template)) continue
+                if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
                 val take = minOf(item.amount, remaining)
                 val batch = item.clone().apply { this.amount = take }
                 source.removeItem(batch)
