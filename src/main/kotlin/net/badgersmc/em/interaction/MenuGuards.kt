@@ -37,7 +37,25 @@ fun ChestGui.blockItemTheft() {
  */
 fun ChestGui.blockTopInventoryExcept(vararg placementSlots: Int) {
     val openSlots = placementSlots.toSet()
-    setOnTopClick { event ->
-        if (event.slot !in openSlots) event.isCancelled = true
+    setOnGlobalClick { event ->
+        val topSize = event.view.topInventory.size
+        val dangerousGlobalAction = event.action in setOf(
+            org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY,
+            org.bukkit.event.inventory.InventoryAction.COLLECT_TO_CURSOR,
+            org.bukkit.event.inventory.InventoryAction.HOTBAR_SWAP,
+            org.bukkit.event.inventory.InventoryAction.HOTBAR_MOVE_AND_READD,
+            org.bukkit.event.inventory.InventoryAction.CLONE_STACK,
+            org.bukkit.event.inventory.InventoryAction.UNKNOWN,
+        )
+        val topSlot = event.rawSlot in 0 until topSize
+        if (dangerousGlobalAction || (topSlot && event.rawSlot !in openSlots)) {
+            event.isCancelled = true
+        }
+    }
+    setOnGlobalDrag { event ->
+        val topSize = event.view.topInventory.size
+        if (event.rawSlots.any { it in 0 until topSize && it !in openSlots }) {
+            event.isCancelled = true
+        }
     }
 }
