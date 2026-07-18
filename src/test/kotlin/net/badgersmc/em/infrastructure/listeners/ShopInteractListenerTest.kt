@@ -5,6 +5,8 @@ import io.mockk.mockk
 import io.mockk.verify
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.application.ContainerTradeResult
 import net.badgersmc.em.interaction.MenuFactory
 import org.bukkit.Location
 import org.bukkit.Material
@@ -144,5 +146,23 @@ class ShopInteractListenerTest {
         val event = interactEvent(player, block = block, hand = EquipmentSlot.OFF_HAND)
         listener.onSignInteract(event)
         assert(!event.isCancelled) { "Off-hand should not cancel event" }
+    }
+
+    @Test
+    fun `Bedrock direction routing uses shop-facing service semantics`() {
+        val listener = ShopInteractListener(repo, menuFactory, tradeService, mockk(relaxed = true))
+        val playerId = UUID.randomUUID()
+        every { tradeService.executeSell(any(), playerId) } returns ContainerTradeResult.Success("sell")
+        every { tradeService.executeBuy(any(), playerId) } returns ContainerTradeResult.Success("buy")
+        every { tradeService.executeTrade(any(), playerId) } returns ContainerTradeResult.Success("trade")
+
+        listener.executeBedrockTransaction(sampleShop().copy(direction = SignDirection.SELL), playerId)
+        listener.executeBedrockTransaction(sampleShop().copy(direction = SignDirection.BUY), playerId)
+        listener.executeBedrockTransaction(sampleShop().copy(direction = SignDirection.TRADE), playerId)
+
+        verify(exactly = 1) { tradeService.executeSell(match { it.direction == SignDirection.SELL }, playerId) }
+        verify(exactly = 1) { tradeService.executeBuy(match { it.direction == SignDirection.BUY }, playerId) }
+        verify(exactly = 1) { tradeService.executeTrade(match { it.direction == SignDirection.TRADE }, playerId) }
+        verify(exactly = 0) { tradeService.executeBuy(match { it.direction == SignDirection.SELL }, playerId) }
     }
 }

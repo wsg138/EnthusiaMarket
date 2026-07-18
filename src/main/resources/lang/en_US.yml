@@ -514,6 +514,7 @@ bedrock:
     status_active: "<green>Active"
     button_buy: "<green>BUY"
     button_sell: "<yellow>SELL"
+    button_trade: "<light_purple>TRADE"
     button_back: "<gray>Back"
   edit:
     title: "Shop Settings"
