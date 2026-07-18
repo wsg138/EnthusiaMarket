@@ -278,20 +278,21 @@ class AuctionLifecycleService(
         if (!reservation.allowed) {
             return AuctionResult.Failure("You already have an active bid on another auction.")
         }
-
-        val updated = try {
-            auction.placeBid(playerUuid, amount, clock.instant())
-        } catch (e: IllegalArgumentException) {
-            ipLimiter.rollback(reservation.reservation)
-            return AuctionResult.Failure(e.message ?: "Bid rejected")
-        } catch (e: IllegalStateException) {
-            ipLimiter.rollback(reservation.reservation)
-            return AuctionResult.Failure(e.message ?: "Bid rejected")
+        var completed = false
+        try {
+            val updated = try {
+                auction.placeBid(playerUuid, amount, clock.instant())
+            } catch (e: IllegalArgumentException) {
+                return AuctionResult.Failure(e.message ?: "Bid rejected")
+            } catch (e: IllegalStateException) {
+                return AuctionResult.Failure(e.message ?: "Bid rejected")
+            }
+            val result = finalizeBid(auction, updated, playerUuid, amount)
+            completed = result is AuctionResult.Success
+            return result
+        } finally {
+            if (!completed) ipLimiter.rollback(reservation.reservation)
         }
-
-        val result = finalizeBid(auction, updated, playerUuid, amount)
-        if (result !is AuctionResult.Success) ipLimiter.rollback(reservation.reservation)
-        return result
     }
 
     /**

@@ -182,9 +182,10 @@ class StallBuyoutService(
 
         val reservation = ipLimiter.acquireStall(ip, owner.id)
         if (!reservation.allowed) return Result.Rejected("Your IP already owns a stall.")
+        var completed = false
+        try {
 
         if (!economy.withdraw(payer, price)) {
-            ipLimiter.rollback(reservation.reservation)
             return Result.Rejected("Insufficient funds: $price required")
         }
 
@@ -209,7 +210,6 @@ class StallBuyoutService(
             awarded
         } catch (e: Exception) {
             refundAfterFailedAward(payer, price, stallId, owner, e)
-            ipLimiter.rollback(reservation.reservation)
             throw e
         }
 
@@ -254,7 +254,11 @@ class StallBuyoutService(
         // the guild id, which never resolves to a real player UUID.
 
         fireStateChanged(stallId.value, previousState, updated.state)
+        completed = true
         return Result.Purchased(updated, price, owner)
+        } finally {
+            if (!completed) ipLimiter.rollback(reservation.reservation)
+        }
     }
 
     private fun fireStateChanged(

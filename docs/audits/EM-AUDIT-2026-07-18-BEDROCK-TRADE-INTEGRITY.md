@@ -42,7 +42,7 @@ TRADE previously shared the fallback BUY button and callback. It now uses `bedro
 
 ### EM-TI-004 — native Bedrock stall purchasing
 
-PR #79 added personal/guild method and confirmation menus only as InventoryFramework chests. `PurchaseSignClickListener` now routes through `MenuFactory`. Bedrock receives `BedrockPurchaseMethodForm` followed by `BedrockPurchaseConfirmForm`; Java and Cumulus-unavailable players retain `PurchaseMethodMenu`. `PurchaseFlow` centralizes guild eligibility, IP extraction, buy/buyForGuild dispatch, and result messages, so forms do not duplicate limits, auction, delay, permission, economy, persistence, or state rules. A successful service result still fires `StallStateChangedEvent`, which drives the existing purchase-sign refresh listener.
+PR #79 added personal/guild method and confirmation menus only as InventoryFramework chests. `PurchaseSignClickListener` now routes through `MenuFactory`. Bedrock receives `BedrockPurchaseMethodForm` followed by `BedrockPurchaseConfirmForm`; Java and Cumulus-unavailable players retain `PurchaseMethodMenu`. `PurchaseFlow` centralizes guild eligibility, IP extraction, buy/buyForGuild dispatch, and stall-buyout result messages, so forms do not duplicate limits, auction, delay, permission, economy, persistence, or state rules. `BedrockPurchaseForm` separately maps shop `ContainerTradeResult` values to success, failure, and compensation messages. A successful service result still fires `StallStateChangedEvent`, which drives the existing purchase-sign refresh listener.
 
 The confirmation content includes stall, price, ownership mode, and guild name where applicable. Cancel/back/invalid responses perform no purchase.
 
@@ -80,12 +80,12 @@ PR #104 introduced mutable in-memory claims without a token showing whether the 
 
 ## Validation
 
-Commands use `-Plumaguilds.jar=C:\Dev\Enthusia\BuildDeps\EnthusiaMarket\LumaGuilds-2.1.6.jar` because the documented `2.1.0` jar is stale and lacks the visual API used by current main.
+Commands use `-Plumaguilds.jar=<absolute-path-to-current-LumaGuilds-2.1.6.jar>`. Build LumaGuilds from its repository or use the current integration artifact; the documented legacy `2.1.0` artifact lacks the visual API used by this base. This placeholder is intentionally portable across maintainer workstations and CI agents.
 
-- Baseline `gradlew test`: passed, 2026-07-18, base `ba369b2`.
+- Baseline `gradlew test`: passed on 2026-07-18 at base `ba369b2`; 600 tests executed, 0 failed, 1 skipped. Stable report artifact: `build/reports/tests/test/index.html`.
 - Focused application tests after implementation: passed.
-- Final `gradlew clean test detekt shadowJar`: recorded in the PR after completion.
-- Final `gradlew check`: recorded in the PR after completion.
+- Final `gradlew clean test detekt shadowJar`: passed; 602 tests executed, 0 failed, 1 skipped; Detekt passed and the shadow JAR was produced under `build/libs/`. Stable test report artifact: `build/reports/tests/test/index.html`.
+- Final `gradlew check`: passed with no failing verification task.
 
 Manual Java runtime matrix: **Not completed**; no local Paper test server was started. Manual Bedrock matrix: **Blocked by environment**; no live Paper + Geyser + Floodgate client session was available. IP runtime checks: **Not completed**; covered by deterministic unit tests only. These statements must not be upgraded without an actual runtime session.
 

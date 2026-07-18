@@ -433,6 +433,7 @@ open class ContainerTradeService(
         val productRemoved = ctx.player.inventory.removeItem(sellStack.clone()).isEmpty()
         val productRestored = ctx.containerInv.addItem(sellStack.clone()).isEmpty()
         val paymentRestored = ctx.player.inventory.addItem(costStack.clone()).isEmpty()
+        log.log(java.util.logging.Level.WARNING, "Barter vault deposit failed after inventory mutation", cause)
         if (productRemoved && productRestored && paymentRestored) {
             return ContainerTradeResult.Failure("Barter vault unavailable; trade was rolled back")
         }
@@ -545,6 +546,7 @@ open class ContainerTradeService(
         } catch (e: Exception) {
             val removed = ctx.player.inventory.removeItem(ctx.sellStack.clone().apply { amount = amounts.sell }).isEmpty()
             val restored = ctx.container.inventory.addItem(requestedSell).isEmpty()
+            log.log(java.util.logging.Level.WARNING, "Placement barter vault deposit failed after inventory mutation", e)
             if (removed && restored) {
                 return ContainerTradeResult.Failure("Barter vault unavailable; trade was rolled back")
             }

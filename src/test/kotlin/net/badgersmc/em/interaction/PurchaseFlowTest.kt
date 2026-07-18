@@ -7,7 +7,6 @@ import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.StallId
 import org.bukkit.entity.Player
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.UUID
 import kotlin.test.Test
@@ -16,9 +15,12 @@ import kotlin.test.assertNull
 
 class PurchaseFlowTest {
     private val playerId = UUID.randomUUID()
+    private val socketAddress = mockk<InetSocketAddress>(relaxed = true) {
+        every { address.hostAddress } returns "127.0.0.1"
+    }
     private val player = mockk<Player>(relaxed = true) {
         every { uniqueId } returns playerId
-        every { address } returns InetSocketAddress(InetAddress.getLoopbackAddress(), 19132)
+        every { address } returns socketAddress
     }
     private val stallId = StallId("stall_01")
 

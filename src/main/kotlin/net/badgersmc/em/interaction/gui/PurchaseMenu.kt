@@ -60,6 +60,7 @@ class PurchaseMenu(
     private lateinit var dirLabel: String
     private var replacingInventory = false
     private var placementReturned = false
+    private var hasRendered = false
 
     private fun render(player: Player) {
         val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.title", "amount" to (shop.sellAmount * multiplier))))
@@ -108,10 +109,11 @@ class PurchaseMenu(
         }
         // Save the placement slot item before the old inventory is destroyed,
         // then restore it once the new inventory is visible (CR: render wipes slot 15).
-        val savedSlot15 = if (shop.direction == SignDirection.TRADE)
+        val savedSlot15 = if (shop.direction == SignDirection.TRADE && hasRendered)
             player.openInventory?.topInventory?.getItem(15)?.clone() else null
         replacingInventory = savedSlot15 != null
         gui.show(player)
+        hasRendered = true
         replacingInventory = false
         if (savedSlot15 != null) {
             player.openInventory.topInventory.setItem(15, savedSlot15)
@@ -373,7 +375,6 @@ class PurchaseMenu(
                 giveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER),
                 giveName = lang.msg("gui.shop.give_item", "amount" to totalAmount, "item" to sellName),
                 giveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                     lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
                 ),
             )
