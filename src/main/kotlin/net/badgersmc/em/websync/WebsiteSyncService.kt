@@ -30,6 +30,7 @@ data class WebsiteSyncStatusView(
     val bedrockHeads: net.badgersmc.em.websync.heads.BedrockHeadStatus? = null,
     val geyserApiAvailable: Boolean = false,
     val bedrockCaptureEnabled: Boolean = false,
+    val floodgateCapture: net.badgersmc.em.websync.heads.FloodgateCaptureStatus? = null,
 )
 
 @Suppress("TooManyFunctions")
@@ -42,6 +43,7 @@ class WebsiteSyncService(
     private val migrationFailure: Boolean = false,
     private val bedrockHeadStatus: () -> net.badgersmc.em.websync.heads.BedrockHeadStatus? = { null },
     private val geyserStatus: () -> Pair<Boolean, Boolean> = { false to false },
+    private val floodgateStatus: () -> net.badgersmc.em.websync.heads.FloodgateCaptureStatus? = { null },
 ) : WebsiteSyncDirtySink, AutoCloseable {
     private val generations = HashMap<String, Long>()
     private var dirty = TrailingDebounce(250, 2000)
@@ -187,6 +189,7 @@ class WebsiteSyncService(
             bedrockHeads = bedrockHeadStatus(),
             geyserApiAvailable = geyser.first,
             bedrockCaptureEnabled = geyser.second,
+            floodgateCapture = floodgateStatus(),
         )
     }
 

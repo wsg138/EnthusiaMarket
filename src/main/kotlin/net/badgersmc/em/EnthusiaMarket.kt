@@ -33,7 +33,7 @@ open class EnthusiaMarket : JavaPlugin() {
     private var bedrockHeadStore: net.badgersmc.em.websync.heads.BedrockHeadStore? = null
     private var geyserHeadIntegration: AutoCloseable? = null
     private var floodgateHeadIntegration: AutoCloseable? = null
-    private var floodgateSkinCapture: AutoCloseable? = null
+    private var floodgateSkinCapture: net.badgersmc.em.websync.heads.FloodgateSkinCaptureService? = null
     private var headUploadClientCache: net.badgersmc.em.websync.HeadUploadClientCache? = null
 
     @Suppress("LongMethod", "TooGenericExceptionThrown")
@@ -199,6 +199,7 @@ open class EnthusiaMarket : JavaPlugin() {
                 val floodgateEnabled = floodgateHeadIntegration != null
                 (geyserEnabled || floodgateEnabled) to (geyserEnabled || floodgateEnabled)
             },
+            floodgateStatus = { floodgateSkinCapture?.status() },
         )
         websiteSync = websiteService
         headDirtyMarker = net.badgersmc.em.websync.heads.BedrockHeadDirtyMarker(

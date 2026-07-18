@@ -771,6 +771,11 @@ class AdminCommands(
                 "capture=${yesNo(status.bedrockCaptureEnabled)}, published=${heads.captured}, pending=${heads.pending}, " +
                 "last=${instant(heads.lastSuccessAt)}, status=${heads.lastError ?: "ok"}")
         }
+        status.floodgateCapture?.let { capture ->
+            sender.sendMessage("Floodgate capture: events=${capture.events}, accepted=${capture.accepted}, queued=${capture.queued}, " +
+                "rejected=${capture.rejected}, failed=${capture.failed}, dropped=${capture.dropped}, " +
+                "last=${capture.lastFailure ?: "ok"}")
+        }
     }
 
     @Subcommand("websync secret")
