@@ -27,6 +27,7 @@ import org.junit.jupiter.api.AfterEach
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import kotlin.test.assertIs
 
 class ContainerTradeServiceTradeTest {
 
@@ -142,6 +143,29 @@ class ContainerTradeServiceTradeTest {
         verify { containerInv.removeItem(any()) }
         verify { playerInv.addItem(any()) }
         verify { vaultService.deposit(ownerUuid, costStack, 3) }
+    }
+
+    @Test
+    fun `vault persistence exception rolls automatic barter inventory back`() {
+        val shop = testShop(sellAmount = 2, costAmount = 3)
+        val stallRepo = mockk<StallRepository>()
+        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+        val (player, playerInv) = mockOnlinePlayer()
+        every { playerInv.removeItem(any()) } returns hashMapOf()
+        every { playerInv.addItem(any()) } returns hashMapOf()
+        val (container, containerInv) = mockContainerPair()
+        every { containerInv.removeItem(any()) } returns hashMapOf()
+        every { containerInv.addItem(any()) } returns hashMapOf()
+        val costStack = mockk<ItemStack>(relaxed = true)
+        every { costStack.amount } returns 3
+        every { costStack.clone() } returns costStack
+        val vault = mockk<ShopVaultService>()
+        every { vault.deposit(any(), any(), any()) } throws IllegalStateException("database unavailable")
+        val service = buildService(stallRepo, shopVault = vault, mockCostStack = costStack, mockContainer = container)
+
+        assertIs<ContainerTradeResult.Failure>(service.executeTrade(shop, player.uniqueId))
+        verify(atLeast = 2) { playerInv.addItem(any()) }
+        verify { containerInv.addItem(any()) }
     }
 
     @Test
