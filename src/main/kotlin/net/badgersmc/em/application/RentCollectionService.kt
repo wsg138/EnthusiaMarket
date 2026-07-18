@@ -5,8 +5,6 @@ import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
-import net.badgersmc.em.domain.ports.EconomyProvider
-import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
@@ -23,7 +21,6 @@ import java.util.logging.Logger
  * Report from a single rent collection tick.
  */
 data class RentReport(
-    val collected: Int,
     val defaults: Int,
     val evictions: Int,
     val errors: Int
@@ -37,8 +34,6 @@ data class RentReport(
 class RentCollectionService(
     private val stallRepository: StallRepository,
     private val shops: net.badgersmc.em.domain.shop.ShopRepository,
-    private val economy: EconomyProvider,
-    private val guildProvider: GuildProvider,
     private val config: EnthusiaMarketConfig,
     private val auctionRepository: AuctionRepository,
     private val lang: LangService,
@@ -51,19 +46,17 @@ class RentCollectionService(
     /**
      * Execute one rent collection tick.
      *
-     * For each stall in OWNED or GRACE state:
-     * 1. Compute rent due using [Stall]'s [RentTerms.dailyRent] method.
-     * 2. If SOLO owner: attempt to withdraw from their economy account.
-     * 3. If withdraw succeeds and stall is GRACE, restore to OWNED.
-     * 4. If withdraw fails and stall is OWNED: mark as GRACE (default).
-     * 5. If withdraw fails and stall is GRACE and grace period has elapsed: evict.
-     * 6. GUILD owners are skipped (no guild bank integration yet).
+     * Rent is NEVER auto-charged — players pay by right-clicking the purchase sign
+     * ([StallRentExtensionService.extend]). This tick only enforces the
+     * grace/eviction timeline for overdue stalls:
+     * 1. OWNED with nextRentAt past grace → immediate emergency auction.
+     * 2. OWNED with nextRentAt recently past → GRACE (shops frozen).
+     * 3. GRACE with nextRentAt past grace → emergency auction.
      *
      * @param now the current instant (injectable for testability, defaults to system clock)
      */
     fun tick(now: Instant = Instant.now()): RentReport {
         val stalls = stallRepository.all()
-        var collected = 0
         var defaults = 0
         var evictions = 0
         var errors = 0
@@ -74,7 +67,6 @@ class RentCollectionService(
             try {
                 val result = processStall(stall, now)
                 when (result) {
-                    is ProcessResult.Collected -> collected++
                     is ProcessResult.Defaulted -> defaults++
                     is ProcessResult.Evicted -> evictions++
                     is ProcessResult.Skipped -> { /* no-op */ }
@@ -85,7 +77,6 @@ class RentCollectionService(
         }
 
         return RentReport(
-            collected = collected,
             defaults = defaults,
             evictions = evictions,
             errors = errors
@@ -106,39 +97,13 @@ class RentCollectionService(
         val computed = stall.rentTerms.dailyRent(stall.winningBid)
         val rentDue = if (stall.winningBid > 0L) maxOf(computed, 1L) else computed
 
-        // null = skip: a corrupt SOLO owner id shouldn't evict on bad data.
-        val withdrawSuccess = chargeRent(stall, rentDue) ?: return ProcessResult.Skipped
-        return if (withdrawSuccess) collect(stall, now) else handleFailure(stall, now, rentDue)
+        // Rent is never auto-charged. Players pay rent by right-clicking the
+        // purchase sign (StallRentExtensionService.extend). The scheduler only
+        // enforces the grace/eviction timeline for overdue stalls.
+        return handleFailure(stall, now, rentDue)
     }
 
-    /**
-     * Charge one rent period to the stall's owner: SOLO → personal economy,
-     * GUILD → guild bank. Returns the withdraw outcome, or null when the SOLO
-     * owner id is corrupt so the caller skips (rather than evicts) on bad data.
-     */
-    private fun chargeRent(stall: Stall, rentDue: Long): Boolean? = when (stall.owner.type) {
-        OwnerType.SOLO -> {
-            val ownerUuid = runCatching { UUID.fromString(stall.owner.id) }.getOrNull()
-            if (ownerUuid == null) null else rentDue <= 0L || economy.withdraw(ownerUuid, rentDue)
-        }
-        OwnerType.GUILD -> rentDue <= 0L || guildProvider.bankWithdraw(stall.owner.id, rentDue)
-        OwnerType.NONE -> null // unreachable (guarded in processStall)
-    }
-
-    /** Payment succeeded — advance the rent timer and, if in GRACE, restore to OWNED and unfreeze all shops. */
-    private fun collect(stall: Stall, now: Instant): ProcessResult {
-        val nextRent = now.plus(RentTimingPolicy.collectionInterval(config))
-        if (stall.state == StallState.GRACE) {
-            // Save stall FIRST so shop unfreeze failure doesn't leave a GRACE stall with unfrozen shops.
-            stallRepository.save(stall.copy(state = StallState.OWNED, nextRentAt = nextRent))
-            shops.freezeByStall(stall.id.value, frozen = false)
-        } else {
-            stallRepository.save(stall.copy(nextRentAt = nextRent))
-        }
-        return ProcessResult.Collected
-    }
-
-    /** Payment failed — OWNED with nextRentAt past grace goes straight to emergency auction
+    /** OWNED with nextRentAt past grace goes straight to emergency auction
      *  (no point waiting another 3d after boot). Otherwise OWNED → GRACE.
      *  GRACE past its window starts emergency auction. */
     private fun handleFailure(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
@@ -151,7 +116,12 @@ class RentCollectionService(
                     shops.freezeByStall(stall.id.value, frozen = true)
                     return emergencyAuction(stall, now, rentDue)
                 }
-                // Save stall FIRST: if shop freeze fails we're at least in GRACE for next tick retry.
+                // Freeze shops FIRST: if it fails, the stall stays OWNED and the next
+                // tick retries. If we save GRACE first and the freeze throws, the stall
+                // is in GRACE with active shops — the GRACE processing branch does not
+                // re-freeze, so the eviction penalty would be broken for the entire
+                // grace period.
+                shops.freezeByStall(stall.id.value, frozen = true)
                 // Preserve original ownerSince — do NOT reset it so the audit trail stays intact.
                 // Anchor nextRentAt so the grace window starts from now, not the original purchase
                 // date (which could be months ago and would cause instant eviction on next tick).
@@ -159,7 +129,6 @@ class RentCollectionService(
                     state = StallState.GRACE,
                     nextRentAt = stall.nextRentAt ?: now
                 ))
-                shops.freezeByStall(stall.id.value, frozen = true)
                 ProcessResult.Defaulted
             }
             StallState.GRACE -> {
@@ -193,7 +162,7 @@ class RentCollectionService(
         // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
         // (admin must manually create one). This prevents duplicate auctions on retry — the stall
         // won't be processed again once it leaves GRACE/OWNED activeStates.
-        stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING, ownerSince = now))
+        stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING))
         auctionRepository.create(auction)
         try {
             Bukkit.broadcast(lang.msg("purchase_sign.msg.emergency_auction_alert",
@@ -219,7 +188,6 @@ class RentCollectionService(
     }
 
     private sealed class ProcessResult {
-        data object Collected : ProcessResult()
         data object Defaulted : ProcessResult()
         data object Evicted : ProcessResult()
         data object Skipped : ProcessResult()

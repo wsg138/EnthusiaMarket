@@ -60,13 +60,11 @@ class SchematicRestoreTest {
     fun `grace expiry starts emergency auction, does NOT restore schematic`() {
         val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
         every { stallRepo.all() } returns listOf(graceStall)
-        val economy = mockk<EconomyProvider>()
-        every { economy.withdraw(any(), any()) } returns false
         val auctionRepo = mockk<AuctionRepository>(relaxed = true)
         val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
 
         val service = RentCollectionService(
-            stallRepo, shopRepo, economy, mockk<GuildProvider>(relaxed = true), config(), auctionRepo, mockk(),
+            stallRepo, shopRepo, config(), auctionRepo, mockk(),
         )
 
         val report = service.tick(now)

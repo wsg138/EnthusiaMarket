@@ -5,10 +5,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
-import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionRepository
-import net.badgersmc.em.domain.ports.EconomyProvider
-import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -93,24 +90,16 @@ class RentCollectionServiceTest {
         val service: RentCollectionService,
         val stallRepo: StallRepository,
         val shopRepo: net.badgersmc.em.domain.shop.ShopRepository,
-        val economy: EconomyProvider,
         val config: EnthusiaMarketConfig,
-        val guildProvider: GuildProvider,
         val auctionRepo: AuctionRepository
     )
 
     private fun buildService(
         stalls: List<Stall> = listOf(ownedStall),
-        economyWithdrawOk: Boolean = true,
         gracePeriod: String = "P3D"
     ): ServiceWithMocks {
         val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
         every { stallRepo.all() } returns stalls
-
-        val economy = mockk<EconomyProvider>()
-        every { economy.withdraw(any(), any()) } returns economyWithdrawOk
-
-        val guildProvider = mockk<GuildProvider>(relaxed = true)
 
         val cfg = config(gracePeriod = gracePeriod)
 
@@ -120,12 +109,10 @@ class RentCollectionServiceTest {
         val auctionRepo = mockk<AuctionRepository>(relaxed = true)
 
         return ServiceWithMocks(
-            service = RentCollectionService(stallRepo, shopRepo, economy, guildProvider, cfg, auctionRepo, mockk()),
+            service = RentCollectionService(stallRepo, shopRepo, cfg, auctionRepo, mockk()),
             stallRepo = stallRepo,
             shopRepo = shopRepo,
-            economy = economy,
             config = cfg,
-            guildProvider = guildProvider,
             auctionRepo = auctionRepo
         )
     }
@@ -141,7 +128,7 @@ class RentCollectionServiceTest {
 
     @Test
     fun `tick past grace starts emergency auction, does NOT wipe shops`() {
-        val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = false, gracePeriod = "P3D")
+        val svc = buildService(stalls = listOf(graceStall), gracePeriod = "P3D")
         every { svc.shopRepo.findByStall("stall_02") } returns
             listOf(shop(11, "stall_02"), shop(12, "stall_02"))
 
@@ -158,24 +145,24 @@ class RentCollectionServiceTest {
         }) }
     }
 
-    // --- tick: collects rent from OWNED stall successfully ---
+    // --- tick: OWNED stall past due transitions to GRACE (no auto-charge) ---
 
     @Test
-    fun `tick collects rent from OWNED stall successfully`() {
-        val svc = buildService(stalls = listOf(ownedStall), economyWithdrawOk = true)
+    fun `tick OWNED stall past due transitions to GRACE`() {
+        val dueStall = ownedStall.copy(nextRentAt = now.minus(Duration.ofMinutes(1)))
+        val svc = buildService(stalls = listOf(dueStall))
 
-        val report = svc.service.tick()
+        val report = svc.service.tick(now)
 
-        assertEquals(1, report.collected)
-        assertEquals(0, report.defaults)
+        assertEquals(1, report.defaults)
         assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
 
-        verify { svc.economy.withdraw(playerUuid, 50L) }
-        verify { svc.stallRepo.save(match { it.state == StallState.OWNED }) }
+        verify { svc.stallRepo.save(match { it.state == StallState.GRACE }) }
+        verify { svc.shopRepo.freezeByStall(dueStall.id.value, true) }
     }
 
-    // --- tick: insufficient balance marks GRACE (defaulted) on first failure ---
+    // --- tick: long-owned stall gets its full grace window ---
 
     @Test
     fun `tick failed payment gives a long owned stall its full grace window`() {
@@ -184,11 +171,10 @@ class RentCollectionServiceTest {
             ownerSince = graceStartedAt.minus(Duration.ofDays(30)),
             nextRentAt = graceStartedAt.minus(Duration.ofMinutes(1)),
         )
-        val svc = buildService(stalls = listOf(dueStall), economyWithdrawOk = false)
+        val svc = buildService(stalls = listOf(dueStall))
 
         val report = svc.service.tick(graceStartedAt)
 
-        assertEquals(0, report.collected)
         assertEquals(1, report.defaults)
         assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
@@ -197,13 +183,10 @@ class RentCollectionServiceTest {
         verify { svc.stallRepo.save(capture(saved)) }
         val graceStall = saved.captured
         assertEquals(StallState.GRACE, graceStall.state)
-        // ownerSince is preserved (no longer reset on GRACE entry —
-        // grace window now uses nextRentAt instead).
         assertEquals(dueStall.ownerSince, graceStall.ownerSince)
         assertEquals(dueStall.nextRentAt, graceStall.nextRentAt)
         val deadline = dueStall.nextRentAt!!.plus(Duration.ofDays(3))
         assertEquals(deadline, RentTimingPolicy.graceEndsAt(graceStall, svc.config))
-        // Shops must be frozen on GRACE entry
         verify { svc.shopRepo.freezeByStall(dueStall.id.value, true) }
 
         every { svc.stallRepo.all() } returns listOf(graceStall)
@@ -220,24 +203,19 @@ class RentCollectionServiceTest {
 
     @Test
     fun `tick OWNED stall past grace goes straight to emergency auction`() {
-        // Stall is OWNED but nextRentAt is 4 days ago, gracePeriod is P3D.
-        // Should skip GRACE entirely and fire emergency auction immediately.
         val pastDue = ownedStall.copy(nextRentAt = now.minus(Duration.ofDays(4)))
-        val svc = buildService(stalls = listOf(pastDue), economyWithdrawOk = false, gracePeriod = "P3D")
+        val svc = buildService(stalls = listOf(pastDue), gracePeriod = "P3D")
 
         val report = svc.service.tick()
 
-        assertEquals(0, report.collected)
         assertEquals(0, report.defaults)
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
 
-        // Should go straight to EMERGENCY_AUCTIONING, never touch GRACE
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
         }) }
         verify { svc.auctionRepo.create(any()) }
-        // Shops must be frozen even on the fast path (GRACE normally does this)
         verify { svc.shopRepo.freezeByStall(pastDue.id.value, true) }
     }
 
@@ -245,12 +223,10 @@ class RentCollectionServiceTest {
 
     @Test
     fun `tick GRACE and grace expired starts emergency auction`() {
-        // Stall has been in GRACE for 5 days, grace period is 3 days
-        val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = false, gracePeriod = "P3D")
+        val svc = buildService(stalls = listOf(graceStall), gracePeriod = "P3D")
 
         val report = svc.service.tick()
 
-        assertEquals(0, report.collected)
         assertEquals(0, report.defaults)
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
@@ -265,55 +241,13 @@ class RentCollectionServiceTest {
 
     @Test
     fun `tick GRACE and grace not expired does NOT evict`() {
-        // Stall has been in GRACE for 5 days, grace period is 7 days (not expired)
-        val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = false, gracePeriod = "P7D")
+        val svc = buildService(stalls = listOf(graceStall), gracePeriod = "P7D")
 
         val report = svc.service.tick(now)
 
-        assertEquals(0, report.collected)
-        assertEquals(0, report.defaults) // already in GRACE, not newly defaulted
-        assertEquals(0, report.evictions) // grace not expired
+        assertEquals(0, report.defaults)
+        assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
-
-        // Should still try to withdraw
-        verify { svc.economy.withdraw(playerUuid, 50L) }
-    }
-
-    // --- tick: formula mode calculates correct rent amount ---
-
-    @Test
-    fun `tick formula mode calculates correct rent using dailyRent`() {
-        val formulaStall = ownedStall.copy(
-            rentTerms = RentTerms.formula(1.0), // 1% of winning bid
-            winningBid = 10000L
-        )
-        // RentTerms.dailyRent(10000) with formula(1.0):
-        // (10000 * 1.0 / 100.0).toLong() = 100L
-        val svc = buildService(stalls = listOf(formulaStall), economyWithdrawOk = true)
-
-        val report = svc.service.tick()
-
-        assertEquals(1, report.collected)
-        assertEquals(0, report.errors)
-        verify { svc.economy.withdraw(playerUuid, 100L) }
-    }
-
-    // --- tick: flat mode calculates correct rent amount ---
-
-    @Test
-    fun `tick flat mode calculates correct rent using dailyRent`() {
-        val flatStall = ownedStall.copy(
-            rentTerms = RentTerms.flat(200L),
-            winningBid = 5000L
-        )
-        // RentTerms.dailyRent(5000) with flat(200) = 200L
-        val svc = buildService(stalls = listOf(flatStall), economyWithdrawOk = true)
-
-        val report = svc.service.tick()
-
-        assertEquals(1, report.collected)
-        assertEquals(0, report.errors)
-        verify { svc.economy.withdraw(playerUuid, 200L) }
     }
 
     // --- tick: UNOWNED stall is skipped ---
@@ -324,35 +258,31 @@ class RentCollectionServiceTest {
 
         val report = svc.service.tick()
 
-        assertEquals(0, report.collected)
         assertEquals(0, report.defaults)
         assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
 
-        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
         verify(exactly = 0) { svc.stallRepo.save(any()) }
     }
 
-    // --- tick: economy failure on GRACE stall past grace -> evicts ---
+    // --- tick: GRACE stall stays in GRACE (no auto-recovery) ---
 
     @Test
-    fun `tick GRACE stall with successful payment restores to OWNED`() {
-        // Stall is in GRACE but owner pays successfully — should be restored to OWNED
-        val svc = buildService(stalls = listOf(graceStall), economyWithdrawOk = true, gracePeriod = "P3D")
+    fun `tick GRACE stall not past grace stays in GRACE`() {
+        // Grace stall recently entered GRACE — shouldn't evict yet
+        val freshGrace = graceStall.copy(
+            nextRentAt = now
+        )
+        val svc = buildService(stalls = listOf(freshGrace), gracePeriod = "P3D")
 
-        val report = svc.service.tick()
+        val report = svc.service.tick(now)
 
-        assertEquals(1, report.collected)
         assertEquals(0, report.defaults)
         assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
 
-        // Should save as OWNED with updated ownerSince
-        verify { svc.stallRepo.save(match {
-            it.state == StallState.OWNED && it.ownerSince != null
-        }) }
-        // Shops must be unfrozen on GRACE→OWNED recovery
-        verify { svc.shopRepo.freezeByStall(graceStall.id.value, false) }
+        // No auto-recovery to OWNED — player must right-click sign to extend
+        verify(exactly = 0) { svc.stallRepo.save(any()) }
     }
 
     // --- tick: AUCTIONING stall is skipped ---
@@ -367,75 +297,41 @@ class RentCollectionServiceTest {
 
         val report = svc.service.tick()
 
-        assertEquals(0, report.collected)
         assertEquals(0, report.defaults)
         assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
 
-        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
         verify(exactly = 0) { svc.stallRepo.save(any()) }
     }
 
-    // --- tick: GUILD stall collects rent via guild bank ---
+    // --- tick: GUILD stall past due transitions to GRACE ---
 
     @Test
-    fun `tick collects rent from GUILD stall via guild bank`() {
-        // build fresh service with bank withdraw stubbed to true
-        val svc = buildService(stalls = listOf(guildStall))
-        every { svc.guildProvider.bankWithdraw(guildId, 50L) } returns true
+    fun `tick guild stall past due transitions to GRACE`() {
+        val dueGuild = guildStall.copy(nextRentAt = now.minus(Duration.ofMinutes(1)))
+        val svc = buildService(stalls = listOf(dueGuild))
 
         val report = svc.service.tick(now)
 
-        assertEquals(1, report.collected)
-        assertEquals(0, report.defaults)
-        assertEquals(0, report.evictions)
-        assertEquals(0, report.errors)
-
-        verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
-        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
-        // Rent timer must advance one collection interval (P1D) on the saved stall.
-        verify {
-            svc.stallRepo.save(
-                match { it.state == StallState.OWNED && it.nextRentAt == now.plus(Duration.ofDays(1)) }
-            )
-        }
-    }
-
-    // --- tick: GUILD stall with insufficient bank balance marks GRACE ---
-
-    @Test
-    fun `tick guild stall with insufficient bank balance marks GRACE`() {
-        val svc = buildService(stalls = listOf(guildStall))
-        every { svc.guildProvider.bankWithdraw(guildId, 50L) } returns false
-
-        val report = svc.service.tick()
-
-        assertEquals(0, report.collected)
         assertEquals(1, report.defaults)
         assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
 
-        verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
-        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
         verify { svc.stallRepo.save(match { it.state == StallState.GRACE }) }
     }
 
-    // --- tick: GUILD stall past grace with insufficient bank starts emergency auction ---
+    // --- tick: GUILD stall past grace starts emergency auction ---
 
     @Test
-    fun `tick guild stall past grace with insufficient bank starts emergency auction`() {
+    fun `tick guild stall past grace starts emergency auction`() {
         val svc = buildService(stalls = listOf(guildGraceStall), gracePeriod = "P3D")
-        every { svc.guildProvider.bankWithdraw(guildId, 50L) } returns false
 
         val report = svc.service.tick()
 
-        assertEquals(0, report.collected)
         assertEquals(0, report.defaults)
         assertEquals(1, report.evictions)
         assertEquals(0, report.errors)
 
-        verify { svc.guildProvider.bankWithdraw(guildId, 50L) }
-        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
         verify { svc.auctionRepo.create(any()) }
         verify { svc.stallRepo.save(match {
             it.state == StallState.EMERGENCY_AUCTIONING
@@ -446,37 +342,15 @@ class RentCollectionServiceTest {
 
     @Test
     fun `tick skips OWNED stall whose nextRentAt is in the future`() {
-        // C-10: voluntary extension / fresh buyout pre-pays by pushing
-        // nextRentAt forward. Ticker must NOT re-charge in that window.
         val prepaid = ownedStall.copy(nextRentAt = now.plus(Duration.ofDays(1)))
-        val svc = buildService(stalls = listOf(prepaid), economyWithdrawOk = true)
+        val svc = buildService(stalls = listOf(prepaid))
 
         val report = svc.service.tick(now)
 
-        assertEquals(0, report.collected)
         assertEquals(0, report.defaults)
         assertEquals(0, report.evictions)
         assertEquals(0, report.errors)
 
-        verify(exactly = 0) { svc.economy.withdraw(any(), any()) }
         verify(exactly = 0) { svc.stallRepo.save(any()) }
-    }
-
-    // --- tick: charges OWNED stall whose nextRentAt is due (C-10) ---
-
-    @Test
-    fun `tick charges OWNED stall whose nextRentAt is due`() {
-        // C-10 mirror: when nextRentAt is in the past the charge must fire.
-        val due = ownedStall.copy(nextRentAt = now.minus(Duration.ofMinutes(1)))
-        val svc = buildService(stalls = listOf(due), economyWithdrawOk = true)
-
-        val report = svc.service.tick(now)
-
-        assertEquals(1, report.collected)
-        assertEquals(0, report.defaults)
-        assertEquals(0, report.evictions)
-        assertEquals(0, report.errors)
-
-        verify { svc.economy.withdraw(playerUuid, 50L) }
     }
 }

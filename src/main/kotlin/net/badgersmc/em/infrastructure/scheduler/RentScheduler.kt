@@ -34,13 +34,10 @@ class RentScheduler(
             override fun run() {
                 try {
                     val report = rentCollectionService.tick()
-                    if (report.collected > 0 || report.defaults > 0 ||
-                        report.evictions > 0 || report.errors > 0
-                    ) {
+                    if (report.defaults > 0 || report.evictions > 0 || report.errors > 0) {
                         plugin.logger.info(
-                            "Rent collection: ${report.collected} collected, " +
-                            "${report.defaults} defaulted, ${report.evictions} evicted, " +
-                            "${report.errors} errors"
+                            "Rent collection: ${report.defaults} defaulted, " +
+                            "${report.evictions} evicted, ${report.errors} errors"
                         )
                     }
                 } catch (e: Exception) {
