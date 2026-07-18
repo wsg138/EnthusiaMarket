@@ -78,4 +78,30 @@ class IpLimiterTest {
         limiter.tryClaimStall("1.2.3.4", "owner-uuid-1")
         assertTrue(limiter.tryClaimStall("1.2.3.4", "owner-uuid-2"))
     }
+
+    @Test fun `rollback releases only a newly acquired auction binding and is idempotent`() {
+        val limiter = IpLimiter(config())
+        val acquired = limiter.acquireAuction("1.2.3.4", "auc-1")
+        limiter.rollback(acquired.reservation)
+        limiter.rollback(acquired.reservation)
+        assertTrue(limiter.tryBindAuction("1.2.3.4", "auc-2"))
+    }
+
+    @Test fun `failed same-auction rebid cannot erase existing binding`() {
+        val limiter = IpLimiter(config())
+        limiter.acquireAuction("1.2.3.4", "auc-1")
+        val existing = limiter.acquireAuction("1.2.3.4", "auc-1")
+        limiter.rollback(existing.reservation)
+        assertFalse(limiter.tryBindAuction("1.2.3.4", "auc-2"))
+    }
+
+    @Test fun `rollback releases a newly acquired stall claim but not a prior claim`() {
+        val limiter = IpLimiter(config())
+        val acquired = limiter.acquireStall("1.2.3.4", "owner-1")
+        val denied = limiter.acquireStall("1.2.3.4", "owner-2")
+        limiter.rollback(denied.reservation)
+        assertFalse(limiter.tryClaimStall("1.2.3.4", "owner-3"))
+        limiter.rollback(acquired.reservation)
+        assertTrue(limiter.tryClaimStall("1.2.3.4", "owner-3"))
+    }
 }
