@@ -1,6 +1,17 @@
 package net.badgersmc.em.interaction
 
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
+import org.bukkit.event.inventory.InventoryAction
+import java.util.EnumSet
+
+private val DANGEROUS_ACTIONS: Set<InventoryAction> = EnumSet.of(
+    InventoryAction.MOVE_TO_OTHER_INVENTORY,
+    InventoryAction.COLLECT_TO_CURSOR,
+    InventoryAction.HOTBAR_SWAP,
+    InventoryAction.HOTBAR_MOVE_AND_READD,
+    InventoryAction.CLONE_STACK,
+    InventoryAction.UNKNOWN,
+)
 
 /**
  * Block all raw item movement in a menu (anti-dupe).
@@ -37,7 +48,18 @@ fun ChestGui.blockItemTheft() {
  */
 fun ChestGui.blockTopInventoryExcept(vararg placementSlots: Int) {
     val openSlots = placementSlots.toSet()
-    setOnTopClick { event ->
-        if (event.slot !in openSlots) event.isCancelled = true
+    setOnGlobalClick { event ->
+        val topSize = event.view.topInventory.size
+        val dangerousGlobalAction = event.action in DANGEROUS_ACTIONS
+        val topSlot = event.rawSlot in 0 until topSize
+        if (dangerousGlobalAction || (topSlot && event.rawSlot !in openSlots)) {
+            event.isCancelled = true
+        }
+    }
+    setOnGlobalDrag { event ->
+        val topSize = event.view.topInventory.size
+        if (event.rawSlots.any { it in 0 until topSize && it !in openSlots }) {
+            event.isCancelled = true
+        }
     }
 }

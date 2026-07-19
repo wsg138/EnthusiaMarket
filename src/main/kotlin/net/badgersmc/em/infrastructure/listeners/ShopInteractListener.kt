@@ -3,6 +3,7 @@ package net.badgersmc.em.infrastructure.listeners
 import net.badgersmc.em.application.ContainerTradeService
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.Shop
+import net.badgersmc.em.domain.shop.SignDirection
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.interaction.ShopInfoCard
 import net.badgersmc.nexus.i18n.LangService
@@ -139,10 +140,15 @@ open class ShopInteractListener(
         val uuid = player.uniqueId
         net.badgersmc.em.interaction.bedrock.BedrockPurchaseForm(
             player, shop,
-            onBuy = { tradeService.executeBuy(shop, uuid) },
-            onSell = { tradeService.executeSell(shop, uuid) },
+            onConfirm = { executeBedrockTransaction(shop, uuid) },
             logger, lang,
         ).open(player)
+    }
+
+    internal fun executeBedrockTransaction(shop: Shop, playerUuid: java.util.UUID) = when (shop.direction) {
+        SignDirection.SELL -> tradeService.executeSell(shop, playerUuid)
+        SignDirection.BUY -> tradeService.executeBuy(shop, playerUuid)
+        SignDirection.TRADE -> tradeService.executeTrade(shop, playerUuid)
     }
 
     private fun stockOf(shop: Shop): Int {

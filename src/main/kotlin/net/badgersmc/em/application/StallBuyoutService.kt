@@ -150,7 +150,6 @@ class StallBuyoutService(
         owner: OwnerRef,
         payer: UUID,
         price: Long,
-        ip: String,
     ): Result? {
         if (price <= 0) return Result.Rejected("Sign price is invalid")
 
@@ -172,10 +171,6 @@ class StallBuyoutService(
 
         enforceLimit(owner, payer, stall)?.let { return it }
 
-        if (!ipLimiter.tryClaimStall(ip, owner.id)) {
-            return Result.Rejected("Your IP already owns a stall.")
-        }
-
         return null
     }
 
@@ -183,7 +178,12 @@ class StallBuyoutService(
     private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
         val stall = stalls.findById(stallId) ?: return Result.NotFound
 
-        validatePurchase(stall, stallId, owner, payer, price, ip)?.let { return it }
+        validatePurchase(stall, stallId, owner, payer, price)?.let { return it }
+
+        val reservation = ipLimiter.acquireStall(ip, owner.id)
+        if (!reservation.allowed) return Result.Rejected("Your IP already owns a stall.")
+        var completed = false
+        try {
 
         if (!economy.withdraw(payer, price)) {
             return Result.Rejected("Insufficient funds: $price required")
@@ -254,7 +254,11 @@ class StallBuyoutService(
         // the guild id, which never resolves to a real player UUID.
 
         fireStateChanged(stallId.value, previousState, updated.state)
+        completed = true
         return Result.Purchased(updated, price, owner)
+        } finally {
+            if (!completed) ipLimiter.rollback(reservation.reservation)
+        }
     }
 
     private fun fireStateChanged(

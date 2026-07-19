@@ -58,6 +58,9 @@ class PurchaseMenu(
 
     private var multiplier = 1
     private lateinit var dirLabel: String
+    private var replacingInventory = false
+    private var placementReturned = false
+    private var hasRendered = false
 
     private fun render(player: Player) {
         val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.title", "amount" to (shop.sellAmount * multiplier))))
@@ -98,17 +101,30 @@ class PurchaseMenu(
         gui.addPane(pane)
         if (shop.direction == SignDirection.TRADE) {
             gui.blockTopInventoryExcept(15) // slot 15 = cost placement slot
+            gui.setOnClose { event ->
+                if (!replacingInventory) returnPlacementItem(event.player as Player, event.inventory.getItem(15))
+            }
         } else {
             gui.blockItemTheft()
         }
         // Save the placement slot item before the old inventory is destroyed,
         // then restore it once the new inventory is visible (CR: render wipes slot 15).
-        val savedSlot15 = if (shop.direction == SignDirection.TRADE)
+        val savedSlot15 = if (shop.direction == SignDirection.TRADE && hasRendered)
             player.openInventory?.topInventory?.getItem(15)?.clone() else null
+        replacingInventory = savedSlot15 != null
         gui.show(player)
+        hasRendered = true
+        replacingInventory = false
         if (savedSlot15 != null) {
             player.openInventory.topInventory.setItem(15, savedSlot15)
         }
+    }
+
+    internal fun returnPlacementItem(player: Player, item: ItemStack?) {
+        if (placementReturned || item == null || item.type.isAir) return
+        placementReturned = true
+        val remainder = player.inventory.addItem(item.clone())
+        remainder.values.forEach { player.world.dropItemNaturally(player.location, it) }
     }
 
     private fun buildMultiplierControls(pane: StaticPane, player: Player) {
@@ -124,7 +140,7 @@ class PurchaseMenu(
         pane.addItem(GuiItem(decorated(Material.LIME_DYE,
             lang.msg("gui.shop.create.btn_plus1", "delta" to 1, "val" to (multiplier + 1)))) { event ->
             event.isCancelled = true
-            val maxTrades = ShopDisplay.tradesAvailable(shop)
+            val maxTrades = if (shop.direction == SignDirection.BUY) 64 else ShopDisplay.tradesAvailable(shop)
             if (multiplier < maxTrades.coerceAtMost(64)) { multiplier++; render(player) }
         }, 3, 2)
     }
@@ -157,7 +173,7 @@ class PurchaseMenu(
         // Clamp multiplier to actual available trades (stock may have changed
         // since the GUI rendered). Prevents the confusing "bought N, rest failed"
         // experience when denormalized stockCount is stale.
-        val available = ShopDisplay.tradesAvailable(shop)
+        val available = if (shop.direction == SignDirection.BUY) multiplier else ShopDisplay.tradesAvailable(shop)
         if (available <= 0) {
             player.sendMessage(lang.msg("shop.trade.failure", "reason" to "Out of stock"))
             return
@@ -340,12 +356,14 @@ class PurchaseMenu(
     private fun buildRowItems(): RowItems {
         val totalAmount = shop.sellAmount * multiplier
         val totalCost = shop.costAmount * multiplier
+        val avail = ShopDisplay.tradesAvailable(shop)
+        val stockStr = if (avail == Int.MAX_VALUE) "Unlimited" else avail.toString()
         return when (shop.direction) {
             SignDirection.SELL -> RowItems(
                 receiveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER),
                 receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
                 receiveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
+                    lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
                     lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
                 ),
                 giveItem = MenuItems.currencyIcon(Component.empty()),
@@ -359,7 +377,6 @@ class PurchaseMenu(
                 giveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER),
                 giveName = lang.msg("gui.shop.give_item", "amount" to totalAmount, "item" to sellName),
                 giveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
                     lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
                 ),
             )
@@ -367,7 +384,7 @@ class PurchaseMenu(
                 receiveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER),
                 receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
                 receiveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
+                    lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
                 ),
                 giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
                 giveName = Component.empty(),

@@ -20,6 +20,17 @@ import java.util.concurrent.ConcurrentHashMap
 @Service
 class IpLimiter(private val config: EnthusiaMarketConfig) {
 
+    data class Reservation internal constructor(
+        internal val kind: Kind,
+        internal val ip: String,
+        internal val target: String,
+        internal val newlyAcquired: Boolean,
+    ) {
+        internal enum class Kind { AUCTION, STALL }
+    }
+
+    data class Attempt(val allowed: Boolean, val reservation: Reservation?)
+
     /** IP → auction ID. An IP in this map has an active bid on that auction. */
     private val auctionBindings: ConcurrentHashMap<String, String> = ConcurrentHashMap()
 
@@ -33,9 +44,14 @@ class IpLimiter(private val config: EnthusiaMarketConfig) {
      * the IP has no binding, or is already bound to this auction.
      */
     fun tryBindAuction(ip: String, auctionId: String): Boolean {
-        if (!config.ipLimiter.oneAuctionPerIp) return true
+        return acquireAuction(ip, auctionId).allowed
+    }
+
+    fun acquireAuction(ip: String, auctionId: String): Attempt {
+        if (!config.ipLimiter.oneAuctionPerIp) return Attempt(true, null)
         val existing = auctionBindings.putIfAbsent(ip, auctionId)
-        return existing == null || existing == auctionId
+        val allowed = existing == null || existing == auctionId
+        return Attempt(allowed, if (allowed) Reservation(Reservation.Kind.AUCTION, ip, auctionId, existing == null) else null)
     }
 
     /** Release the IP's auction binding (auction settled or cancelled). */
@@ -55,8 +71,22 @@ class IpLimiter(private val config: EnthusiaMarketConfig) {
      * Returns true if allowed: the IP does not already own a stall.
      */
     fun tryClaimStall(ip: String, ownerId: String): Boolean {
-        if (!config.ipLimiter.oneStallPerIp) return true
-        return stallOwners.putIfAbsent(ip, ownerId) == null
+        return acquireStall(ip, ownerId).allowed
+    }
+
+    fun acquireStall(ip: String, ownerId: String): Attempt {
+        if (!config.ipLimiter.oneStallPerIp) return Attempt(true, null)
+        val existing = stallOwners.putIfAbsent(ip, ownerId)
+        return Attempt(existing == null, if (existing == null) Reservation(Reservation.Kind.STALL, ip, ownerId, true) else null)
+    }
+
+    /** Roll back only the exact binding newly created by the failed operation. */
+    fun rollback(reservation: Reservation?) {
+        if (reservation?.newlyAcquired != true) return
+        when (reservation.kind) {
+            Reservation.Kind.AUCTION -> auctionBindings.remove(reservation.ip, reservation.target)
+            Reservation.Kind.STALL -> stallOwners.remove(reservation.ip, reservation.target)
+        }
     }
 
     /** Release [ip]'s stall ownership (sold, evicted, transferred). */

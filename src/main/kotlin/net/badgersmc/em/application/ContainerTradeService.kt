@@ -56,6 +56,7 @@ open class ContainerTradeService(
     private val shopVault: ShopVaultService? = null,
 ) {
     private val log = Logger.getLogger(ContainerTradeService::class.java.name)
+    private val compensationAlerts = CompensationAlertService()
 
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return logFail(playerUuid, shop.id, "buy", "frozen")
@@ -414,9 +415,37 @@ open class ContainerTradeService(
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
         // Give cost items to owner's vault (REQ — V016 shop vault contract)
-        shopVault?.deposit(ctx.ownerUuid, costStack, costStack.amount)
+        try {
+            shopVault!!.deposit(ctx.ownerUuid, costStack, costStack.amount)
+        } catch (e: Exception) {
+            return rollbackBarterAfterVaultFailure(ctx, sellStack, costStack, e)
+        }
         fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0, shop.id, shop.direction))
         return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
+    }
+
+    private fun rollbackBarterAfterVaultFailure(
+        ctx: TradeContext,
+        sellStack: ItemStack,
+        costStack: ItemStack,
+        cause: Exception,
+    ): ContainerTradeResult {
+        val sellClone = sellStack.clone()
+        val sellLeftovers = ctx.player.inventory.removeItem(sellClone)
+        val productRemoved = sellLeftovers.isEmpty()
+        val successfullyRemoved = sellClone.amount - sellLeftovers.values.sumOf { it.amount }
+        val productRestored = if (successfullyRemoved > 0) {
+            ctx.containerInv.addItem(sellStack.clone().apply { amount = successfullyRemoved }).isEmpty()
+        } else true
+        val paymentRestored = ctx.player.inventory.addItem(costStack.clone()).isEmpty()
+        log.log(java.util.logging.Level.WARNING, "Barter vault deposit failed after inventory mutation", cause)
+        if (productRemoved && productRestored && paymentRestored) {
+            return ContainerTradeResult.Failure("Barter vault unavailable; trade was rolled back")
+        }
+        val detail = "vault deposit threw '${cause.message}'; productRemoved=$productRemoved, " +
+            "productRestored=$productRestored, paymentRestored=$paymentRestored"
+        compensationAlerts.alert("barter-vault-deposit", detail, ctx.player.uniqueId, costStack.amount.toLong())
+        return ContainerTradeResult.CompensationFailed("Barter vault persistence failed", detail)
     }
 
     /**
@@ -517,7 +546,24 @@ open class ContainerTradeService(
             ctx.container.inventory.addItem(requestedSell)
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
-        shopVault!!.deposit(ctx.ownerUuid, placedCost.clone().apply { amount = amounts.cost }, amounts.cost)
+        try {
+            shopVault!!.deposit(ctx.ownerUuid, placedCost.clone().apply { amount = amounts.cost }, amounts.cost)
+        } catch (e: Exception) {
+            val requestedSellClone = ctx.sellStack.clone().apply { amount = amounts.sell }
+            val sellLeftovers = ctx.player.inventory.removeItem(requestedSellClone)
+            val removed = sellLeftovers.isEmpty()
+            val successfullyRemoved = amounts.sell - sellLeftovers.values.sumOf { it.amount }
+            val restored = if (successfullyRemoved > 0) {
+                ctx.container.inventory.addItem(requestedSell.apply { amount = successfullyRemoved }).isEmpty()
+            } else true
+            log.log(java.util.logging.Level.WARNING, "Placement barter vault deposit failed after inventory mutation", e)
+            if (removed && restored) {
+                return ContainerTradeResult.Failure("Barter vault unavailable; trade was rolled back")
+            }
+            val detail = "vault deposit threw '${e.message}'; productRemoved=$removed, productRestored=$restored; payment remains in placement slot"
+            compensationAlerts.alert("placement-barter-vault-deposit", detail, ctx.player.uniqueId, amounts.cost.toLong())
+            return ContainerTradeResult.CompensationFailed("Barter vault persistence failed", detail)
+        }
         fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, ctx.sellStack, amounts.sell, 0, shop.id, shop.direction))
         return ContainerTradeResult.Success("Traded ${amounts.sell}x for ${amounts.cost}x")
     }

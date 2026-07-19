@@ -8,6 +8,7 @@ import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.interaction.Menu
+import net.badgersmc.em.interaction.PurchaseFlow
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
@@ -63,12 +64,9 @@ class PurchaseMethodMenu(
         )
 
         // Guild option — only visible when eligible
-        val guild = guildProvider?.guildOf(player.uniqueId)
-        val canBuyForGuild = guild != null &&
-            guildProvider != null &&
-            guildProvider.hasShopPermission(player.uniqueId, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS)
+        val guild = PurchaseFlow.eligibleGuild(player, guildProvider)
 
-        if (canBuyForGuild && guild != null) {
+        if (guild != null) {
             val banner = ItemStack(Material.WHITE_BANNER)
             pane.addItem(
                 GuiItem(decorated(banner, lang.msg("purchase_sign.msg.method_guild"), listOf(
