@@ -75,7 +75,6 @@ class SearchResultsMenu(
             val stock = if (trades == Int.MAX_VALUE) langText("gui.shop.search.unlimited") else trades.toString()
             val lore = mutableListOf(
                 lang.msg("gui.shop.search.location_heading"),
-                lang.msg("gui.shop.search.world", "world" to shop.signWorld),
                 lang.msg("gui.shop.search.coordinates", "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ),
                 Component.empty(),
                 lang.msg("gui.shop.search.owner", "owner" to owner),
@@ -111,13 +110,14 @@ class SearchResultsMenu(
     }
 
     private fun addControls(pane: StaticPane, player: Player, current: Int, totalPages: Int, visible: List<Result>) {
+        addControlFillers(pane)
         pane.addItem(GuiItem(named(Material.COMPARATOR, lang.msg("gui.shop.search.sort_name"), listOf(
             lang.msg("gui.shop.search.sort_selected", "sort" to langText(sort.langKey)),
             lang.msg("gui.shop.search.sort_click"),
         ))) {
             it.isCancelled = true
             copy(page = 1, sort = sort.next()).open(player)
-        }, 2, 0)
+        }, 1, 0)
         val filterMaterial = if (includeOutOfStock) Material.LIME_DYE else Material.GRAY_DYE
         pane.addItem(GuiItem(named(filterMaterial, lang.msg("gui.shop.search.stock_filter_name"), listOf(
             lang.msg(if (includeOutOfStock) "gui.shop.search.stock_filter_on" else "gui.shop.search.stock_filter_off"),
@@ -125,22 +125,28 @@ class SearchResultsMenu(
         ))) {
             it.isCancelled = true
             copy(page = 1, includeOutOfStock = !includeOutOfStock).open(player)
-        }, 6, 0)
+        }, 3, 0)
+        pane.addItem(GuiItem(tickerIcon(visible.map { it.shop })) { it.isCancelled = true }, 5, 0)
         pane.addItem(GuiItem(named(Material.BARRIER, lang.msg("gui.shop.search.close"))) {
             it.isCancelled = true
             player.closeInventory()
-        }, 8, 0)
+        }, 7, 0)
         if (current > 1) pane.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.shop.search.prev"))) {
             it.isCancelled = true
             copy(page = current - 1).open(player)
-        }, 0, ROWS - 1)
+        }, 2, ROWS - 1)
         pane.addItem(GuiItem(named(Material.PAPER, lang.msg("gui.shop.search.page",
             "page" to current, "pages" to totalPages, "count" to visible.size))) { it.isCancelled = true }, 4, ROWS - 1)
-        pane.addItem(GuiItem(tickerIcon(visible.map { it.shop })) { it.isCancelled = true }, 6, ROWS - 1)
         if (current < totalPages) pane.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.shop.search.next"))) {
             it.isCancelled = true
             copy(page = current + 1).open(player)
-        }, 8, ROWS - 1)
+        }, 6, ROWS - 1)
+    }
+
+    private fun addControlFillers(pane: StaticPane) {
+        val filler = GuiItem(ItemStack(Material.GRAY_STAINED_GLASS_PANE)) { it.isCancelled = true }
+        listOf(0, 2, 4, 6, 8).forEach { pane.addItem(filler, it, 0) }
+        listOf(0, 1, 3, 5, 7, 8).forEach { pane.addItem(filler, it, ROWS - 1) }
     }
 
     private fun copy(page: Int = this.page, includeOutOfStock: Boolean = this.includeOutOfStock, sort: Sort = this.sort) =

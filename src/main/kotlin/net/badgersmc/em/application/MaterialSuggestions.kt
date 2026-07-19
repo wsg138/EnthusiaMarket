@@ -8,11 +8,15 @@ package net.badgersmc.em.application
  */
 object MaterialSuggestions {
 
+    val searchCategories = listOf("armor", "tools", "weapons", "potions", "food", "wood", "ores", "redstone")
+
     /**
      * Candidates whose name starts with [typed] (case-insensitive), in input order.
      * A blank [typed] returns every candidate.
      */
-    fun matching(candidates: List<String>, typed: String): List<String> =
-        if (typed.isBlank()) candidates
-        else candidates.filter { it.startsWith(typed, ignoreCase = true) }
+    fun matching(candidates: List<String>, typed: String): List<String> {
+        val allCandidates = searchCategories + candidates
+        return if (typed.isBlank()) allCandidates
+        else allCandidates.filter { it.startsWith(typed, ignoreCase = true) }
+    }
 }

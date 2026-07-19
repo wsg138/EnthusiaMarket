@@ -368,7 +368,6 @@ gui:
       in_stock: "<green>In Stock</green> <dark_gray>—</dark_gray> <white><item>"
       out_of_stock: "<red>Out of Stock</red> <dark_gray>—</dark_gray> <white><item>"
       location_heading: "<gold>Shop Location"
-      world: "<gray>World: <white><world>"
       coordinates: "<gray>Coordinates: <white><x>, <y>, <z>"
       owner: "<gray>Owner: <yellow><owner>"
       stall: "<gray>Stall: <aqua><stall>"

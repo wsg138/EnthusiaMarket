@@ -81,4 +81,12 @@ class ShopSearchServiceTest {
     @Test fun `does not inspect containers when search is disabled`() {
         assertTrue(svc.findMatch(false, ItemStack(Material.GUNPOWDER), "gunpowder") == null)
     }
+
+    @Test fun `matches material search categories`() {
+        assertTrue(svc.findMatch(true, ItemStack(Material.DIAMOND_CHESTPLATE), "armor") != null)
+        assertTrue(svc.findMatch(true, ItemStack(Material.NETHERITE_PICKAXE), "tool") != null)
+        assertTrue(svc.findMatch(true, ItemStack(Material.DIAMOND_SWORD), "tool") != null)
+        assertTrue(svc.findMatch(true, ItemStack(Material.MACE), "weapon") != null)
+        assertTrue(svc.findMatch(true, ItemStack(Material.SPLASH_POTION), "potions") != null)
+    }
 }
