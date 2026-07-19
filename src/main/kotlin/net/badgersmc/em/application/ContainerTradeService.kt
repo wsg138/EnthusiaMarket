@@ -430,8 +430,13 @@ open class ContainerTradeService(
         costStack: ItemStack,
         cause: Exception,
     ): ContainerTradeResult {
-        val productRemoved = ctx.player.inventory.removeItem(sellStack.clone()).isEmpty()
-        val productRestored = ctx.containerInv.addItem(sellStack.clone()).isEmpty()
+        val sellClone = sellStack.clone()
+        val sellLeftovers = ctx.player.inventory.removeItem(sellClone)
+        val productRemoved = sellLeftovers.isEmpty()
+        val successfullyRemoved = sellClone.amount - sellLeftovers.values.sumOf { it.amount }
+        val productRestored = if (successfullyRemoved > 0) {
+            ctx.containerInv.addItem(sellStack.clone().apply { amount = successfullyRemoved }).isEmpty()
+        } else true
         val paymentRestored = ctx.player.inventory.addItem(costStack.clone()).isEmpty()
         log.log(java.util.logging.Level.WARNING, "Barter vault deposit failed after inventory mutation", cause)
         if (productRemoved && productRestored && paymentRestored) {
@@ -544,8 +549,13 @@ open class ContainerTradeService(
         try {
             shopVault!!.deposit(ctx.ownerUuid, placedCost.clone().apply { amount = amounts.cost }, amounts.cost)
         } catch (e: Exception) {
-            val removed = ctx.player.inventory.removeItem(ctx.sellStack.clone().apply { amount = amounts.sell }).isEmpty()
-            val restored = ctx.container.inventory.addItem(requestedSell).isEmpty()
+            val requestedSellClone = ctx.sellStack.clone().apply { amount = amounts.sell }
+            val sellLeftovers = ctx.player.inventory.removeItem(requestedSellClone)
+            val removed = sellLeftovers.isEmpty()
+            val successfullyRemoved = amounts.sell - sellLeftovers.values.sumOf { it.amount }
+            val restored = if (successfullyRemoved > 0) {
+                ctx.container.inventory.addItem(requestedSell.apply { amount = successfullyRemoved }).isEmpty()
+            } else true
             log.log(java.util.logging.Level.WARNING, "Placement barter vault deposit failed after inventory mutation", e)
             if (removed && restored) {
                 return ContainerTradeResult.Failure("Barter vault unavailable; trade was rolled back")

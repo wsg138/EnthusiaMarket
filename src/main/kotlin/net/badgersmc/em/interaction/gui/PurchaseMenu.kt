@@ -356,12 +356,14 @@ class PurchaseMenu(
     private fun buildRowItems(): RowItems {
         val totalAmount = shop.sellAmount * multiplier
         val totalCost = shop.costAmount * multiplier
+        val avail = ShopDisplay.tradesAvailable(shop)
+        val stockStr = if (avail == Int.MAX_VALUE) "Unlimited" else avail.toString()
         return when (shop.direction) {
             SignDirection.SELL -> RowItems(
                 receiveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER),
                 receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
                 receiveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
+                    lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
                     lang.msg("gui.shop.sell_lore_owner", "owner" to ownerName),
                 ),
                 giveItem = MenuItems.currencyIcon(Component.empty()),
@@ -382,7 +384,7 @@ class PurchaseMenu(
                 receiveItem = sellStack?.clone() ?: ItemStack(Material.BARRIER),
                 receiveName = lang.msg("gui.shop.receive_sell", "amount" to totalAmount, "item" to sellName),
                 receiveLore = listOf(
-                    lang.msg("gui.shop.sell_lore_stock", "stock" to ShopDisplay.tradesAvailable(shop)),
+                    lang.msg("gui.shop.sell_lore_stock", "stock" to stockStr),
                 ),
                 giveItem = ItemStack(Material.AIR), // unused — TRADE renders empty slot instead
                 giveName = Component.empty(),
