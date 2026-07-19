@@ -17,13 +17,19 @@ class MaterialSuggestionsTest {
     }
 
     @Test
+    fun `search categories are suggested alongside materials`() {
+        assertEquals(listOf("armor"), MaterialSuggestions.matching(sample, "arm"))
+        assertEquals(listOf("tools"), MaterialSuggestions.matching(sample, "too"))
+    }
+
+    @Test
     fun `prefix match works for uppercase input`() {
         assertEquals(listOf("APPLE"), MaterialSuggestions.matching(sample, "APP"))
     }
 
     @Test
     fun `blank input returns every candidate in original order`() {
-        assertEquals(sample, MaterialSuggestions.matching(sample, ""))
+        assertEquals(MaterialSuggestions.searchCategories + sample, MaterialSuggestions.matching(sample, ""))
     }
 
     @Test
