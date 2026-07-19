@@ -2,6 +2,7 @@ package net.badgersmc.em.infrastructure.listeners
 
 import io.papermc.paper.event.player.AsyncChatEvent
 import net.badgersmc.em.interaction.gui.CreateShopMenu
+import net.badgersmc.em.interaction.gui.PurchaseBulkMenu
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
@@ -34,6 +35,11 @@ open class ChatPriceListener(
             event.isCancelled = true
             Bukkit.getScheduler().runTask(plugin, Runnable {
                 CreateShopMenu.handleChat(player, message, lang)
+            })
+        } else if (PurchaseBulkMenu.isWaiting(player.uniqueId)) {
+            event.isCancelled = true
+            Bukkit.getScheduler().runTask(plugin, Runnable {
+                PurchaseBulkMenu.handleChat(player, message, lang)
             })
         }
     }

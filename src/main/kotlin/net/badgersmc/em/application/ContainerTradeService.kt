@@ -58,6 +58,9 @@ open class ContainerTradeService(
     private val log = Logger.getLogger(ContainerTradeService::class.java.name)
     private val compensationAlerts = CompensationAlertService()
 
+    /** Read-only balance lookup for purchase-menu affordability previews. */
+    fun balanceOf(playerUuid: UUID): Long = economy.balance(playerUuid)
+
     fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
         if (shop.frozen) return logFail(playerUuid, shop.id, "buy", "frozen")
         if (shop.sellAmount <= 0 || shop.costAmount <= 0) return logFail(playerUuid, shop.id, "buy", "invalid amounts")
