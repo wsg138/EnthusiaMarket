@@ -14,6 +14,6 @@ object ShopDisplay {
 
     fun tradesAvailable(shop: Shop): Int = when (shop.direction) {
         SignDirection.BUY -> Int.MAX_VALUE // BUY capacity and affordability are service-owned checks
-        else -> if (shop.sellAmount > 0) shop.stockCount / shop.sellAmount else 0
+        else -> if (shop.adminShop) Int.MAX_VALUE else if (shop.sellAmount > 0) shop.stockCount / shop.sellAmount else 0
     }
 }

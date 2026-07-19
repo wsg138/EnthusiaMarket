@@ -8,7 +8,8 @@ import io.papermc.paper.command.brigadier.Commands
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents
 import net.badgersmc.em.application.MaterialSuggestions
 import net.badgersmc.em.application.PriceTickerService
-import net.badgersmc.em.domain.shop.Shop
+import net.badgersmc.em.application.ShopSearchService
+import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
 import net.badgersmc.em.domain.stall.StallRepository
@@ -32,6 +33,7 @@ object FindItemRegistrar {
             val transactions = nexus.getBean(ShopTransactionRepository::class)
             val stallRepo = nexus.getBean(StallRepository::class)
             val lang = nexus.getBean(LangService::class)
+            val searchService = nexus.getBean(ShopSearchService::class)
 
             val itemProvider = com.mojang.brigadier.suggestion.SuggestionProvider<CommandSourceStack> { _, builder ->
                 MaterialSuggestions.matching(itemNames, builder.remaining)
@@ -54,28 +56,29 @@ object FindItemRegistrar {
                             // Offload DB queries off the main thread; open the GUI
                             // back on the server thread (REQ-605 sync requirement).
                             Bukkit.getScheduler().runTaskAsynchronously(plugin) { _ ->
-                                val material = Material.matchMaterial(query)
-                                val results: List<Shop>
-                                if (material != null) {
-                                    results = shopRepo.findBySellMaterial(material.name)
-                                        .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
-                                } else if (query.length >= 2) {
-                                    results = shopRepo.findBySellMaterialPrefix(query.uppercase())
-                                        .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
-                                } else {
-                                    player.sendMessage(lang.msg("shop.cmd.search.unknown_item", "query" to query))
+                                if (query.length < 2) {
+                                    Bukkit.getScheduler().runTask(plugin) { _ ->
+                                        player.sendMessage(lang.msg("shop.cmd.search.unknown_item", "query" to query))
+                                    }
                                     return@runTaskAsynchronously
                                 }
-                                if (results.isEmpty()) {
-                                    player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
-                                    return@runTaskAsynchronously
+                                // Nested container metadata is inspected on the server thread.
+                                val candidates = shopRepo.all().filter { it.searchEnabled }
+                                val ticker = Material.matchMaterial(query)?.let {
+                                    PriceTickerService.compute(it.name, transactions)
                                 }
-                                val ticker = PriceTickerService.compute(
-                                    material?.name ?: query.uppercase(), transactions
-                                )
-                                // GUI must open on the server thread
                                 Bukkit.getScheduler().runTask(plugin) { _ ->
-                                    SearchResultsMenu(results, query, 1, lang, stallRepo, ticker).open(player)
+                                    val results = candidates.mapNotNull { shop ->
+                                        val soldItem = ItemStackSerializer.deserialize(shop.sellItem) ?: return@mapNotNull null
+                                        searchService.findMatch(shop.searchEnabled, soldItem, query)?.let {
+                                            SearchResultsMenu.Result(shop, it.material, it.nested)
+                                        }
+                                    }
+                                    if (results.isEmpty()) {
+                                        player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
+                                    } else {
+                                        SearchResultsMenu(results, query, lang, stallRepo, ticker).open(player)
+                                    }
                                 }
                             }
                             1

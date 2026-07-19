@@ -6,6 +6,7 @@ import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.LookAtShopResolver
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.application.ShopSignRenderer
+import net.badgersmc.em.application.ShopSearchService
 import net.badgersmc.em.application.ShopVaultService
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
@@ -36,6 +37,7 @@ class ShopCommands(
     private val lang: LangService,
     private val vaultService: ShopVaultService,
     private val stallRepository: StallRepository,
+    private val shopSearchService: ShopSearchService,
 ) {
     @Subcommand("list")
     @Permission("enthusiamarket.shop.use")
@@ -155,30 +157,23 @@ class ShopCommands(
         query: String,
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
-        val material = org.bukkit.Material.matchMaterial(query)
-        // Exact match first, then prefix fallback for partial queries (2+ chars)
-        if (material != null) {
-            val results = shopRepository.findBySellMaterial(material.name)
-                .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) } // cheapest unit price first
-            if (results.isNotEmpty()) {
-                val ticker = net.badgersmc.em.application.PriceTickerService.compute(material.name, transactions)
-                net.badgersmc.em.interaction.gui.SearchResultsMenu(
-                    results, query, 1, lang, stallRepository, ticker,
-                ).open(player)
-                return
+        if (query.length < 2) {
+            player.sendMessage(lang.msg("shop.cmd.search.unknown_item", "query" to query)); return
+        }
+        val results = shopRepository.all().mapNotNull { shop ->
+            val item = ItemStackSerializer.deserialize(shop.sellItem) ?: return@mapNotNull null
+            shopSearchService.findMatch(shop.searchEnabled, item, query)?.let {
+                net.badgersmc.em.interaction.gui.SearchResultsMenu.Result(shop, it.material, it.nested)
             }
         }
-        // Prefix fallback
-        if (query.length >= 2) {
-            val prefixResults = shopRepository.findBySellMaterialPrefix(query.uppercase())
-                .sortedBy { it.costAmount.toDouble() / it.sellAmount.coerceAtLeast(1) }
-            if (prefixResults.isNotEmpty()) {
-                // Ticker is meaningless for prefix searches (heterogeneous items)
-                net.badgersmc.em.interaction.gui.SearchResultsMenu(
-                    prefixResults, query, 1, lang, stallRepository, null,
-                ).open(player)
-                return
+        if (results.isNotEmpty()) {
+            val ticker = org.bukkit.Material.matchMaterial(query)?.let {
+                net.badgersmc.em.application.PriceTickerService.compute(it.name, transactions)
             }
+            net.badgersmc.em.interaction.gui.SearchResultsMenu(
+                results, query, lang, stallRepository, ticker,
+            ).open(player)
+            return
         }
         player.sendMessage(lang.msg("shop.cmd.search.none", "query" to query))
     }
