@@ -203,7 +203,7 @@ open class ContainerTradeService(
 
         // Remove stock from container *before* charging player — the pre-check
         // is a snapshot; the container could change in the meantime.
-        val removalResult = ctx.containerInv.removeItem(sellStack.clone())
+        val removalResult = removeSimilar(ctx.containerInv, sellStack, sellStack.amount)
         if (removalResult.isNotEmpty()) {
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
         }
@@ -390,13 +390,13 @@ open class ContainerTradeService(
         shop: Shop, ctx: TradeContext, sellStack: ItemStack, costStack: ItemStack
     ): ContainerTradeResult {
         // Remove cost items from player, check for partial failure
-        val costLeftover = ctx.player.inventory.removeItem(costStack.clone())
+        val costLeftover = removeSimilar(ctx.player.inventory, costStack, costStack.amount)
         if (costLeftover.isNotEmpty()) {
             restorePartial(ctx.player.inventory, costStack, costLeftover)
             return ContainerTradeResult.Failure("Cannot afford cost — missing items")
         }
         // Remove sell items from container, check for partial failure
-        val sellLeftover = ctx.containerInv.removeItem(sellStack.clone())
+        val sellLeftover = removeSimilar(ctx.containerInv, sellStack, sellStack.amount)
         if (sellLeftover.isNotEmpty()) {
             // Return cost items that were already removed
             ctx.player.inventory.addItem(costStack.clone())
@@ -537,7 +537,7 @@ open class ContainerTradeService(
     @Suppress("ReturnCount")
     private fun executeSlotTradeTransfer(ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, amounts: SlotTradeAmounts): ContainerTradeResult {
         val requestedSell = ctx.sellStack.clone().apply { amount = amounts.sell }
-        val sellLeftover = ctx.container.inventory.removeItem(requestedSell)
+        val sellLeftover = removeSimilar(ctx.container.inventory, ctx.sellStack, amounts.sell)
         if (sellLeftover.isNotEmpty()) {
             restorePartial(ctx.container.inventory, requestedSell, sellLeftover)
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
@@ -682,5 +682,33 @@ open class ContainerTradeService(
             return TransferResult.DestFull(leftover)
         }
         return TransferResult.Success
+    }
+
+    /**
+     * Removes items matching [template] from [source] using
+     * [ItemStackMatch.isSimilarIgnoringDamageNullZero] instead of Bukkit's
+     * strict equality. Clones matched items from the inventory so their
+     * real metadata (including nullable Damage tag) is preserved in the
+     * removeItem call. Returns leftovers if the full amount can't be removed.
+     */
+    @Suppress("CyclomaticComplexMethod")
+    private fun removeSimilar(source: Inventory, template: ItemStack, amount: Int): Map<Int, ItemStack> {
+        var remaining = amount
+        val contents = source.contents
+        if (contents != null && contents.isNotEmpty()) {
+            for (item in contents) {
+                if (item == null) continue
+                if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
+                val take = minOf(item.amount, remaining)
+                val batch = item.clone().apply { this.amount = take }
+                source.removeItem(batch)
+                remaining -= take
+                if (remaining <= 0) return emptyMap()
+            }
+        }
+        if (remaining <= 0) return emptyMap()
+        // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
+        val batch = template.clone().apply { this.amount = remaining }
+        return source.removeItem(batch)
     }
 }

@@ -507,8 +507,14 @@ class ContainerTradeServiceTest {
         every { Bukkit.getPlayer(playerUuid) } returns player
         every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
 
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        every { sellStack.amount } returns shop.sellAmount
+        every { sellStack.clone() } returns sellStack
+        every { sellStack.type } returns org.bukkit.Material.DIAMOND
+
         val containerInv = mockk<Inventory>(relaxed = true)
         every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+        every { containerInv.contents } returns arrayOf(sellStack)
         every { playerInv.addItem(any()) } returns hashMapOf()
 
         val container = mockk<Container>(relaxed = true)
@@ -517,6 +523,7 @@ class ContainerTradeServiceTest {
         val service = buildService(
             stallRepo = stallRepo,
             economy = economy,
+            mockItemStack = sellStack,
             mockContainer = container
         )
 
