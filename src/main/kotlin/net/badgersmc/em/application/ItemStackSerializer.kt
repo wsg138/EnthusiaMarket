@@ -9,8 +9,10 @@ import java.util.logging.Logger
 object ItemStackSerializer {
     private val log = Logger.getLogger(ItemStackSerializer::class.java.name)
 
-    fun serialize(item: ItemStack): String =
-        Base64.getEncoder().encodeToString(item.serializeAsBytes())
+    fun serialize(item: ItemStack): String {
+        normalizeDamage(item)
+        return Base64.getEncoder().encodeToString(item.serializeAsBytes())
+    }
 
     fun deserialize(base64: String): ItemStack? {
         val bytes = try {

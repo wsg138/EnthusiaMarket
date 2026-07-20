@@ -17,6 +17,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.inventory.Inventory
 import java.util.concurrent.ConcurrentHashMap
+import java.util.logging.Logger
 
 /**
  * Keeps shop sign stock text in sync with linked container inventories.
@@ -40,6 +41,8 @@ class ContainerStockListener(
     /** shopId → last-persisted raw stock (dedup: skip sign update if unchanged). */
     private val lastRawStock: MutableMap<Long, Int> = mutableMapOf()
     private var previouslyDepletedShops: MutableSet<Long> = mutableSetOf()
+
+    private val log = Logger.getLogger(ContainerStockListener::class.java.name)
 
     /** shopId → pending raw stock to flush to DB on next timer tick. */
     private val dirtyStock: ConcurrentHashMap<Long, Int> = ConcurrentHashMap()
@@ -79,9 +82,13 @@ class ContainerStockListener(
         if (shops.isEmpty()) return
         val end = (cursor + batchSize).coerceAtMost(shops.size)
         for (i in cursor until end) {
-            val shop = shops[i]
-            val inventory = liveContainerInventory(shop) ?: continue
-            refreshOne(shop, inventory)
+            try {
+                val shop = shops[i]
+                val inventory = liveContainerInventory(shop) ?: continue
+                refreshOne(shop, inventory)
+            } catch (e: Exception) {
+                log.warning("Stock refresh failed for shop ${shops[i].id}: ${e.message}")
+            }
         }
         cursor = if (end >= shops.size) 0 else end
         if (cursor == 0) flushDirtyStock()  // full cycle complete → persist
@@ -115,12 +122,19 @@ class ContainerStockListener(
         loadedSign(shop)?.let { updateSignStock(it, shop, trades) }
     }
 
-    /** Flush all batched [dirtyStock] writes to SQLite in a single batch (PERF-5). */
+    /** Flush all batched [dirtyStock] writes to SQLite in a single batch (PERF-5).
+     *  Drains entries atomically so concurrent writes from [onTransaction] during
+     *  flushing are preserved for the next cycle. */
     private fun flushDirtyStock() {
         if (dirtyStock.isEmpty()) return
-        val batch = HashMap(dirtyStock)
-        dirtyStock.clear()
-        shopRepository.updateStockBatch(batch)
+        val batch = HashMap<Long, Int>()
+        val iter = dirtyStock.entries.iterator()
+        while (iter.hasNext()) {
+            val (id, stock) = iter.next()
+            batch[id] = stock
+            iter.remove()
+        }
+        if (batch.isNotEmpty()) shopRepository.updateStockBatch(batch)
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────

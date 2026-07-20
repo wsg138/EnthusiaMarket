@@ -4,7 +4,19 @@ import org.bukkit.inventory.Inventory
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.Damageable
 
+/** Sets damage to 0 on [Damageable] items that report no damage,
+ *  so absent-damage and damage=0 produce identical serialized bytes.
+ *  repair_cost, enchantments, names, lore, and custom data are untouched. */
+internal fun normalizeDamage(stack: ItemStack) {
+    val meta = stack.itemMeta
+    if (meta is Damageable && !meta.hasDamage()) {
+        meta.damage = 0
+        stack.itemMeta = meta
+    }
+}
+
 /** Byte-exact item matching for shop stock/cost checks (ignores stack size). */
+@Suppress("TooManyFunctions")
 object ItemStackMatch {
 
     fun matches(a: ItemStack, b: ItemStack): Boolean =
@@ -66,6 +78,34 @@ object ItemStackMatch {
         return remaining <= 0
     }
 
+    /** Returns a human-readable list of serialized-map components that differ
+     *  between [a] and [b].  Keys present only in one side, or with differing
+     *  values, are reported.  Useful for debugging byte-exact mismatches. */
+    fun mismatchDebug(a: ItemStack, b: ItemStack): List<String> {
+        val ma = normalizeMap(a)
+        val mb = normalizeMap(b)
+        val diffs = mutableListOf<String>()
+        val allKeys = (ma.keys + mb.keys).toSortedSet()
+        for (key in allKeys) {
+            val va = ma[key]
+            val vb = mb[key]
+            when {
+                va == null && vb != null -> diffs += "+ $key = $vb"
+                va != null && vb == null -> diffs += "- $key = $va"
+                va != vb                 -> diffs += "~ $key: $va → $vb"
+            }
+        }
+        return diffs
+    }
+
+    /** Serialize to a normalized map (stack size stripped, damage normalized). */
+    private fun normalizeMap(stack: ItemStack): Map<String, Any> {
+        val single = stack.clone()
+        single.amount = 1
+        normalizeDamage(single)
+        return single.serialize()
+    }
+
     private fun freeSpaceSimilar(slot: ItemStack?, template: ItemStack, maxStack: Int): Int {
         if (slot == null || slot.type.isAir) return maxStack
         return if (isSimilarIgnoringDamageNullZero(slot, template)) (maxStack - slot.amount).coerceAtLeast(0) else 0
@@ -104,9 +144,12 @@ object ItemStackMatch {
         return false
     }
 
+    private fun normalizeDamage(stack: ItemStack) = net.badgersmc.em.application.normalizeDamage(stack)
+
     private fun normalizedBytes(stack: ItemStack): ByteArray {
         val single = stack.clone()
         single.amount = 1
+        normalizeDamage(single)
         return single.serializeAsBytes()
     }
 }
