@@ -60,6 +60,10 @@ class FloodgateSkinCaptureService(
 
     private fun capture(playerId: UUID, texture: MojangTexture) {
         accepted.incrementAndGet()
+        queueCapture(playerId, texture)
+    }
+
+    private fun queueCapture(playerId: UUID, texture: MojangTexture) {
         try {
             executor.execute {
                 try {

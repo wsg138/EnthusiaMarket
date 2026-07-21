@@ -11,23 +11,27 @@ object FloodgateHeadIntegration {
     fun start(plugin: JavaPlugin, capture: FloodgateSkinCaptureService): AutoCloseable? {
         if (!Bukkit.getPluginManager().isPluginEnabled("floodgate")) return null
         return try {
-            val skinEventListener = FloodgateSkinListener(capture)
-            val profileListener = try {
-                FloodgateProfileSkinListener(plugin, capture)
-            } catch (error: Throwable) {
-                skinEventListener.close()
-                throw error
-            }
-            AutoCloseable {
-                skinEventListener.close()
-                profileListener.close()
-            }
+            registerListeners(plugin, capture)
         } catch (_: LinkageError) {
             plugin.logger.warning("Bedrock head capture is unavailable (safe category: floodgate_api)")
             null
         } catch (_: Exception) {
             plugin.logger.warning("Bedrock head capture is unavailable (safe category: floodgate_registration)")
             null
+        }
+    }
+
+    private fun registerListeners(plugin: JavaPlugin, capture: FloodgateSkinCaptureService): AutoCloseable {
+        val skinEventListener = FloodgateSkinListener(capture)
+        val profileListener = try {
+            FloodgateProfileSkinListener(plugin, capture)
+        } catch (error: Throwable) {
+            skinEventListener.close()
+            throw error
+        }
+        return AutoCloseable {
+            skinEventListener.close()
+            profileListener.close()
         }
     }
 }
