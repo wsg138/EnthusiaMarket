@@ -48,6 +48,17 @@ class FloodgateSkinCaptureService(
 
     override fun capture(playerId: UUID, value: String, signature: String?) {
         val texture = FloodgateTexturePropertyParser.parse(value) ?: return reject("texture_property")
+        capture(playerId, texture)
+    }
+
+    /** Captures a validated Mojang skin texture supplied by Paper's online player profile. */
+    fun captureProfileTexture(playerId: UUID, skinUrl: String): Boolean {
+        val texture = FloodgateTexturePropertyParser.parseUrl(skinUrl) ?: return false
+        capture(playerId, texture)
+        return true
+    }
+
+    private fun capture(playerId: UUID, texture: MojangTexture) {
         accepted.incrementAndGet()
         try {
             executor.execute {

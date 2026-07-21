@@ -8,10 +8,20 @@ fun interface FloodgateTextureCapture { fun capture(playerId: java.util.UUID, va
 /** Loads Floodgate-linked code only when the optional backend plugin is present. */
 object FloodgateHeadIntegration {
     @Suppress("TooGenericExceptionCaught")
-    fun start(plugin: JavaPlugin, capture: FloodgateTextureCapture): AutoCloseable? {
+    fun start(plugin: JavaPlugin, capture: FloodgateSkinCaptureService): AutoCloseable? {
         if (!Bukkit.getPluginManager().isPluginEnabled("floodgate")) return null
         return try {
-            FloodgateSkinListener(capture)
+            val skinEventListener = FloodgateSkinListener(capture)
+            val profileListener = try {
+                FloodgateProfileSkinListener(plugin, capture)
+            } catch (error: Throwable) {
+                skinEventListener.close()
+                throw error
+            }
+            AutoCloseable {
+                skinEventListener.close()
+                profileListener.close()
+            }
         } catch (_: LinkageError) {
             plugin.logger.warning("Bedrock head capture is unavailable (safe category: floodgate_api)")
             null

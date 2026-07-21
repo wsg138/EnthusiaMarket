@@ -20,6 +20,9 @@ object FloodgateTexturePropertyParser {
 
     fun parse(value: String): MojangTexture? = decode(value)?.let(::skinUrl)?.let(::textureHash)?.let(MojangTexture::fromHash)
 
+    /** Validates the skin URL exposed by Paper's player profile after Floodgate has applied it. */
+    fun parseUrl(value: String): MojangTexture? = textureHash(value)?.let(MojangTexture::fromHash)
+
     private fun decode(value: String): String? {
         if (value.length !in 1..MAX_ENCODED) return null
         val decoded = runCatching { Base64.getDecoder().decode(value) }.getOrNull() ?: return null

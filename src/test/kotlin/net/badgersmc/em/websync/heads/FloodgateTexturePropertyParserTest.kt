@@ -11,6 +11,7 @@ class FloodgateTexturePropertyParserTest {
     @Test
     fun `accepts a normalized Mojang texture URL`() {
         assertEquals(hash, FloodgateTexturePropertyParser.parse(property("https://textures.minecraft.net/texture/$hash"))?.hash)
+        assertEquals(hash, FloodgateTexturePropertyParser.parseUrl("https://textures.minecraft.net/texture/$hash")?.hash)
     }
 
     @Test
@@ -21,6 +22,7 @@ class FloodgateTexturePropertyParserTest {
             "https://textures.minecraft.net@evil.test/texture/$hash",
             "https://textures.minecraft.net/texture/${"A".repeat(64)}",
         ).forEach { assertNull(FloodgateTexturePropertyParser.parse(property(it))) }
+        assertNull(FloodgateTexturePropertyParser.parseUrl("https://textures.minecraft.net/texture/$hash?next=x"))
     }
 
     @Test
