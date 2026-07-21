@@ -3,7 +3,7 @@ package net.badgersmc.em.websync.heads
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 
-fun interface FloodgateTextureCapture { fun capture(playerId: java.util.UUID, value: String, signature: String?) }
+fun interface FloodgateTextureCapture { fun capture(playerId: java.util.UUID, value: String, signature: String?): Boolean }
 
 /** Loads Floodgate-linked code only when the optional backend plugin is present. */
 object FloodgateHeadIntegration {

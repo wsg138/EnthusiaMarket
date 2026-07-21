@@ -36,7 +36,7 @@ class FloodgateSkinCaptureService(
     @Volatile private var lastFailure: String? = null
     private val executor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue(16),
         { task -> Thread(task, "EnthusiaMarket-FloodgateHeads").apply { isDaemon = true } },
-        ThreadPoolExecutor.DiscardPolicy(),
+        ThreadPoolExecutor.AbortPolicy(),
     )
 
     override fun eventReceived() { events.incrementAndGet() }
@@ -46,24 +46,28 @@ class FloodgateSkinCaptureService(
         lastFailure = category
     }
 
-    override fun capture(playerId: UUID, value: String, signature: String?) {
-        val texture = FloodgateTexturePropertyParser.parse(value) ?: return reject("texture_property")
-        capture(playerId, texture)
+    override fun capture(playerId: UUID, value: String, signature: String?): Boolean {
+        val texture = FloodgateTexturePropertyParser.parse(value)
+        if (texture == null) {
+            reject("texture_property")
+            return false
+        }
+        return capture(playerId, texture)
     }
 
     /** Captures a validated Mojang skin texture supplied by Paper's online player profile. */
     fun captureProfileTexture(playerId: UUID, skinUrl: String): Boolean {
         val texture = FloodgateTexturePropertyParser.parseUrl(skinUrl) ?: return false
-        capture(playerId, texture)
+        return capture(playerId, texture)
+    }
+
+    private fun capture(playerId: UUID, texture: MojangTexture): Boolean {
+        if (!queueCapture(playerId, texture)) return false
+        accepted.incrementAndGet()
         return true
     }
 
-    private fun capture(playerId: UUID, texture: MojangTexture) {
-        accepted.incrementAndGet()
-        queueCapture(playerId, texture)
-    }
-
-    private fun queueCapture(playerId: UUID, texture: MojangTexture) {
+    private fun queueCapture(playerId: UUID, texture: MojangTexture): Boolean {
         try {
             executor.execute {
                 try {
@@ -78,9 +82,11 @@ class FloodgateSkinCaptureService(
                     fail("capture")
                 }
             }
+            return true
         } catch (_: RejectedExecutionException) {
             dropped.incrementAndGet()
             lastFailure = "queue_full"
+            return false
         }
     }
 

@@ -58,8 +58,7 @@ class FloodgateProfileSkinListener(
             ?.properties
             ?.firstOrNull { it.name == "textures" }
         if (textureProperty != null && FloodgateTexturePropertyParser.parse(textureProperty.value) != null) {
-            capture.capture(player.uniqueId, textureProperty.value, textureProperty.signature)
-            return true
+            return capture.capture(player.uniqueId, textureProperty.value, textureProperty.signature)
         }
 
         val skinUrl = runCatching { profile.textures.skin?.toString() }.getOrNull() ?: return false
