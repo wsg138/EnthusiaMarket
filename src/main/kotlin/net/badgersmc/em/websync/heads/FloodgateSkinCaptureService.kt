@@ -69,24 +69,26 @@ class FloodgateSkinCaptureService(
 
     private fun queueCapture(playerId: UUID, texture: MojangTexture): Boolean {
         try {
-            executor.execute {
-                try {
-                    val png = BedrockHeadRenderer.render(fetcher.fetch(texture))
-                    queued.incrementAndGet()
-                    store.captureRendered(playerId, png)
-                } catch (_: java.io.IOException) {
-                    fail("texture_fetch")
-                } catch (_: IllegalArgumentException) {
-                    fail("texture_render")
-                } catch (_: Exception) {
-                    fail("capture")
-                }
-            }
+            executor.execute { renderAndStore(playerId, texture) }
             return true
         } catch (_: RejectedExecutionException) {
             dropped.incrementAndGet()
             lastFailure = "queue_full"
             return false
+        }
+    }
+
+    private fun renderAndStore(playerId: UUID, texture: MojangTexture) {
+        try {
+            val png = BedrockHeadRenderer.render(fetcher.fetch(texture))
+            queued.incrementAndGet()
+            store.captureRendered(playerId, png)
+        } catch (_: java.io.IOException) {
+            fail("texture_fetch")
+        } catch (_: IllegalArgumentException) {
+            fail("texture_render")
+        } catch (_: Exception) {
+            fail("capture")
         }
     }
 
