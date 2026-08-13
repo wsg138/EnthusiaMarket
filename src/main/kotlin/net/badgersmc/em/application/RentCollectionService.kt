@@ -88,7 +88,8 @@ class RentCollectionService(
         // nextRentAt forward to pre-pay a period; without this guard the fixed-interval
         // ticker re-charges on its own schedule and the pre-paid period is lost.
         // A null nextRentAt (legacy/seeded stalls) falls through and is charged as before.
-        stall.nextRentAt?.let { due -> if (now.isBefore(due)) return ProcessResult.Skipped }
+        val nextRentAt = stall.nextRentAt
+        if (nextRentAt != null && now.isBefore(nextRentAt)) return ProcessResult.Skipped
 
         // Unowned/NONE stalls have nothing to charge.
         if (stall.owner.type == OwnerType.NONE) return ProcessResult.Skipped
@@ -108,37 +109,33 @@ class RentCollectionService(
      *  GRACE past its window starts emergency auction. */
     private fun handleFailure(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
         return when (stall.state) {
-            StallState.OWNED -> {
-                val due = stall.nextRentAt
-                if (due != null && isPastGrace(due, now)) {
-                    // Stall already >3d past due — skip GRACE, fire emergency auction immediately.
-                    // Shops must be frozen first — GRACE normally does this but we're bypassing it.
-                    shops.freezeByStall(stall.id.value, frozen = true)
-                    return emergencyAuction(stall, now, rentDue)
-                }
-                // Freeze shops FIRST: if it fails, the stall stays OWNED and the next
-                // tick retries. If we save GRACE first and the freeze throws, the stall
-                // is in GRACE with active shops — the GRACE processing branch does not
-                // re-freeze, so the eviction penalty would be broken for the entire
-                // grace period.
-                shops.freezeByStall(stall.id.value, frozen = true)
-                // Preserve original ownerSince — do NOT reset it so the audit trail stays intact.
-                // Anchor nextRentAt so the grace window starts from now, not the original purchase
-                // date (which could be months ago and would cause instant eviction on next tick).
-                stallRepository.save(stall.copy(
-                    state = StallState.GRACE,
-                    nextRentAt = stall.nextRentAt ?: now
-                ))
-                ProcessResult.Defaulted
-            }
-            StallState.GRACE -> {
-                // Use nextRentAt (when rent was actually due) as the grace window start,
-                // NOT ownerSince (which could be from original purchase months ago).
-                val graceStart = stall.nextRentAt ?: stall.ownerSince
-                if (graceStart != null && isPastGrace(graceStart, now)) emergencyAuction(stall, now, rentDue)
-                else ProcessResult.Skipped
-            }
+            StallState.OWNED -> handleOwned(stall, now, rentDue)
+            StallState.GRACE -> handleGrace(stall, now, rentDue)
             else -> ProcessResult.Skipped
+        }
+    }
+
+    private fun handleOwned(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
+        val due = stall.nextRentAt
+        if (due != null && isPastGrace(due, now)) {
+            shops.freezeByStall(stall.id.value, frozen = true)
+            return emergencyAuction(stall, now, rentDue)
+        }
+        // Freeze first so a failed write cannot leave a GRACE stall trading.
+        shops.freezeByStall(stall.id.value, frozen = true)
+        stallRepository.save(stall.copy(
+            state = StallState.GRACE,
+            nextRentAt = stall.nextRentAt ?: now,
+        ))
+        return ProcessResult.Defaulted
+    }
+
+    private fun handleGrace(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
+        val graceStart = stall.nextRentAt ?: stall.ownerSince ?: return ProcessResult.Skipped
+        return if (isPastGrace(graceStart, now)) {
+            emergencyAuction(stall, now, rentDue)
+        } else {
+            ProcessResult.Skipped
         }
     }
 
