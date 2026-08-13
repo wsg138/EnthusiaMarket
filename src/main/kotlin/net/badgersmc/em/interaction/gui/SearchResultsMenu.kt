@@ -18,6 +18,7 @@ import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.entity.Player
+import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.inventory.ItemStack
 import java.util.Locale
 import kotlin.math.abs
@@ -62,50 +63,93 @@ class SearchResultsMenu(
         pageItems: List<Result>,
         stallNames: Map<StallId, String>,
     ) {
-        pageItems.forEachIndexed { index, result ->
-            val shop = result.shop
-            val template = ItemStackSerializer.deserialize(shop.sellItem)
-            val icon = template?.clone() ?: ItemStack(Material.CHEST)
-            val meta = icon.itemMeta ?: return@forEachIndexed
-            val owner = Bukkit.getOfflinePlayer(shop.owner).name ?: langText("gui.shop.search.unknown")
-            val stall = stallNames[StallId(shop.stallId)] ?: shop.stallId
-            val trades = ShopDisplay.tradesAvailable(shop)
-            val statusKey = if (trades > 0) "gui.shop.search.in_stock" else "gui.shop.search.out_of_stock"
-            meta.displayName(lang.msg(statusKey, "item" to pretty(result.matchedMaterial)))
-            val stock = if (trades == Int.MAX_VALUE) langText("gui.shop.search.unlimited") else trades.toString()
-            val lore = mutableListOf(
-                lang.msg("gui.shop.search.location_heading"),
-                lang.msg("gui.shop.search.coordinates", "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ),
-                Component.empty(),
-                lang.msg("gui.shop.search.owner", "owner" to owner),
-                lang.msg("gui.shop.search.stall", "stall" to stall),
-                lang.msg("gui.shop.search.price", "cost" to shop.costAmount, "amount" to shop.sellAmount),
-                lang.msg("gui.shop.search.stock", "stock" to stock),
-                lang.msg("gui.shop.search.direction", "direction" to ShopDisplay.directionLabel(shop.direction)),
-            )
-            if (result.nested) lore += lang.msg("gui.shop.search.contains", "item" to pretty(result.matchedMaterial))
-            lore += Component.empty()
-            lore += lang.msg(if (player.hasPermission(ADMIN_PERMISSION)) {
-                "gui.shop.search.click_teleport"
-            } else {
-                "gui.shop.search.click_location"
-            })
-            meta.lore(lore.map(::plainStyle))
-            icon.itemMeta = meta
-            pane.addItem(GuiItem(icon) { event ->
-                event.isCancelled = true
-                player.closeInventory()
-                val world = if (player.hasPermission(ADMIN_PERMISSION)) Bukkit.getWorld(shop.signWorld) else null
-                if (world != null) {
-                    player.teleport(Location(world, shop.signX + 0.5, shop.signY.toDouble(), shop.signZ + 0.5,
-                        player.location.yaw, player.location.pitch))
-                    player.sendMessage(lang.msg("gui.shop.search.teleported", "world" to shop.signWorld,
-                        "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
-                } else {
-                    player.sendMessage(lang.msg("gui.shop.search.clicked", "world" to shop.signWorld,
-                        "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ))
-                }
-            }, index % 9, RESULTS_START_ROW + index / 9)
+        for ((index, result) in pageItems.withIndex()) {
+            addResultIcon(pane, player, index, result, stallNames)
+        }
+    }
+
+    private fun addResultIcon(
+        pane: StaticPane,
+        player: Player,
+        index: Int,
+        result: Result,
+        stallNames: Map<StallId, String>,
+    ) {
+        val shop = result.shop
+        val template = ItemStackSerializer.deserialize(shop.sellItem)
+        val icon = template?.clone() ?: ItemStack(Material.CHEST)
+        val meta = icon.itemMeta ?: return
+        val trades = ShopDisplay.tradesAvailable(shop)
+        val statusKey = if (trades > 0) "gui.shop.search.in_stock" else "gui.shop.search.out_of_stock"
+        meta.displayName(lang.msg(statusKey, "item" to pretty(result.matchedMaterial)))
+        meta.lore(resultLore(player, result, stallNames, trades).map(::plainStyle))
+        icon.itemMeta = meta
+        pane.addItem(
+            GuiItem(icon) { event -> handleResultClick(event, player, shop) },
+            index % 9,
+            RESULTS_START_ROW + index / 9,
+        )
+    }
+
+    private fun resultLore(
+        player: Player,
+        result: Result,
+        stallNames: Map<StallId, String>,
+        trades: Int,
+    ): List<Component> {
+        val shop = result.shop
+        val owner = Bukkit.getOfflinePlayer(shop.owner).name ?: langText("gui.shop.search.unknown")
+        val stall = stallNames[StallId(shop.stallId)] ?: shop.stallId
+        val stock = if (trades == Int.MAX_VALUE) langText("gui.shop.search.unlimited") else trades.toString()
+        val lore = mutableListOf(
+            lang.msg("gui.shop.search.location_heading"),
+            lang.msg("gui.shop.search.coordinates", "x" to shop.signX, "y" to shop.signY, "z" to shop.signZ),
+            Component.empty(),
+            lang.msg("gui.shop.search.owner", "owner" to owner),
+            lang.msg("gui.shop.search.stall", "stall" to stall),
+            lang.msg("gui.shop.search.price", "cost" to shop.costAmount, "amount" to shop.sellAmount),
+            lang.msg("gui.shop.search.stock", "stock" to stock),
+            lang.msg("gui.shop.search.direction", "direction" to ShopDisplay.directionLabel(shop.direction)),
+        )
+        if (result.nested) lore += lang.msg("gui.shop.search.contains", "item" to pretty(result.matchedMaterial))
+        lore += Component.empty()
+        val clickKey = if (player.hasPermission(ADMIN_PERMISSION)) {
+            "gui.shop.search.click_teleport"
+        } else {
+            "gui.shop.search.click_location"
+        }
+        lore += lang.msg(clickKey)
+        return lore
+    }
+
+    private fun handleResultClick(event: InventoryClickEvent, player: Player, shop: Shop) {
+        event.isCancelled = true
+        player.closeInventory()
+        val world = if (player.hasPermission(ADMIN_PERMISSION)) Bukkit.getWorld(shop.signWorld) else null
+        if (world != null) {
+            player.teleport(Location(
+                world,
+                shop.signX + 0.5,
+                shop.signY.toDouble(),
+                shop.signZ + 0.5,
+                player.location.yaw,
+                player.location.pitch,
+            ))
+            player.sendMessage(lang.msg(
+                "gui.shop.search.teleported",
+                "world" to shop.signWorld,
+                "x" to shop.signX,
+                "y" to shop.signY,
+                "z" to shop.signZ,
+            ))
+        } else {
+            player.sendMessage(lang.msg(
+                "gui.shop.search.clicked",
+                "world" to shop.signWorld,
+                "x" to shop.signX,
+                "y" to shop.signY,
+                "z" to shop.signZ,
+            ))
         }
     }
 
