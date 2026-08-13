@@ -42,7 +42,8 @@ Run `/em import` to register WorldGuard regions. Check:
 
 **Symptom:** Players lose stalls quickly, rent drains fast.
 
-Check `rent.formulaPct` — it's a **percentage**, not a fraction.  
+Check `rent.formulaPct` — it's a **percentage**, not a fraction.
+
 `1.0` = 1% per period. `100.0` = 100% per period (stall price drained daily).
 
 Recommendation: use flat rent mode for predictable costs.
