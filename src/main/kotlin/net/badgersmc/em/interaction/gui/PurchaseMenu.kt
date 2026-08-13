@@ -20,6 +20,7 @@ import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.Bukkit
 import org.bukkit.Material
 import org.bukkit.entity.Player
+import org.bukkit.event.inventory.InventoryClickEvent
 import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.meta.BlockStateMeta
 
@@ -150,13 +151,15 @@ class PurchaseMenu(
         pane.addItem(GuiItem(decorated(
             if (canPurchase) Material.LIME_CONCRETE else Material.RED_CONCRETE,
             lang.msg(buttonKey, "trades" to multiplier), buttonLore,
-        )) { event ->
-            event.isCancelled = true
-            if (!canPurchase) return@GuiItem
-            executeTrade(player)
-            multiplier = 1
-            render(player)
-        }, 4, 2)
+        )) { event -> handleConfirmClick(event, player, canPurchase) }, 4, 2)
+    }
+
+    private fun handleConfirmClick(event: InventoryClickEvent, player: Player, canPurchase: Boolean) {
+        event.isCancelled = true
+        if (!canPurchase) return
+        executeTrade(player)
+        multiplier = 1
+        render(player)
     }
 
     private fun executeTrade(player: Player) {
@@ -173,28 +176,39 @@ class PurchaseMenu(
             return
         }
         val effectiveMultiplier = multiplier.coerceAtMost(available)
-        if (effectiveMultiplier < multiplier) {
-            player.sendMessage(lang.msg("shop.trade.multiplier_capped",
-                "asked" to multiplier, "available" to effectiveMultiplier))
+        val result = executeRepeatedTrades(player, effectiveMultiplier)
+        reportTradeResult(player, result.completed, effectiveMultiplier, result.lastResult)
+    }
+
+    private data class TradeRun(val completed: Int, val lastResult: ContainerTradeResult)
+
+    private fun executeRepeatedTrades(player: Player, tradeCount: Int): TradeRun {
+        if (tradeCount < multiplier) {
+            player.sendMessage(lang.msg(
+                "shop.trade.multiplier_capped",
+                "asked" to multiplier,
+                "available" to tradeCount,
+            ))
         }
         var lastResult: ContainerTradeResult = ContainerTradeResult.Success("")
         var completed = 0
-        var remaining = effectiveMultiplier
+        var remaining = tradeCount
         while (remaining > 0) {
-            val result = when (shop.direction) {
-                SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
-                SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
-                else -> break
-            }
+            val result = executeMoneyTrade(player)
             lastResult = result
-            if (result is ContainerTradeResult.Success) {
-                completed++
-                remaining--
-            } else {
-                break
-            }
+            if (result !is ContainerTradeResult.Success) break
+            completed++
+            remaining--
         }
-        reportTradeResult(player, completed, effectiveMultiplier, lastResult)
+        return TradeRun(completed, lastResult)
+    }
+
+    private fun executeMoneyTrade(player: Player): ContainerTradeResult {
+        return if (shop.direction == SignDirection.SELL) {
+            tradeService.executeSell(shop, player.uniqueId)
+        } else {
+            tradeService.executeBuy(shop, player.uniqueId)
+        }
     }
 
     private fun executeTradeFromSlot(player: Player) {
@@ -337,10 +351,12 @@ class PurchaseMenu(
     /** Visual border around the empty placement slot 15 for TRADE shops. */
     private fun addPlacementSlotBorder(pane: StaticPane) {
         val borderItem = ItemStack(Material.LIGHT_GRAY_STAINED_GLASS_PANE)
-            .apply { itemMeta = itemMeta?.apply { displayName(Component.text(" ")) } ?: return }
+        val borderMeta = borderItem.itemMeta ?: return
+        borderMeta.displayName(Component.text(" "))
+        borderItem.itemMeta = borderMeta
         // Left, right, and bottom border around slot 15 (position 6,1).
         // Row 0 col 6 already holds the YOU GIVE label framing the top.
-        listOf(Pair(5, 1), Pair(7, 1), Pair(6, 2)).forEach { (x, y) ->
+        for ((x, y) in listOf(Pair(5, 1), Pair(7, 1), Pair(6, 2))) {
             pane.addItem(GuiItem(borderItem.clone()), x, y)
         }
     }
