@@ -24,13 +24,24 @@ class MarketHttpClient(
         .followRedirects(HttpClient.Redirect.NEVER)
         .build()
 
+    private data class RequestSpec(
+        val method: String,
+        val path: String,
+        val eventId: String,
+        val body: ByteArray,
+        val requireAuthenticated: Boolean = false,
+        val contentType: String = "application/json",
+        val extraHeaders: Map<String, String> = emptyMap(),
+        val responseValidator: ((ByteArray) -> Boolean)? = null,
+    )
+
     fun deliver(delivery: PendingDelivery): DeliveryOutcome {
         val path = when (delivery.kind) {
             DeliveryKind.FULL -> "/internal/v1/full-sync"
             DeliveryKind.STALL -> "/internal/v1/stalls/${delivery.stallId}"
         }
         val method = if (delivery.kind == DeliveryKind.FULL) "POST" else "PUT"
-        return send(method, path, delivery.eventId, delivery.body)
+        return send(RequestSpec(method, path, delivery.eventId, delivery.body))
     }
 
     fun authenticatedTest(serverEpoch: String): DeliveryOutcome {
@@ -39,12 +50,18 @@ class MarketHttpClient(
             TestRequest(serverEpoch = serverEpoch, eventId = eventId, sentAt = Instant.now().toString(), probe = "website-sync-test")
         )
         require(body.size <= 32 * 1024) { "test_body_limit" }
-        return send("POST", "/internal/v1/test", eventId, body, requireAuthenticated = true)
+        return send(RequestSpec(
+            method = "POST",
+            path = "/internal/v1/test",
+            eventId = eventId,
+            body = body,
+            requireAuthenticated = true,
+        ))
     }
 
     fun uploadPlayerHead(playerId: java.util.UUID, hash: String, png: ByteArray): DeliveryOutcome {
         val eventId = java.util.UUID.randomUUID().toString()
-        return send(
+        return send(RequestSpec(
             method = "PUT",
             path = "/internal/v1/player-heads/$hash.png",
             eventId = eventId,
@@ -52,35 +69,38 @@ class MarketHttpClient(
             contentType = "image/png",
             extraHeaders = mapOf("X-Enthusia-Player-Id" to playerId.toString()),
             responseValidator = { validPlayerHeadResponse(it, hash) },
-        )
+        ))
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun send(
-        method: String,
-        path: String,
-        eventId: String,
-        body: ByteArray,
-        requireAuthenticated: Boolean = false,
-        contentType: String = "application/json",
-        extraHeaders: Map<String, String> = emptyMap(),
-        responseValidator: ((ByteArray) -> Boolean)? = null,
-    ): DeliveryOutcome {
+    private fun send(spec: RequestSpec): DeliveryOutcome {
         return try {
             val timestamp = System.currentTimeMillis().toString()
-            val signature = MarketRequestSigner.sign(config.secret, method, path, config.serverId, timestamp, eventId, body)
-            val builder = HttpRequest.newBuilder(config.endpoint.resolve(path))
+            val signature = MarketRequestSigner.sign(
+                config.secret,
+                spec.method,
+                spec.path,
+                config.serverId,
+                timestamp,
+                spec.eventId,
+                spec.body,
+            )
+            val builder = HttpRequest.newBuilder(config.endpoint.resolve(spec.path))
                 .timeout(config.requestTimeout)
-                .header("Content-Type", contentType)
+                .header("Content-Type", spec.contentType)
                 .header("User-Agent", userAgent)
                 .header("X-Enthusia-Server-Id", config.serverId)
                 .header("X-Enthusia-Timestamp", timestamp)
-                .header("X-Enthusia-Event-Id", eventId)
+                .header("X-Enthusia-Event-Id", spec.eventId)
                 .header("X-Enthusia-Signature", signature)
-                .method(method, HttpRequest.BodyPublishers.ofByteArray(body))
-            extraHeaders.forEach(builder::header)
+                .method(spec.method, HttpRequest.BodyPublishers.ofByteArray(spec.body))
+            spec.extraHeaders.forEach(builder::header)
             val request = builder.build()
-            classify(client.send(request, HttpResponse.BodyHandlers.ofByteArray()), requireAuthenticated, responseValidator)
+            classify(
+                client.send(request, HttpResponse.BodyHandlers.ofByteArray()),
+                spec.requireAuthenticated,
+                spec.responseValidator,
+            )
         } catch (_: java.net.http.HttpTimeoutException) {
             DeliveryOutcome.Retry()
         } catch (_: java.io.IOException) {
