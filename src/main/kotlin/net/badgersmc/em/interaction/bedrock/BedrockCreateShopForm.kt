@@ -55,17 +55,25 @@ class BedrockCreateShopForm(
             return
         }
         val pricing = resolvePricing(input.direction, input.priceText) ?: return
-        val shop = ShopFactory.build(
-            stallId = stallId, owner = stallOwner,
-            signWorld = signLoc.world?.name ?: "world",
-            signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
-            containerWorld = containerLoc.world?.name ?: "world",
-            containerX = containerLoc.blockX, containerY = containerLoc.blockY, containerZ = containerLoc.blockZ,
-            sellItemBase64 = sellItemBase64, sellAmount = input.amount, price = pricing.price,
+        val shop = ShopFactory.build(ShopFactory.Input(
+            stallId = stallId,
+            owner = stallOwner,
+            sign = ShopFactory.Position(
+                signLoc.world?.name ?: "world",
+                signLoc.blockX,
+                signLoc.blockY,
+                signLoc.blockZ,
+            ),
+            container = ShopFactory.Position(
+                containerLoc.world?.name ?: "world",
+                containerLoc.blockX,
+                containerLoc.blockY,
+                containerLoc.blockZ,
+            ),
+            sell = ShopFactory.ItemAmount(sellItemBase64, input.amount),
+            cost = ShopFactory.Cost(pricing.price, pricing.costItemBase64, pricing.costAmount),
             direction = input.direction,
-            costItemBase64 = pricing.costItemBase64, costAmountOverride = pricing.costAmount,
-            searchEnabled = true,
-        )
+        ))
         shopRepository.upsert(shop)
         renderSign(shop)
         player.sendMessage(lang.legacy("shop.create.success"))
