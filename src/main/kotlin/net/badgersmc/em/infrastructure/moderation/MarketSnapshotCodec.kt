@@ -109,6 +109,18 @@ internal class MarketSnapshotCodec(
             ?: throw MarketModerationConflict("Stored market snapshot is empty")
     }
 
+    fun decodeVerified(json: String, expectedChecksum: String): MarketSnapshot? {
+        if (json.toByteArray(StandardCharsets.UTF_8).size > MAXIMUM_SNAPSHOT_BYTES) return null
+        val actual = sha256(json).toByteArray(StandardCharsets.US_ASCII)
+        val expected = expectedChecksum.lowercase().toByteArray(StandardCharsets.US_ASCII)
+        if (!MessageDigest.isEqual(actual, expected)) return null
+        return try {
+            decode(json)
+        } catch (_: RuntimeException) {
+            null
+        }
+    }
+
     fun prepared(snapshot: CapturedMarketSnapshot): CapturedMarketSnapshot = captured(
         snapshot.snapshot.copy(
             shops = snapshot.snapshot.shops.map { it.copy(frozen = true) },

@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger
 internal class MarketModerationProvider(
     private val store: JdbcMarketModerationStore,
     private val gate: DurableMarketMutationGate,
+    private val regionAccess: MarketRegionAccessCoordinator,
     private val executor: ExecutorService = providerExecutor(),
 ) : MarketModerationApi, AutoCloseable {
     private val closed = AtomicBoolean()
@@ -57,10 +58,10 @@ internal class MarketModerationProvider(
     }
 
     override fun confiscate(approval: MarketConfiscationApproval): CompletionStage<MarketOperationResult> =
-        submit { store.confiscate(approval) }.thenApply(::reconcileGate)
+        submit { confiscateWithRegionFence(approval) }.thenApply(::reconcileGate)
 
     override fun restore(request: MarketRestoreRequest): CompletionStage<MarketOperationResult> =
-        submit { store.restore(request) }.thenApply(::reconcileGate)
+        submit { restoreWithRegionAccess(request) }.thenApply(::reconcileGate)
 
     override fun release(
         operationId: UUID,
@@ -102,6 +103,62 @@ internal class MarketModerationProvider(
         }
         return result
     }
+
+    private fun confiscateWithRegionFence(approval: MarketConfiscationApproval): MarketOperationResult {
+        val operation = store.findOperation(approval.operationId()).orElse(null)
+        val shouldClear = operation != null &&
+            operation.snapshotChecksum() == approval.expectedSnapshotChecksum() &&
+            operation.state() in setOf(
+                MarketOperationRecord.State.PREPARED,
+                MarketOperationRecord.State.MODERATION_HOLD,
+            )
+        if (!shouldClear) return store.confiscate(approval)
+
+        val snapshot = try {
+            checkNotNull(store.regionAccess(approval.operationId()))
+        } catch (_: MarketModerationConflict) {
+            return store.confiscate(approval)
+        }
+        regionAccess.clear(snapshot)
+        val result = try {
+            store.confiscate(approval)
+        } catch (failure: Exception) {
+            compensateFailedConfiscation(approval.operationId(), snapshot, failure)
+            throw failure
+        }
+        if (!result.isHeldOrReplay()) {
+            regionAccess.restore(snapshot)
+        }
+        return result
+    }
+
+    private fun compensateFailedConfiscation(
+        operationId: UUID,
+        snapshot: MarketRegionAccessSnapshot,
+        failure: Exception,
+    ) {
+        val state = runCatching { store.findOperation(operationId).orElse(null)?.state() }.getOrNull()
+        if (state != MarketOperationRecord.State.PREPARED) return
+        runCatching { regionAccess.restore(snapshot) }
+            .exceptionOrNull()
+            ?.let(failure::addSuppressed)
+    }
+
+    private fun restoreWithRegionAccess(request: MarketRestoreRequest): MarketOperationResult {
+        val snapshot = try {
+            store.regionAccess(request.operationId())
+        } catch (_: MarketModerationConflict) {
+            return store.restore(request)
+        }
+        val result = store.restore(request)
+        val restored = result.operation().map { it.state() == MarketOperationRecord.State.RESTORED }.orElse(false)
+        if (restored && snapshot != null) regionAccess.restore(snapshot)
+        return result
+    }
+
+    private fun MarketOperationResult.isHeldOrReplay(): Boolean =
+        status() == MarketOperationResult.Status.HELD ||
+            operation().map { it.state() == MarketOperationRecord.State.MODERATION_HOLD }.orElse(false)
 
     private fun MarketOperationRecord.State.keepsReservation(): Boolean = when (this) {
         MarketOperationRecord.State.PREPARED,

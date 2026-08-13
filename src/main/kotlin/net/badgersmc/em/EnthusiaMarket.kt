@@ -128,9 +128,16 @@ open class EnthusiaMarket : JavaPlugin() {
             net.badgersmc.em.domain.ports.MarketMutationGate::class,
             marketMutationGate,
         )
+        val marketRegionAccess = net.badgersmc.em.infrastructure.moderation.BukkitMarketRegionAccessCoordinator(
+            this,
+            ctx.getBean(net.badgersmc.em.domain.ports.RegionProvider::class),
+            ctx.getBean(net.badgersmc.em.domain.ports.RegionMemberSync::class),
+            ctx.getBean(net.badgersmc.em.domain.ports.GuildProvider::class),
+        )
         val marketProvider = net.badgersmc.em.infrastructure.moderation.MarketModerationProvider(
             marketModerationStore,
             marketMutationGate,
+            marketRegionAccess,
         )
         moderationProvider = marketProvider
         server.servicesManager.register(

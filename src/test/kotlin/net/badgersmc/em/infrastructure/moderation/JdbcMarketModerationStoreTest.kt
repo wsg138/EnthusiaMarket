@@ -22,6 +22,8 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.util.Optional
 import java.util.UUID
+import java.util.concurrent.CompletionException
+import java.util.concurrent.Executors
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -124,6 +126,20 @@ class JdbcMarketModerationStoreTest {
     }
 
     @Test
+    fun `stale restore checksum leaves the reviewed hold intact`() {
+        val prepared = store.prepare(request()).operation().orElseThrow()
+        val held = store.confiscate(approval(prepared)).operation().orElseThrow()
+
+        val stale = store.restore(
+            MarketRestoreRequest(held.operationId(), reviewerId, "0".repeat(64)),
+        )
+
+        assertEquals(MarketOperationResult.Status.CONFLICT, stale.status())
+        assertEquals("MODERATION_HOLD", stallValue("state"))
+        assertEquals(1, scalar("SELECT COUNT(*) FROM market_moderation_locks"))
+    }
+
+    @Test
     fun `second operation cannot reserve an already prepared stall`() {
         val first = store.prepare(request())
         val second = store.prepare(request(operationId = UUID.randomUUID(), caseId = "CASE-OTHER"))
@@ -150,6 +166,32 @@ class JdbcMarketModerationStoreTest {
         assertEquals(MarketOperationResult.Status.QUARANTINED, result.status())
         assertEquals("OWNED", stallValue("state"))
         assertEquals(1, scalar("SELECT COUNT(*) FROM market_moderation_locks"))
+    }
+
+    @Test
+    fun `tampered journal snapshot is quarantined before region access changes`() {
+        val regions = RecordingRegionAccess()
+        val provider = MarketModerationProvider(
+            store,
+            DurableMarketMutationGate(dataSource),
+            regions,
+            Executors.newSingleThreadExecutor(),
+        )
+        try {
+            val prepared = provider.prepare(request()).toCompletableFuture().join().operation().orElseThrow()
+            execute(
+                "UPDATE market_moderation_operations SET snapshot_json = " +
+                    "REPLACE(snapshot_json, 'market-stall-1', 'wrong-region')",
+            )
+
+            val result = provider.confiscate(approval(prepared)).toCompletableFuture().join()
+
+            assertEquals(MarketOperationResult.Status.QUARANTINED, result.status())
+            assertEquals(0, regions.clearCount)
+            assertEquals("OWNED", stallValue("state"))
+        } finally {
+            provider.close()
+        }
     }
 
     @Test
@@ -225,6 +267,47 @@ class JdbcMarketModerationStoreTest {
         assertEquals(10, shops.findById(staleShop.id)?.stockCount)
     }
 
+    @Test
+    fun `provider retries region access failures without claiming premature success`() {
+        val regions = RecordingRegionAccess()
+        val provider = MarketModerationProvider(
+            store,
+            DurableMarketMutationGate(dataSource),
+            regions,
+            Executors.newSingleThreadExecutor(),
+        )
+        try {
+            val prepared = provider.prepare(request()).toCompletableFuture().join().operation().orElseThrow()
+            regions.failClear = true
+            assertFailsWith<CompletionException> {
+                provider.confiscate(approval(prepared)).toCompletableFuture().join()
+            }
+            assertEquals("OWNED", stallValue("state"))
+            assertEquals("PREPARED", store.findOperation(prepared.operationId()).orElseThrow().state().name)
+
+            regions.failClear = false
+            val held = provider.confiscate(approval(prepared)).toCompletableFuture().join().operation().orElseThrow()
+            assertEquals("MODERATION_HOLD", stallValue("state"))
+
+            regions.failRestore = true
+            assertFailsWith<CompletionException> {
+                provider.restore(
+                    MarketRestoreRequest(held.operationId(), reviewerId, held.currentChecksum().orElseThrow()),
+                ).toCompletableFuture().join()
+            }
+            assertEquals("RESTORED", store.findOperation(held.operationId()).orElseThrow().state().name)
+
+            regions.failRestore = false
+            val replayed = provider.restore(
+                MarketRestoreRequest(held.operationId(), reviewerId, held.currentChecksum().orElseThrow()),
+            ).toCompletableFuture().join()
+            assertEquals(MarketOperationResult.Status.REPLAYED, replayed.status())
+            assertTrue(regions.restoreCount >= 2)
+        } finally {
+            provider.close()
+        }
+    }
+
     private fun request(
         operationId: UUID = UUID.fromString("31cb0b96-992c-4678-b5d6-09d372f4ef12"),
         caseId: String = "CASE-100",
@@ -237,6 +320,14 @@ class JdbcMarketModerationStoreTest {
         now.plusSeconds(30 * DAY_SECONDS),
         Optional.empty(),
     )
+
+    private fun approval(operation: net.enthusia.market.api.moderation.MarketOperationRecord) =
+        MarketConfiscationApproval(
+            operation.operationId(),
+            reviewerId,
+            operation.snapshotChecksum(),
+            now.plusSeconds(DAY_SECONDS),
+        )
 
     private fun storeAt(instant: Instant): JdbcMarketModerationStore = JdbcMarketModerationStore(
         dataSource,
@@ -313,5 +404,22 @@ class JdbcMarketModerationStoreTest {
 
     private companion object {
         const val DAY_SECONDS = 86_400L
+    }
+
+    private class RecordingRegionAccess : MarketRegionAccessCoordinator {
+        var failClear = false
+        var failRestore = false
+        var clearCount = 0
+        var restoreCount = 0
+
+        override fun clear(snapshot: MarketRegionAccessSnapshot) {
+            clearCount++
+            if (failClear) error("region clear failed")
+        }
+
+        override fun restore(snapshot: MarketRegionAccessSnapshot) {
+            restoreCount++
+            if (failRestore) error("region restore failed")
+        }
     }
 }

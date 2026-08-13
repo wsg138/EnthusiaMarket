@@ -146,7 +146,7 @@ internal class JdbcMarketModerationPolicy(
             message.orEmpty().contains("unique", ignoreCase = true)
 
     private fun SQLException.asAcquisitionFailure(): Exception =
-        if (isConstraintViolation()) {
+        if (isConstraintViolation() || sqlState == "40001") {
             MarketAcquisitionBlockedException("Market acquisition fence changed concurrently")
         } else {
             this

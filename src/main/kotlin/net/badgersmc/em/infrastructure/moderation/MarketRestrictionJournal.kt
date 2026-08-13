@@ -202,7 +202,7 @@ internal class MarketRestrictionJournal(
                 statement.executeUpdate()
             }
         } catch (failure: SQLException) {
-            if (failure.isConstraintViolation()) {
+            if (failure.isConstraintViolation() || failure.sqlState == "40001") {
                 throw MarketModerationConflict("Player fence changed concurrently")
             }
             throw failure

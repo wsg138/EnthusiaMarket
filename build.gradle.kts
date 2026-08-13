@@ -123,6 +123,9 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.11")
     testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v1.21:4.107.0")
     testImplementation("org.junit.jupiter:junit-jupiter:5.8.1")
+    testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
+    testImplementation("org.testcontainers:mariadb")
+    testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }
