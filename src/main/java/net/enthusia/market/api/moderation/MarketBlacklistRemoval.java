@@ -9,11 +9,13 @@ public record MarketBlacklistRemoval(
         String caseId,
         long expectedRevision
 ) {
+    private static final long MINIMUM_REVISION = 1L;
+
     public MarketBlacklistRemoval {
         operationId = Objects.requireNonNull(operationId, "operationId");
         targetId = Objects.requireNonNull(targetId, "targetId");
         MarketApiValidation.identifier(caseId, "case id", 64);
-        if (expectedRevision < 1L) {
+        if (expectedRevision < MINIMUM_REVISION) {
             throw new IllegalArgumentException("expected blacklist revision must be positive");
         }
     }

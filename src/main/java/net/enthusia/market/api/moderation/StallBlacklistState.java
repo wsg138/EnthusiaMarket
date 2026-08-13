@@ -14,13 +14,15 @@ public record StallBlacklistState(
         long revision,
         Instant updatedAt
 ) {
+    private static final long MINIMUM_REVISION = 1L;
+
     public StallBlacklistState {
         playerId = Objects.requireNonNull(playerId, "playerId");
         status = Objects.requireNonNull(status, "status");
         expiresAt = Objects.requireNonNull(expiresAt, "expiresAt");
         MarketApiValidation.identifier(caseId, "case id", 64);
         operationId = Objects.requireNonNull(operationId, "operationId");
-        if (revision < 1L) {
+        if (revision < MINIMUM_REVISION) {
             throw new IllegalArgumentException("blacklist revision must be positive");
         }
         updatedAt = Objects.requireNonNull(updatedAt, "updatedAt");

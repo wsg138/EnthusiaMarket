@@ -45,20 +45,8 @@ class MarketModerationContractTest {
     @Test
     void identifiersRejectInternalAndUnicodeWhitespace() {
         Instant review = Instant.parse("2026-08-20T00:00:00Z");
-        for (String caseId : new String[]{"CASE 1", "CASE\u20071"}) {
-            assertThrows(
-                    IllegalArgumentException.class,
-                    () -> new MarketOperationRequest(
-                            UUID.randomUUID(),
-                            UUID.randomUUID(),
-                            caseId,
-                            "stall-1",
-                            review,
-                            review.plusSeconds(86_400L),
-                            Optional.empty()
-                    )
-            );
-        }
+        assertInvalidIdentifier("CASE 1", review);
+        assertInvalidIdentifier("CASE\u20071", review);
     }
 
     @Test
@@ -93,5 +81,20 @@ class MarketModerationContractTest {
                 UUID.randomUUID(),
                 CHECKSUM
         ).expectedCurrentChecksum().equals(CHECKSUM));
+    }
+
+    private static void assertInvalidIdentifier(String caseId, Instant review) {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new MarketOperationRequest(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        caseId,
+                        "stall-1",
+                        review,
+                        review.plusSeconds(86_400L),
+                        Optional.empty()
+                )
+        );
     }
 }

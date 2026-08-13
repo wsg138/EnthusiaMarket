@@ -20,6 +20,8 @@ public record MarketOperationRecord(
         String detail,
         Instant updatedAt
 ) {
+    private static final long MINIMUM_REVISION = 1L;
+
     public MarketOperationRecord {
         operationId = Objects.requireNonNull(operationId, "operationId");
         targetId = Objects.requireNonNull(targetId, "targetId");
@@ -34,7 +36,7 @@ public record MarketOperationRecord(
         reviewerId = Objects.requireNonNull(reviewerId, "reviewerId");
         reviewDueAt = Objects.requireNonNull(reviewDueAt, "reviewDueAt");
         recoveryUntil = Objects.requireNonNull(recoveryUntil, "recoveryUntil");
-        if (revision < 1L) {
+        if (revision < MINIMUM_REVISION) {
             throw new IllegalArgumentException("operation revision must be positive");
         }
         detail = MarketApiValidation.text(detail, "detail", 512);
