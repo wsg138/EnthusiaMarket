@@ -10,6 +10,7 @@ import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import org.bukkit.Location
+import org.bukkit.block.Block
 import org.bukkit.block.Container
 import org.bukkit.block.Sign
 import org.bukkit.block.data.type.WallSign
@@ -40,66 +41,80 @@ open class ShopCreateListener(
 
     @EventHandler
     fun onSignInteract(event: PlayerInteractEvent) {
-        // Must be left-click while sneaking
-        if (event.action != Action.LEFT_CLICK_BLOCK) return
-        if (!event.player.isSneaking) return
-
-        val block = event.clickedBlock ?: return
-        val state = block.state
-
-        // Must be a wall sign
-        if (state !is Sign || block.blockData !is WallSign) return
-
-        // Must not already be a registered shop
-        val loc = block.location
-        if (shopRepository.findBySign(loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ) != null) {
-            event.player.sendMessage(lang.msg("shop.create.already_shop"))
-            return
-        }
-
-        // Find attached container via the sign's attached block face
-        val wallSignData = block.blockData as WallSign
-        val facing = wallSignData.facing
-        val attachedBlock = block.getRelative(facing.oppositeFace)
-
-        if (attachedBlock.state !is Container) {
-            event.player.sendMessage(lang.msg("shop.create.needs_container"))
-            return
-        }
-
-        // Check the sign is inside an owned stall
-        val stall = findStallAt(loc) ?: run {
-            event.player.sendMessage(lang.msg("shop.create.not_in_stall"))
-            return
-        }
-
-        // Check player can manage this stall
-        if (!canManageStall(stall, event.player)) {
-            event.player.sendMessage(lang.msg("shop.create.no_authority"))
-            return
-        }
+        val block = clickedWallSign(event) ?: return
+        val player = event.player
+        if (alreadyRegistered(block, player)) return
+        val attachedBlock = attachedContainer(block, player) ?: return
+        val stall = managedStall(block.location, player) ?: return
 
         event.setUseInteractedBlock(Event.Result.DENY)
 
         // Capture the held item as the sell item (REQ-012).
-        val sellItemB64 = captureSellItem(event.player.inventory.itemInMainHand)
+        val sellItemB64 = captureSellItem(player.inventory.itemInMainHand)
         if (sellItemB64 == null) {
-            event.player.sendMessage(lang.msg("shop.create.no_held_item"))
+            player.sendMessage(lang.msg("shop.create.no_held_item"))
             return
         }
 
-        val signLoc = block.location
-        val containerLoc = attachedBlock.location
-        val player = event.player
+        openMenu(player, stall, block.location, attachedBlock.location, sellItemB64)
+    }
+
+    private fun clickedWallSign(event: PlayerInteractEvent): Block? {
+        if (event.action != Action.LEFT_CLICK_BLOCK || !event.player.isSneaking) return null
+        val block = event.clickedBlock ?: return null
+        return block.takeIf { it.state is Sign && it.blockData is WallSign }
+    }
+
+    private fun alreadyRegistered(block: Block, player: Player): Boolean {
+        val location = block.location
+        val shop = shopRepository.findBySign(
+            location.world?.name ?: "world",
+            location.blockX,
+            location.blockY,
+            location.blockZ,
+        )
+        if (shop == null) return false
+        player.sendMessage(lang.msg("shop.create.already_shop"))
+        return true
+    }
+
+    private fun attachedContainer(block: Block, player: Player): Block? {
+        val wallSign = block.blockData as WallSign
+        val attached = block.getRelative(wallSign.facing.oppositeFace)
+        if (attached.state is Container) return attached
+        player.sendMessage(lang.msg("shop.create.needs_container"))
+        return null
+    }
+
+    private fun managedStall(location: Location, player: Player): Stall? {
+        val stall = findStallAt(location)
+        if (stall == null) {
+            player.sendMessage(lang.msg("shop.create.not_in_stall"))
+            return null
+        }
+        if (!canManageStall(stall, player)) {
+            player.sendMessage(lang.msg("shop.create.no_authority"))
+            return null
+        }
+        return stall
+    }
+
+    private fun openMenu(
+        player: Player,
+        stall: Stall,
+        signLocation: Location,
+        containerLocation: Location,
+        sellItem: String,
+    ) {
         if (menuFactory.shouldUseBedrockMenus(player)) {
             net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
-                player, player.uniqueId, stall.id.value, signLoc, containerLoc,
-                sellItemB64, shopRepository, logger, lang, shopSignRenderer,
+                player, player.uniqueId, stall.id.value, signLocation, containerLocation,
+                sellItem, shopRepository, logger, lang, shopSignRenderer,
             ).open(player)
         } else {
             net.badgersmc.em.interaction.gui.CreateShopMenu(
-                stall.id.value, player.uniqueId, signLoc, containerLoc,
-                sellItemB64, shopRepository, lang,
+                stall.id.value, player.uniqueId, signLocation, containerLocation,
+                sellItem, shopRepository, lang,
             ).open(player)
         }
     }
