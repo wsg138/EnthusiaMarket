@@ -498,11 +498,4 @@ internal class JdbcMarketModerationStore(
         return if (wasNull()) null else value
     }
 
-    private fun SQLException.isConstraintViolation(): Boolean =
-        sqlState?.startsWith("23") == true ||
-            message.orEmpty().contains("constraint", ignoreCase = true) ||
-            message.orEmpty().contains("unique", ignoreCase = true)
-
-    private fun SQLException.isTransactionContention(): Boolean = sqlState == "40001"
-
 }

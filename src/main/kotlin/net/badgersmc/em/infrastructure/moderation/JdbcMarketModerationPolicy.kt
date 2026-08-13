@@ -41,23 +41,16 @@ internal class JdbcMarketModerationPolicy(
         try {
             dataSource.inTransaction { connection ->
                 val now = clock.millis()
-                val fence = readFence(connection, playerId)
-                ensureAvailable(connection, playerId, fence, now)
-                if (fence == null) insertFence(connection, playerId, permitId, now)
-                else updateFence(connection, playerId, permitId, fence.revision, now)
+                val permitUntil = Math.addExact(now, PERMIT_DURATION.toMillis())
+                if (!PlayerFenceClaims.claimAcquisition(connection, playerId, permitId, permitUntil, now)) {
+                    throw MarketAcquisitionBlockedException(
+                        "Market acquisitions are restricted or another operation is in progress",
+                    )
+                }
             }
         } catch (failure: SQLException) {
             throw failure.asAcquisitionFailure()
         }
-    }
-
-    private fun ensureAvailable(connection: Connection, playerId: UUID, fence: Fence?, now: Long) {
-        val rejection = when {
-            activeBlacklist(connection, playerId, now) -> "Market acquisitions are restricted for this player"
-            fence?.activeAt(now) == true -> "Another market acquisition or review is in progress"
-            else -> null
-        }
-        if (rejection != null) throw MarketAcquisitionBlockedException(rejection)
     }
 
     private fun release(playerId: UUID, permitId: String) {
@@ -72,44 +65,6 @@ internal class JdbcMarketModerationPolicy(
                 statement.setString(2, playerId.toString())
                 statement.setString(3, permitId)
                 statement.executeUpdate()
-            }
-        }
-    }
-
-    private fun insertFence(connection: Connection, playerId: UUID, permitId: String, now: Long) {
-        connection.prepareStatement(
-            """INSERT INTO market_player_fences
-               (player_uuid, active_acquisition_id, acquisition_until, revision, updated_at)
-               VALUES (?, ?, ?, 1, ?)""",
-        ).use { statement ->
-            statement.setString(1, playerId.toString())
-            statement.setString(2, permitId)
-            statement.setLong(3, now + PERMIT_DURATION.toMillis())
-            statement.setLong(4, now)
-            statement.executeUpdate()
-        }
-    }
-
-    private fun updateFence(
-        connection: Connection,
-        playerId: UUID,
-        permitId: String,
-        expectedRevision: Long,
-        now: Long,
-    ) {
-        connection.prepareStatement(
-            """UPDATE market_player_fences
-               SET active_acquisition_id = ?, acquisition_until = ?,
-                   revision = revision + 1, updated_at = ?
-               WHERE player_uuid = ? AND revision = ?""",
-        ).use { statement ->
-            statement.setString(1, permitId)
-            statement.setLong(2, now + PERMIT_DURATION.toMillis())
-            statement.setLong(3, now)
-            statement.setString(4, playerId.toString())
-            statement.setLong(5, expectedRevision)
-            if (statement.executeUpdate() != 1) {
-                throw MarketAcquisitionBlockedException("Market acquisition fence changed concurrently")
             }
         }
     }
@@ -136,23 +91,18 @@ internal class JdbcMarketModerationPolicy(
             statement.executeQuery().use { result ->
                 if (!result.next()) return null
                 val until = result.getLong("acquisition_until").takeUnless { result.wasNull() }
-                Fence(result.getString("active_acquisition_id"), until, result.getLong("revision"))
+                Fence(result.getString("active_acquisition_id"), until)
             }
         }
 
-    private fun SQLException.isConstraintViolation(): Boolean =
-        sqlState?.startsWith("23") == true ||
-            message.orEmpty().contains("constraint", ignoreCase = true) ||
-            message.orEmpty().contains("unique", ignoreCase = true)
-
     private fun SQLException.asAcquisitionFailure(): Exception =
-        if (isConstraintViolation() || sqlState == "40001") {
+        if (isConstraintViolation() || isTransactionContention()) {
             MarketAcquisitionBlockedException("Market acquisition fence changed concurrently")
         } else {
             this
         }
 
-    private data class Fence(val id: String?, val until: Long?, val revision: Long) {
+    private data class Fence(val id: String?, val until: Long?) {
         fun activeAt(now: Long): Boolean = id != null && (until == null || until > now)
     }
 
