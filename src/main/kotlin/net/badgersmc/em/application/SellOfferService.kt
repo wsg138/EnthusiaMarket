@@ -6,6 +6,8 @@ import net.badgersmc.em.domain.offer.SellOffer
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
+import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
@@ -43,6 +45,7 @@ class SellOfferService(
     private val limits: LimitResolutionService,
     private val ownership: StallOwnershipCounter,
     private val alerter: CompensationAlertService,
+    private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
 ) {
 
     private val log = Logger.getLogger(SellOfferService::class.java.name)
@@ -88,8 +91,18 @@ class SellOfferService(
         return Result.Cancelled(offer)
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun purchase(stallId: StallId, buyer: UUID): Result {
+        return try {
+            moderationPolicy.withAcquisitionPermit(buyer) {
+                purchaseWithPermit(stallId, buyer)
+            }
+        } catch (blocked: MarketAcquisitionBlockedException) {
+            Result.Rejected(blocked.message ?: "Market acquisitions are restricted")
+        }
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
+    private fun purchaseWithPermit(stallId: StallId, buyer: UUID): Result {
         val offer = offers.findByStall(stallId) ?: return Result.NotFound
         val stall = stalls.findById(stallId) ?: return Result.NotFound
 

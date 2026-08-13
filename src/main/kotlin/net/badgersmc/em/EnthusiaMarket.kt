@@ -19,6 +19,7 @@ import net.badgersmc.nexus.persistence.MigrationRunner
 import net.badgersmc.nexus.scheduler.NexusScheduler
 import net.badgersmc.nexus.vault.VaultHealth
 import net.milkbowl.vault.economy.Economy
+import net.enthusia.market.api.moderation.MarketModerationApi
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
@@ -35,6 +36,7 @@ open class EnthusiaMarket : JavaPlugin() {
     private var floodgateHeadIntegration: AutoCloseable? = null
     private var floodgateSkinCapture: net.badgersmc.em.websync.heads.FloodgateSkinCaptureService? = null
     private var headUploadClientCache: net.badgersmc.em.websync.HeadUploadClientCache? = null
+    private var moderationProvider: net.badgersmc.em.infrastructure.moderation.MarketModerationProvider? = null
 
     @Suppress("LongMethod", "TooGenericExceptionThrown")
     override fun onEnable() {
@@ -111,6 +113,33 @@ open class EnthusiaMarket : JavaPlugin() {
         MigrationRunner(ds, resourcePrefix = "migrations", classLoader = this::class.java.classLoader).runAll()
         ctx.registerBean("dataSource", DataSource::class, ds as DataSource)
 
+        // Stable Staff integration. Register the policy before Nexus constructs any
+        // purchase or auction services so every acquisition shares the durable fence.
+        val marketModerationStore = net.badgersmc.em.infrastructure.moderation.JdbcMarketModerationStore(ds)
+        val marketModerationPolicy = net.badgersmc.em.infrastructure.moderation.JdbcMarketModerationPolicy(ds)
+        val marketMutationGate = net.badgersmc.em.infrastructure.moderation.DurableMarketMutationGate(ds)
+        ctx.registerBean(
+            "marketModerationPolicy",
+            net.badgersmc.em.domain.ports.MarketModerationPolicy::class,
+            marketModerationPolicy,
+        )
+        ctx.registerBean(
+            "marketMutationGate",
+            net.badgersmc.em.domain.ports.MarketMutationGate::class,
+            marketMutationGate,
+        )
+        val marketProvider = net.badgersmc.em.infrastructure.moderation.MarketModerationProvider(
+            marketModerationStore,
+            marketMutationGate,
+        )
+        moderationProvider = marketProvider
+        server.servicesManager.register(
+            MarketModerationApi::class.java,
+            marketProvider,
+            this,
+            org.bukkit.plugin.ServicePriority.Normal,
+        )
+
         // Website synchronization observes repository mutations through fail-open decorators.
         // The relay breaks the construction cycle: repositories are registered before the sync
         // service is built, and notifications are harmless no-ops until the target is attached.
@@ -131,7 +160,7 @@ open class EnthusiaMarket : JavaPlugin() {
         val shopSqlRepo = net.badgersmc.em.infrastructure.persistence.ShopRepositorySql(ds)
         shopLocationIndex.rebuild(shopSqlRepo.all()) // REQ-282: rebuild from persistence on enable
         val indexedShopRepository: ShopRepository =
-            net.badgersmc.em.application.IndexedShopRepository(shopSqlRepo, shopLocationIndex)
+            net.badgersmc.em.application.IndexedShopRepository(shopSqlRepo, shopLocationIndex, marketMutationGate)
         val shopRepository: ShopRepository =
             net.badgersmc.em.websync.DirtyTrackingShopRepository(indexedShopRepository, websiteDirtyRelay, dirtyFailures)
         ctx.registerBean(
@@ -468,6 +497,8 @@ open class EnthusiaMarket : JavaPlugin() {
     }
 
     override fun onDisable() {
+        server.servicesManager.unregisterAll(this)
+        moderationProvider?.close()
         runCatching { geyserHeadIntegration?.close() }
         runCatching { floodgateHeadIntegration?.close() }
         runCatching { floodgateSkinCapture?.close() }

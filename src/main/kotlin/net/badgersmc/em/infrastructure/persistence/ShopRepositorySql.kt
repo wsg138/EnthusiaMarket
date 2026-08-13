@@ -54,14 +54,22 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ds.connection.use { conn ->
             conn.autoCommit = false
             try {
+                rejectLockedShop(conn, id, 0)
                 conn.prepareStatement("DELETE FROM shop_transactions WHERE shop_id = ?").use { ps ->
                     ps.setLong(1, id)
                     ps.executeUpdate()
                 }
-                conn.prepareStatement("DELETE FROM shop_items WHERE id = ?").use { ps ->
+                val deleted = conn.prepareStatement(
+                    """DELETE FROM shop_items WHERE id = ?
+                       AND NOT EXISTS (
+                           SELECT 1 FROM market_moderation_locks l
+                           WHERE l.stall_id = shop_items.stall_id
+                       )""",
+                ).use { ps ->
                     ps.setLong(1, id)
                     ps.executeUpdate()
                 }
+                rejectLockedShop(conn, id, deleted)
                 conn.commit()
             } catch (e: Exception) {
                 conn.rollback()
@@ -76,6 +84,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ds.connection.use { conn ->
             conn.autoCommit = false
             try {
+                rejectLockedContainer(conn, world, x, y, z)
                 conn.prepareStatement(
                     """DELETE FROM shop_transactions WHERE shop_id IN
                        (SELECT id FROM shop_items
@@ -85,11 +94,17 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                     ps.executeUpdate()
                 }
                 conn.prepareStatement(
-                    "DELETE FROM shop_items WHERE container_world = ? AND container_x = ? AND container_y = ? AND container_z = ?"
+                    """DELETE FROM shop_items
+                       WHERE container_world = ? AND container_x = ? AND container_y = ? AND container_z = ?
+                         AND NOT EXISTS (
+                             SELECT 1 FROM market_moderation_locks l
+                             WHERE l.stall_id = shop_items.stall_id
+                         )"""
                 ).use { ps ->
                     ps.setString(1, world); ps.setInt(2, x); ps.setInt(3, y); ps.setInt(4, z)
                     ps.executeUpdate()
                 }
+                rejectLockedContainer(conn, world, x, y, z)
                 conn.commit()
             } catch (e: Exception) {
                 conn.rollback()
@@ -104,13 +119,20 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         return ds.connection.use { conn ->
             conn.autoCommit = false
             try {
+                rejectLockedOwner(conn, owner)
                 conn.prepareStatement(
                     "DELETE FROM shop_transactions WHERE shop_id IN (SELECT id FROM shop_items WHERE owner = ?)"
                 ).use { ps ->
                     ps.setString(1, owner.toString())
                     ps.executeUpdate()
                 }
-                val count = conn.prepareStatement("DELETE FROM shop_items WHERE owner = ?").use { ps ->
+                val count = conn.prepareStatement(
+                    """DELETE FROM shop_items WHERE owner = ?
+                       AND NOT EXISTS (
+                           SELECT 1 FROM market_moderation_locks l
+                           WHERE l.stall_id = shop_items.stall_id
+                       )""",
+                ).use { ps ->
                     ps.setString(1, owner.toString())
                     ps.executeUpdate()
                 }
@@ -127,10 +149,16 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
 
     override fun updateStock(id: Long, stockCount: Int) {
         ds.connection.use { conn ->
-            conn.prepareStatement("UPDATE shop_items SET stock_count = ? WHERE id = ?").use { ps ->
+            conn.prepareStatement(
+                """UPDATE shop_items SET stock_count = ? WHERE id = ?
+                   AND NOT EXISTS (
+                       SELECT 1 FROM market_moderation_locks l
+                       WHERE l.stall_id = shop_items.stall_id
+                   )""",
+            ).use { ps ->
                 ps.setInt(1, stockCount)
                 ps.setLong(2, id)
-                ps.executeUpdate()
+                rejectLockedShop(conn, id, ps.executeUpdate())
             }
         }
     }
@@ -138,24 +166,45 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
     override fun updateStockBatch(batch: Map<Long, Int>) {
         if (batch.isEmpty()) return
         ds.connection.use { conn ->
-            conn.prepareStatement("UPDATE shop_items SET stock_count = ? WHERE id = ?").use { ps ->
-                for ((id, stock) in batch) {
-                    ps.setInt(1, stock)
-                    ps.setLong(2, id)
-                    ps.addBatch()
+            conn.autoCommit = false
+            try {
+                conn.prepareStatement(
+                    """UPDATE shop_items SET stock_count = ? WHERE id = ?
+                       AND NOT EXISTS (
+                           SELECT 1 FROM market_moderation_locks l
+                           WHERE l.stall_id = shop_items.stall_id
+                       )""",
+                ).use { ps ->
+                    for ((id, stock) in batch) {
+                        ps.setInt(1, stock)
+                        ps.setLong(2, id)
+                        rejectLockedShop(conn, id, ps.executeUpdate())
+                    }
                 }
-                ps.executeBatch()
+                conn.commit()
+            } catch (failure: Exception) {
+                conn.rollback()
+                throw failure
+            } finally {
+                conn.autoCommit = true
             }
         }
     }
 
     override fun freezeByStall(stallId: String, frozen: Boolean) {
         ds.connection.use { conn ->
-            conn.prepareStatement("UPDATE shop_items SET frozen = ? WHERE stall_id = ?").use { ps ->
+            conn.prepareStatement(
+                """UPDATE shop_items SET frozen = ? WHERE stall_id = ?
+                   AND NOT EXISTS (
+                       SELECT 1 FROM market_moderation_locks l
+                       WHERE l.stall_id = shop_items.stall_id
+                   )""",
+            ).use { ps ->
                 ps.setBoolean(1, frozen)
                 ps.setString(2, stallId)
                 ps.executeUpdate()
             }
+            rejectLockedStall(conn, stallId)
         }
     }
 
@@ -304,10 +353,16 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
     }
 
     private fun updateSellMaterial(conn: java.sql.Connection, id: Long, material: String) {
-        conn.prepareStatement("UPDATE shop_items SET sell_material = ? WHERE id = ?").use { ps ->
+        conn.prepareStatement(
+            """UPDATE shop_items SET sell_material = ? WHERE id = ?
+               AND NOT EXISTS (
+                   SELECT 1 FROM market_moderation_locks l
+                   WHERE l.stall_id = shop_items.stall_id
+               )""",
+        ).use { ps ->
             ps.setString(1, material)
             ps.setLong(2, id)
-            ps.executeUpdate()
+            rejectLockedShop(conn, id, ps.executeUpdate())
         }
     }
 
@@ -320,11 +375,19 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                  sell_item, sell_amount, cost_item, cost_amount,
                  trusted, hopper_allow_in, hopper_allow_out, frozen, admin_shop,
                  direction, search_enabled, sell_material, stock_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
+                )
             """.trimIndent()
             conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS).use { ps ->
                 bind(ps, shop)
-                ps.executeUpdate()
+                ps.setString(24, shop.stallId)
+                if (ps.executeUpdate() != 1) {
+                    throw MarketModerationConflictException(
+                        "Stall ${shop.stallId} is reserved for moderation"
+                    )
+                }
                 ps.generatedKeys.use { keys ->
                     if (keys.next()) {
                         return shop.copy(id = keys.getLong(1))
@@ -341,7 +404,8 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             conn.prepareStatement(UPDATE_SQL).use { ps ->
                 bind(ps, shop)
                 ps.setLong(24, shop.id)
-                ps.executeUpdate()
+                ps.setString(25, shop.stallId)
+                rejectLockedShop(conn, shop.id, ps.executeUpdate())
             }
         }
     }
@@ -355,7 +419,79 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
               trusted = ?, hopper_allow_in = ?, hopper_allow_out = ?, frozen = ?, admin_shop = ?,
               direction = ?, search_enabled = ?, sell_material = ?, stock_count = ?
             WHERE id = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM market_moderation_locks l
+                  WHERE l.stall_id = shop_items.stall_id
+              )
+              AND stall_id = ?
         """.trimIndent()
+    }
+
+    private fun rejectLockedShop(conn: java.sql.Connection, shopId: Long, updateCount: Int) {
+        if (updateCount != 0) return
+        conn.prepareStatement(
+            """SELECT 1 FROM shop_items s
+               JOIN market_moderation_locks l ON l.stall_id = s.stall_id
+               WHERE s.id = ?""",
+        ).use { ps ->
+            ps.setLong(1, shopId)
+            ps.executeQuery().use { result ->
+                if (result.next()) {
+                    throw MarketModerationConflictException("Shop $shopId is reserved for moderation")
+                }
+            }
+        }
+    }
+
+    private fun rejectLockedStall(conn: java.sql.Connection, stallId: String) {
+        conn.prepareStatement("SELECT 1 FROM market_moderation_locks WHERE stall_id = ?").use { ps ->
+            ps.setString(1, stallId)
+            ps.executeQuery().use { result ->
+                if (result.next()) {
+                    throw MarketModerationConflictException("Stall $stallId is reserved for moderation")
+                }
+            }
+        }
+    }
+
+    private fun rejectLockedContainer(
+        conn: java.sql.Connection,
+        world: String,
+        x: Int,
+        y: Int,
+        z: Int,
+    ) {
+        conn.prepareStatement(
+            """SELECT 1 FROM shop_items s
+               JOIN market_moderation_locks l ON l.stall_id = s.stall_id
+               WHERE s.container_world = ? AND s.container_x = ?
+                 AND s.container_y = ? AND s.container_z = ?""",
+        ).use { ps ->
+            ps.setString(1, world)
+            ps.setInt(2, x)
+            ps.setInt(3, y)
+            ps.setInt(4, z)
+            ps.executeQuery().use { result ->
+                if (result.next()) {
+                    throw MarketModerationConflictException("Container shop is reserved for moderation")
+                }
+            }
+        }
+    }
+
+    private fun rejectLockedOwner(conn: java.sql.Connection, owner: UUID) {
+        conn.prepareStatement(
+            """SELECT 1 FROM shop_items s
+               JOIN market_moderation_locks l ON l.stall_id = s.stall_id
+               WHERE s.owner = ?""",
+        ).use { ps ->
+            ps.setString(1, owner.toString())
+            ps.executeQuery().use { result ->
+                if (result.next()) {
+                    throw MarketModerationConflictException("An owned shop is reserved for moderation")
+                }
+            }
+        }
     }
 
     private fun bind(ps: PreparedStatement, shop: Shop) {

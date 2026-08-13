@@ -564,7 +564,7 @@ class AdminCommands(
                     }
                     OwnerType.NONE -> Unit
                 }
-                StallState.UNOWNED -> try {
+                StallState.UNOWNED, StallState.MODERATION_HOLD -> try {
                     regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
                     fixed++
                 } catch (_: Exception) {

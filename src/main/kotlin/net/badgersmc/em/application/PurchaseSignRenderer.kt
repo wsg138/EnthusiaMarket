@@ -62,9 +62,17 @@ class PurchaseSignRenderer(
             StallState.AUCTIONING, StallState.RE_AUCTIONING ->
                 auctionLive(sign)
             StallState.GRACE -> graceLines(sign, stall)
+            StallState.MODERATION_HOLD -> moderationHold(sign)
             StallState.OWNED -> ownedLines(sign, stall)
         }
     }
+
+    private fun moderationHold(sign: PurchaseSign): List<Component> = listOf(
+        Component.text("[Staff Review]"),
+        Component.text(sign.stallId.value),
+        Component.text("Unavailable"),
+        Component.text("Contact staff"),
+    )
 
     private fun buyable(sign: PurchaseSign): List<Component> = listOf(
         lang.msg("purchase_sign.buyable.line1"),

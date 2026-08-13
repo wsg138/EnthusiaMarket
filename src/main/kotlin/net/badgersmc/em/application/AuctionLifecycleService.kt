@@ -8,6 +8,8 @@ import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
+import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -82,6 +84,7 @@ class AuctionLifecycleService(
     private val schematics: net.badgersmc.em.domain.ports.SchematicService =
         net.badgersmc.em.domain.ports.SchematicService.Disabled,
     private val lang: LangService,
+    private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
@@ -268,6 +271,16 @@ class AuctionLifecycleService(
      *         or [AuctionResult.NotFound]
      */
     fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult {
+        return try {
+            moderationPolicy.withAcquisitionPermit(playerUuid) {
+                placeBidWithPermit(auctionId, playerUuid, amount, ip)
+            }
+        } catch (blocked: MarketAcquisitionBlockedException) {
+            AuctionResult.Failure(blocked.message ?: "Market acquisitions are restricted")
+        }
+    }
+
+    private fun placeBidWithPermit(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult {
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
 
         if (auction.state != AuctionState.OPEN) {
@@ -603,8 +616,23 @@ class AuctionLifecycleService(
         return SettlementReport(settled = settled, errors = errors)
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod", "ThrowsCount")
     private fun settleWithWinner(auction: Auction) {
+        val bid = auction.highBid ?: return
+        try {
+            moderationPolicy.withAcquisitionPermit(bid.bidder) {
+                settleWithWinnerWithPermit(auction)
+            }
+        } catch (blocked: MarketAcquisitionBlockedException) {
+            val stall = stallRepository.findById(auction.stallId)
+                ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
+            logger.info("Auction ${auction.id} winner is restricted; refunding without an ownership award")
+            closeWithoutAward(auction, stall)
+            refundOrLog(bid.bidder, bid.amount, "market restriction refund for auction ${auction.id}")
+        }
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ThrowsCount")
+    private fun settleWithWinnerWithPermit(auction: Auction) {
         val bid = auction.highBid ?: return
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")

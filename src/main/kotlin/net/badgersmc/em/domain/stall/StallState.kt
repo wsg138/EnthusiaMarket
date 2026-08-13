@@ -5,6 +5,7 @@ enum class StallState {
     AUCTIONING,
     OWNED,
     GRACE,
+    MODERATION_HOLD,
     RE_AUCTIONING,
     EMERGENCY_AUCTIONING
 }
