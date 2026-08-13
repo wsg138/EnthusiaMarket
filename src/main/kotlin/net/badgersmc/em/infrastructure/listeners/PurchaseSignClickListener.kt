@@ -5,7 +5,9 @@ import net.badgersmc.em.application.StallRentExtensionService
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.sign.PurchaseSign
 import net.badgersmc.em.domain.sign.PurchaseSignRepository
+import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.interaction.gui.PurchaseMethodMenu
@@ -86,6 +88,14 @@ open class PurchaseSignClickListener(
             return
         }
 
+        route(player, sign, stall)
+    }
+
+    private fun route(
+        player: org.bukkit.entity.Player,
+        sign: PurchaseSign,
+        stall: Stall,
+    ) {
         when (stall.state) {
             StallState.UNOWNED -> {
                 if (!player.hasPermission("enthusiamarket.stall.buyout")) {
