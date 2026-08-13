@@ -79,6 +79,22 @@ See [Geyser & Bedrock setup](geyser.md).
 - MariaDB: verify host, port, credentials in `database.mariadb.*`.
 - Connection pool: increase `database.pool.maxSize` for many concurrent stalls.
 
+## Staff moderation operation is stuck
+
+Do not retry with a new operation ID and do not edit Market ownership, lock, blacklist,
+or snapshot rows directly.
+
+1. Record the existing operation ID, case ID, stall ID, state, revision, and checksums.
+2. Confirm EnthusiaStaff and EnthusiaMarket are using moderation API version 1.
+3. Confirm MariaDB is available and migration V025 is applied exactly once.
+4. For `PREPARED`, choose explicit approval or release after reviewing the case.
+5. For `MODERATION_HOLD`, restore only through the supported API with the exact current
+   checksum.
+6. For `QUARANTINED`, preserve the reservation and escalate for manual investigation;
+   quarantine means the provider detected ambiguous or changed state and refused to guess.
+
+Restart recovery replays the same operation ID. A deadline does not auto-confiscate.
+
 ## Debug mode
 
 To see detailed economy and migration logs:

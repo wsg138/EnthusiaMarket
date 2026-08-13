@@ -65,6 +65,20 @@ Bedrock cross-play support. Floodgate detects Bedrock players and routes them to
 - Toggle with `bedrock.forceForms`.
 - Bedrock sign editing: `shop.allowBedrockEdit`.
 
+## EnthusiaStaff moderation provider
+
+EnthusiaMarket publishes version 1 of its supported moderation API through Paper's
+services manager. EnthusiaStaff uses that boundary for case-linked stall preparation,
+human-reviewed confiscation holds, exact restoration, release, acquisition blacklists,
+and restart recovery.
+
+The provider remains the authority for stall and shop changes. EnthusiaStaff must not
+write Market tables or bundle another copy of the provider API. If the service is absent
+or incompatible, new moderation mutations fail closed. Prepared or held operations remain
+durable for later inspection and recovery.
+
+See the repository's `docs/moderation-provider.md` for states, invariants, and recovery.
+
 ## Not referenced
 
 | Plugin | Status |
