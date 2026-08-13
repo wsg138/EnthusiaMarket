@@ -41,6 +41,17 @@ class ShopEditMenu(
     private var frozen: Boolean = shop.frozen
     private var searchEnabled: Boolean = shop.searchEnabled
 
+    data class EditDraft(
+        val sellItemBase64: String,
+        val sellAmount: Int,
+        val costItemBase64: String,
+        val costAmount: Int,
+        val hopperIn: Boolean,
+        val hopperOut: Boolean,
+        val frozen: Boolean,
+        val searchEnabled: Boolean,
+    )
+
     override fun open(player: Player) {
         if (player.uniqueId != shop.owner &&
             !player.hasPermission("enthusiamarket.admin") &&
@@ -52,12 +63,21 @@ class ShopEditMenu(
         render(player)
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun render(player: Player) {
         val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shop.edit.title")))
         val pane = StaticPane(9, 3)
+        addDirectionSummary(pane)
+        addSellItemEditor(pane, player)
+        addSellAmountControls(pane, player)
+        addCostControls(pane, player)
+        addStateControls(pane, player)
+        addActions(pane, player)
+        gui.addPane(pane)
+        gui.blockItemTheft()
+        gui.show(player)
+    }
 
-        // Direction + stock info (from draft sellAmount when item unchanged).
+    private fun addDirectionSummary(pane: StaticPane) {
         val dirLabel = ShopDisplay.directionLabel(shop.direction)
         val tradesAvailable = if (sellItemB64 == shop.sellItem)
             if (sellAmount > 0) shop.stockCount / sellAmount else 0
@@ -72,8 +92,9 @@ class ShopEditMenu(
             lang.msg("gui.shop.edit.direction", "direction" to dirLabel),
             stockLore
         )), 0, 1)
+    }
 
-        // Sell item preview (decoded). Clicking sets the sell item to the item in hand.
+    private fun addSellItemEditor(pane: StaticPane, player: Player) {
         val preview = ItemStackSerializer.deserialize(sellItemB64) ?: ItemStack(Material.BARRIER)
         pane.addItem(GuiItem(preview) { event ->
             event.isCancelled = true
@@ -84,8 +105,9 @@ class ShopEditMenu(
                 render(player)
             }
         }, 1, 1)
+    }
 
-        // Sell amount controls.
+    private fun addSellAmountControls(pane: StaticPane, player: Player) {
         pane.addItem(GuiItem(decorated(Material.LIME_DYE, lang.msg("gui.shop.edit.sell_up", "amount" to sellAmount))) {
             it.isCancelled = true; sellAmount += 1; render(player)
         }, 2, 0)
@@ -93,8 +115,9 @@ class ShopEditMenu(
         pane.addItem(GuiItem(decorated(Material.RED_DYE, lang.msg("gui.shop.edit.sell_down", "amount" to sellAmount))) {
             it.isCancelled = true; sellAmount = (sellAmount - 1).coerceAtLeast(1); render(player)
         }, 2, 2)
+    }
 
-        // Cost column: money controls for SELL/BUY, item-from-hand for TRADE.
+    private fun addCostControls(pane: StaticPane, player: Player) {
         if (shop.direction == SignDirection.TRADE) {
             val costPreview = ItemStackSerializer.deserialize(costItemB64) ?: ItemStack(Material.BARRIER)
             pane.addItem(GuiItem(costPreview) { event ->
@@ -121,8 +144,9 @@ class ShopEditMenu(
                 it.isCancelled = true; costAmount = (costAmount - 10).coerceAtLeast(1); render(player)
             }, 4, 2)
         }
+    }
 
-        // Hopper toggles + freeze.
+    private fun addStateControls(pane: StaticPane, player: Player) {
         pane.addItem(GuiItem(decorated(if (hopperIn) Material.HOPPER else Material.GRAY_DYE, lang.msg("gui.shop.edit.hopper_in", "state" to hopperIn))) {
             it.isCancelled = true; hopperIn = !hopperIn; render(player)
         }, 6, 0)
@@ -137,11 +161,12 @@ class ShopEditMenu(
         pane.addItem(GuiItem(decorated(if (searchEnabled) Material.SPYGLASS else Material.GRAY_DYE, lang.msg("gui.shop.edit.search", "state" to searchEnabled))) {
             it.isCancelled = true; searchEnabled = !searchEnabled; render(player)
         }, 7, 1)
+    }
 
-        // Save + delete.
+    private fun addActions(pane: StaticPane, player: Player) {
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.edit.save"))) {
             it.isCancelled = true
-            shopRepository.upsert(applyEdits(shop, sellItemB64, sellAmount, costAmount, hopperIn, hopperOut, frozen, searchEnabled, costItemB64))
+            shopRepository.upsert(applyEdits(shop, editDraft()))
             player.closeInventory()
             player.sendMessage(lang.msg("shop.edit.saved"))
         }, 8, 0)
@@ -151,10 +176,19 @@ class ShopEditMenu(
             player.closeInventory()
             player.sendMessage(lang.msg("shop.delete.done"))
         }, 8, 2)
+    }
 
-        gui.addPane(pane)
-        gui.blockItemTheft()
-        gui.show(player)
+    private fun editDraft(): EditDraft {
+        return EditDraft(
+            sellItemBase64 = sellItemB64,
+            sellAmount = sellAmount,
+            costItemBase64 = costItemB64,
+            costAmount = costAmount,
+            hopperIn = hopperIn,
+            hopperOut = hopperOut,
+            frozen = frozen,
+            searchEnabled = searchEnabled,
+        )
     }
 
     private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
@@ -166,22 +200,19 @@ class ShopEditMenu(
         return item
     }
 
-    @Suppress("LongParameterList")
     companion object {
         /** Pure: produce the edited Shop copy. Amounts clamp to >= 1 (Shop.init requires it). */
-        fun applyEdits(
-            shop: Shop, sellItemB64: String, sellAmount: Int, costAmount: Int,
-            hopperIn: Boolean, hopperOut: Boolean, frozen: Boolean,
-            searchEnabled: Boolean, costItemB64: String = shop.costItem,
-        ): Shop = shop.copy(
-            sellItem = sellItemB64,
-            sellAmount = sellAmount.coerceAtLeast(1),
-            costItem = costItemB64,
-            costAmount = costAmount.coerceAtLeast(1),
-            hopperAllowIn = hopperIn,
-            hopperAllowOut = hopperOut,
-            frozen = frozen,
-            searchEnabled = searchEnabled,
-        )
+        fun applyEdits(shop: Shop, draft: EditDraft): Shop {
+            return shop.copy(
+                sellItem = draft.sellItemBase64,
+                sellAmount = draft.sellAmount.coerceAtLeast(1),
+                costItem = draft.costItemBase64,
+                costAmount = draft.costAmount.coerceAtLeast(1),
+                hopperAllowIn = draft.hopperIn,
+                hopperAllowOut = draft.hopperOut,
+                frozen = draft.frozen,
+                searchEnabled = draft.searchEnabled,
+            )
+        }
     }
 }

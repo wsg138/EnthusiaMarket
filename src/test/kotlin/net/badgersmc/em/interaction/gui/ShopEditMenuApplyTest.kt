@@ -20,9 +20,17 @@ class ShopEditMenuApplyTest {
 
     @Test fun `applyEdits returns a copy with the edited fields`() {
         val updated = ShopEditMenu.applyEdits(
-            shop(), sellItemB64 = "new", sellAmount = 5, costAmount = 99,
-            hopperIn = false, hopperOut = false, frozen = true,
-            searchEnabled = true, costItemB64 = "barterItem",
+            shop(),
+            ShopEditMenu.EditDraft(
+                sellItemBase64 = "new",
+                sellAmount = 5,
+                costItemBase64 = "barterItem",
+                costAmount = 99,
+                hopperIn = false,
+                hopperOut = false,
+                frozen = true,
+                searchEnabled = true,
+            ),
         )
         assertEquals("new", updated.sellItem)
         assertEquals(5, updated.sellAmount)
@@ -36,9 +44,17 @@ class ShopEditMenuApplyTest {
 
     @Test fun `applyEdits clamps amounts to at least one`() {
         val updated = ShopEditMenu.applyEdits(
-            shop(), sellItemB64 = "x", sellAmount = 0, costAmount = -5,
-            hopperIn = true, hopperOut = true, frozen = false,
-            searchEnabled = false, costItemB64 = "keep",
+            shop(),
+            ShopEditMenu.EditDraft(
+                sellItemBase64 = "x",
+                sellAmount = 0,
+                costItemBase64 = "keep",
+                costAmount = -5,
+                hopperIn = true,
+                hopperOut = true,
+                frozen = false,
+                searchEnabled = false,
+            ),
         )
         assertEquals(1, updated.sellAmount)
         assertEquals(1, updated.costAmount)
