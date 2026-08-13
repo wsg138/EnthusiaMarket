@@ -121,7 +121,13 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
             try {
                 ShopModerationFenceQueries.rejectLockedOwner(conn, owner)
                 conn.prepareStatement(
-                    "DELETE FROM shop_transactions WHERE shop_id IN (SELECT id FROM shop_items WHERE owner = ?)"
+                    """DELETE FROM shop_transactions WHERE shop_id IN (
+                           SELECT id FROM shop_items WHERE owner = ?
+                             AND NOT EXISTS (
+                                 SELECT 1 FROM market_moderation_locks l
+                                 WHERE l.stall_id = shop_items.stall_id
+                             )
+                       )""",
                 ).use { ps ->
                     ps.setString(1, owner.toString())
                     ps.executeUpdate()
@@ -136,6 +142,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                     ps.setString(1, owner.toString())
                     ps.executeUpdate()
                 }
+                ShopModerationFenceQueries.rejectLockedOwner(conn, owner)
                 conn.commit()
                 count
             } catch (e: Exception) {
@@ -178,7 +185,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                     for ((id, stock) in batch) {
                         ps.setInt(1, stock)
                         ps.setLong(2, id)
-                        ShopModerationFenceQueries.rejectLockedShop(conn, id, ps.executeUpdate())
+                        ps.executeUpdate()
                     }
                 }
                 conn.commit()

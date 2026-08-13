@@ -505,7 +505,7 @@ open class EnthusiaMarket : JavaPlugin() {
 
     override fun onDisable() {
         server.servicesManager.unregisterAll(this)
-        moderationProvider?.close()
+        runCatching { moderationProvider?.close() }
         runCatching { geyserHeadIntegration?.close() }
         runCatching { floodgateHeadIntegration?.close() }
         runCatching { floodgateSkinCapture?.close() }

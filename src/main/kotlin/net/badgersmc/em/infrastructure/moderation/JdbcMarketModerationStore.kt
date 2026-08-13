@@ -79,40 +79,35 @@ internal class JdbcMarketModerationStore(
         )
     }
 
-    fun prepare(request: MarketOperationRequest): MarketOperationResult = try {
-        dataSource.inTransaction { connection -> prepare(connection, request) }
-    } catch (conflict: MarketModerationConflict) {
-        operationResult(MarketOperationResult.Status.CONFLICT, null, conflict.message ?: "Market operation conflict")
-    } catch (rejected: MarketModerationRejected) {
-        operationResult(MarketOperationResult.Status.REJECTED, null, rejected.message ?: "Market operation rejected")
-    }
+    fun prepare(request: MarketOperationRequest): MarketOperationResult =
+        moderatedTransaction { connection -> prepare(connection, request) }
 
-    fun confiscate(approval: MarketConfiscationApproval): MarketOperationResult = dataSource.inTransaction { connection ->
+    fun confiscate(approval: MarketConfiscationApproval): MarketOperationResult = moderatedTransaction { connection ->
         val operation = connection.findMarketOperation(approval.operationId())
-            ?: return@inTransaction operationResult(
+            ?: return@moderatedTransaction operationResult(
                 MarketOperationResult.Status.REJECTED,
                 null,
                 "Market operation does not exist",
             )
         if (operation.state == MarketOperationRecord.State.MODERATION_HOLD) {
-            return@inTransaction operationResult(
+            return@moderatedTransaction operationResult(
                 MarketOperationResult.Status.REPLAYED,
                 operation,
                 "Market confiscation was already reviewed",
             )
         }
         if (operation.state != MarketOperationRecord.State.PREPARED) {
-            return@inTransaction conflict(operation, "Only a prepared market operation can be confiscated")
+            return@moderatedTransaction conflict(operation, "Only a prepared market operation can be confiscated")
         }
         if (operation.snapshotChecksum != approval.expectedSnapshotChecksum()) {
-            return@inTransaction conflict(operation, "Prepared snapshot checksum does not match")
+            return@moderatedTransaction conflict(operation, "Prepared snapshot checksum does not match")
         }
         if (verifiedOriginal(operation) == null) {
-            return@inTransaction quarantine(connection, operation, "Stored market snapshot failed its integrity check")
+            return@moderatedTransaction quarantine(connection, operation, "Stored market snapshot failed its integrity check")
         }
         val current = snapshotCodec.capture(connection, operation.stallId, operation.targetId)
         if (current.checksum != operation.currentChecksum) {
-            return@inTransaction quarantine(connection, operation, "Prepared market state changed before review")
+            return@moderatedTransaction quarantine(connection, operation, "Prepared market state changed before review")
         }
 
         holdStall(connection, operation, current.stallRevision)
@@ -129,31 +124,31 @@ internal class JdbcMarketModerationStore(
         operationResult(MarketOperationResult.Status.HELD, updated, updated.detail)
     }
 
-    fun restore(request: MarketRestoreRequest): MarketOperationResult = dataSource.inTransaction { connection ->
+    fun restore(request: MarketRestoreRequest): MarketOperationResult = moderatedTransaction { connection ->
         val operation = connection.findMarketOperation(request.operationId())
-            ?: return@inTransaction operationResult(
+            ?: return@moderatedTransaction operationResult(
                 MarketOperationResult.Status.REJECTED,
                 null,
                 "Market operation does not exist",
             )
         if (operation.state == MarketOperationRecord.State.RESTORED) {
-            return@inTransaction operationResult(
+            return@moderatedTransaction operationResult(
                 MarketOperationResult.Status.REPLAYED,
                 operation,
                 "Market ownership was already restored",
             )
         }
         if (operation.state != MarketOperationRecord.State.MODERATION_HOLD) {
-            return@inTransaction conflict(operation, "Only a reviewed moderation hold can be restored")
+            return@moderatedTransaction conflict(operation, "Only a reviewed moderation hold can be restored")
         }
         if (operation.currentChecksum != request.expectedCurrentChecksum()) {
-            return@inTransaction conflict(operation, "Held market checksum does not match")
+            return@moderatedTransaction conflict(operation, "Held market checksum does not match")
         }
         val original = verifiedOriginal(operation)
-            ?: return@inTransaction quarantine(connection, operation, "Stored market snapshot failed its integrity check")
+            ?: return@moderatedTransaction quarantine(connection, operation, "Stored market snapshot failed its integrity check")
         val current = snapshotCodec.capture(connection, operation.stallId, operation.targetId)
         if (current.checksum != operation.currentChecksum) {
-            return@inTransaction quarantine(connection, operation, "Held market state changed before restoration")
+            return@moderatedTransaction quarantine(connection, operation, "Held market state changed before restoration")
         }
 
         restoreOriginal(connection, operation, original, current.stallRevision)
@@ -171,35 +166,35 @@ internal class JdbcMarketModerationStore(
     }
 
     fun release(operationId: UUID, expectedSnapshotChecksum: String): MarketOperationResult =
-        dataSource.inTransaction { connection ->
+        moderatedTransaction { connection ->
             val operation = connection.findMarketOperation(operationId)
-                ?: return@inTransaction operationResult(
+                ?: return@moderatedTransaction operationResult(
                     MarketOperationResult.Status.REJECTED,
                     null,
                     "Market operation does not exist",
                 )
             if (operation.state == MarketOperationRecord.State.RELEASED) {
-                return@inTransaction operationResult(
+                return@moderatedTransaction operationResult(
                     MarketOperationResult.Status.REPLAYED,
                     operation,
                     "Prepared market operation was already released",
                 )
             }
             if (operation.state != MarketOperationRecord.State.PREPARED) {
-                return@inTransaction conflict(operation, "Only a prepared market operation can be released")
+                return@moderatedTransaction conflict(operation, "Only a prepared market operation can be released")
             }
             if (operation.snapshotChecksum != expectedSnapshotChecksum.lowercase()) {
-                return@inTransaction conflict(operation, "Prepared snapshot checksum does not match")
+                return@moderatedTransaction conflict(operation, "Prepared snapshot checksum does not match")
             }
             val original = verifiedOriginal(operation)
-                ?: return@inTransaction quarantine(
+                ?: return@moderatedTransaction quarantine(
                     connection,
                     operation,
                     "Stored market snapshot failed its integrity check",
                 )
             val current = snapshotCodec.capture(connection, operation.stallId, operation.targetId)
             if (current.checksum != operation.currentChecksum) {
-                return@inTransaction quarantine(connection, operation, "Prepared market state changed before release")
+                return@moderatedTransaction quarantine(connection, operation, "Prepared market state changed before release")
             }
 
             restoreOriginal(connection, operation, original, current.stallRevision)
@@ -222,9 +217,9 @@ internal class JdbcMarketModerationStore(
 
     private fun prepare(connection: Connection, request: MarketOperationRequest): MarketOperationResult {
         connection.findMarketOperation(request.operationId())?.let { existing ->
-            val sameRequest = existing.targetId == request.targetId() &&
-                existing.caseId == request.caseId() && existing.stallId == request.stallId()
-            if (!sameRequest) throw MarketModerationConflict("Operation id belongs to a different market request")
+            if (!existing.matches(request)) {
+                throw MarketModerationConflict("Operation id belongs to a different market request")
+            }
             return operationResult(MarketOperationResult.Status.REPLAYED, existing, "Market operation already exists")
         }
 
@@ -263,7 +258,7 @@ internal class JdbcMarketModerationStore(
                 statement.executeUpdate()
             }
         } catch (failure: SQLException) {
-            if (failure.isConstraintViolation() || failure.isTransactionContention()) {
+            if (failure.isDuplicateKeyViolation() || failure.isTransactionContention()) {
                 throw MarketModerationConflict("Market stall is reserved or changed by another operation")
             }
             throw failure
@@ -301,9 +296,9 @@ internal class JdbcMarketModerationStore(
                 """INSERT INTO market_moderation_operations
                    (operation_id, target_uuid, case_id, stall_id, state,
                     snapshot_json, snapshot_checksum, current_checksum,
-                    review_due_at, recovery_until, reviewer_uuid, detail,
+                    review_due_at, recovery_until, blacklist_expires_at, reviewer_uuid, detail,
                     revision, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, 'PREPARED', ?, ?, ?, ?, ?, NULL, ?, 1, ?, ?)""",
+                   VALUES (?, ?, ?, ?, 'PREPARED', ?, ?, ?, ?, ?, ?, NULL, ?, 1, ?, ?)""",
             ).use { statement ->
                 statement.setString(1, request.operationId().toString())
                 statement.setString(2, request.targetId().toString())
@@ -314,13 +309,14 @@ internal class JdbcMarketModerationStore(
                 statement.setString(7, currentChecksum)
                 statement.setLong(8, request.reviewDueAt().toEpochMilli())
                 statement.setLong(9, request.recoveryUntil().toEpochMilli())
-                statement.setString(10, "Market stall reserved pending explicit Staff review")
-                statement.setLong(11, now)
+                statement.setNullableLong(10, request.blacklistExpiresAt().map(Instant::toEpochMilli).orElse(null))
+                statement.setString(11, "Market stall reserved pending explicit Staff review")
                 statement.setLong(12, now)
+                statement.setLong(13, now)
                 statement.executeUpdate()
             }
         } catch (failure: SQLException) {
-            if (failure.isConstraintViolation()) {
+            if (failure.isDuplicateKeyViolation()) {
                 throw MarketModerationConflict("Case already has a moderation operation for this stall")
             }
             throw failure
@@ -474,6 +470,16 @@ internal class JdbcMarketModerationStore(
         operation: MarketOperationRow?,
         detail: String,
     ): MarketOperationResult = MarketOperationResult(status, Optional.ofNullable(operation?.toRecord()), detail)
+
+    private inline fun moderatedTransaction(
+        block: (Connection) -> MarketOperationResult,
+    ): MarketOperationResult = try {
+        dataSource.inTransaction(block)
+    } catch (conflict: MarketModerationConflict) {
+        operationResult(MarketOperationResult.Status.CONFLICT, null, conflict.message ?: "Market operation conflict")
+    } catch (rejected: MarketModerationRejected) {
+        operationResult(MarketOperationResult.Status.REJECTED, null, rejected.message ?: "Market operation rejected")
+    }
 
     private fun ResultSet.toStallRecord(): MarketStallRecord {
         val ownerType = MarketOwnership.Type.valueOf(getString("owner_type"))

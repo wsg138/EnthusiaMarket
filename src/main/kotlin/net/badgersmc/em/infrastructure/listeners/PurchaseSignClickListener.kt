@@ -122,7 +122,7 @@ open class PurchaseSignClickListener(
             StallState.OWNED, StallState.GRACE ->
                 handleExtension(player.uniqueId, sign.stallId, sign.locationKey, player)
             StallState.MODERATION_HOLD ->
-                player.sendMessage(AdventureComponent.text("This stall is unavailable during staff review."))
+                player.sendMessage(lang.msg("purchase_sign.msg.moderation_hold"))
         }
     }
 

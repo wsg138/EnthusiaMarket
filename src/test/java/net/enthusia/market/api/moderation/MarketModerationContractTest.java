@@ -43,6 +43,25 @@ class MarketModerationContractTest {
     }
 
     @Test
+    void identifiersRejectInternalAndUnicodeWhitespace() {
+        Instant review = Instant.parse("2026-08-20T00:00:00Z");
+        for (String caseId : new String[]{"CASE 1", "CASE\u20071"}) {
+            assertThrows(
+                    IllegalArgumentException.class,
+                    () -> new MarketOperationRequest(
+                            UUID.randomUUID(),
+                            UUID.randomUUID(),
+                            caseId,
+                            "stall-1",
+                            review,
+                            review.plusSeconds(86_400L),
+                            Optional.empty()
+                    )
+            );
+        }
+    }
+
+    @Test
     void blacklistExpirationIsEvaluatedAtTheProvidedClock() {
         Instant expiry = Instant.parse("2026-08-20T00:00:00Z");
         StallBlacklistState state = new StallBlacklistState(

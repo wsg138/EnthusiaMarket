@@ -68,9 +68,11 @@ class StallRepositorySqlTest {
         repo.create(s)
         val updated = s.copy(state = StallState.OWNED, winningBid = 1234L)
         repo.save(updated)
+        repo.save(updated.copy(winningBid = 2345L))
         val found = repo.findById(StallId("s1"))!!
         assertEquals(StallState.OWNED, found.state)
-        assertEquals(1234L, found.winningBid)
+        assertEquals(2345L, found.winningBid)
+        assertEquals(s.moderationRevision, found.moderationRevision)
     }
 
     // --- REQ-200 / REQ-201 — members + maxMembers persistence ---

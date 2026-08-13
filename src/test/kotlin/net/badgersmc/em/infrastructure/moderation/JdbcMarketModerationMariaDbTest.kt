@@ -9,6 +9,7 @@ import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.em.infrastructure.persistence.StallRepositorySql
+import net.badgersmc.nexus.persistence.MigrationRunner
 import net.enthusia.market.api.moderation.MarketBlacklistRequest
 import net.enthusia.market.api.moderation.MarketBlacklistResult
 import net.enthusia.market.api.moderation.MarketOperationRequest
@@ -46,7 +47,8 @@ class JdbcMarketModerationMariaDbTest {
             maximumPoolSize = 4
         })
         createUpgradeBaseline()
-        applyProviderMigration()
+        val applied = MigrationRunner(dataSource, "migrations", javaClass.classLoader).runAll()
+        assertEquals(listOf(25), applied.map { it.version })
         createStallAndShop()
     }
 
@@ -231,9 +233,11 @@ class JdbcMarketModerationMariaDbTest {
                 "shop_transactions",
                 "shop_items",
                 "stalls",
+                "schema_migration",
             ).forEach { table -> connection.prepareStatement("DROP TABLE IF EXISTS $table").use { it.executeUpdate() } }
             createStallsBaseline(connection)
             createShopsBaseline(connection)
+            createMigrationBaseline(connection)
         }
     }
 
@@ -294,18 +298,24 @@ class JdbcMarketModerationMariaDbTest {
         ).use { it.executeUpdate() }
     }
 
-    private fun applyProviderMigration() {
-        val migration = checkNotNull(
-            javaClass.classLoader.getResourceAsStream("migrations/V025__market_moderation_provider.sql"),
-        ).bufferedReader().use { it.readText() }
-        val statements = migration.lineSequence()
-            .filterNot { it.trimStart().startsWith("--") }
-            .joinToString("\n")
-            .split(';')
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-        dataSource.connection.use { connection ->
-            statements.forEach { sql -> connection.prepareStatement(sql).use { it.execute() } }
+    private fun createMigrationBaseline(connection: java.sql.Connection) {
+        connection.prepareStatement(
+            """CREATE TABLE schema_migration (
+                   version INTEGER PRIMARY KEY,
+                   name VARCHAR(255) NOT NULL,
+                   applied_at BIGINT NOT NULL
+               )""",
+        ).use { it.executeUpdate() }
+        connection.prepareStatement(
+            "INSERT INTO schema_migration(version, name, applied_at) VALUES (?, ?, ?)",
+        ).use { statement ->
+            (1..24).forEach { version ->
+                statement.setInt(1, version)
+                statement.setString(2, "baseline_$version")
+                statement.setLong(3, now.toEpochMilli())
+                statement.addBatch()
+            }
+            statement.executeBatch()
         }
     }
 

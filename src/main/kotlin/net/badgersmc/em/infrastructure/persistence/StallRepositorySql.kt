@@ -53,8 +53,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                     region_id = ?, world = ?, state = ?, owner_type = ?, owner_id = ?,
                     owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
                     members = ?, max_members = ?, next_rent_at = ?, kind = ?,
-                    extra_entities = ?, extra_total = ?,
-                    moderation_revision = moderation_revision + 1
+                    extra_entities = ?, extra_total = ?
                    WHERE id = ? AND moderation_revision = ?
                      AND NOT EXISTS (
                          SELECT 1 FROM market_moderation_locks WHERE stall_id = ?

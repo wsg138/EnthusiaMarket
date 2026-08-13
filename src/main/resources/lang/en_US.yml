@@ -88,6 +88,11 @@ purchase_sign:
     line2: "<shadow:#000000:1><yellow><owner></shadow>"
     line3: "<shadow:#000000:1><red>Expires in…</shadow>"
     line4: "<shadow:#000000:1><gold><time></shadow>"
+  moderation_hold:
+    line1: "<shadow:#000000:1><dark_red>[Staff Review]</dark_red></shadow>"
+    line2: "<shadow:#000000:1><aqua><stall></aqua></shadow>"
+    line3: "<shadow:#000000:1><red>Unavailable</red></shadow>"
+    line4: "<shadow:#000000:1><gray>Contact staff</gray></shadow>"
   missing:
     line1: "<shadow:#000000:1><dark_gray>[<gold>EM</gold>]</shadow>"
     line2: "<shadow:#000000:1><red>?<stall></shadow>"
@@ -103,6 +108,7 @@ purchase_sign:
     no_guild_permission: "<prefix><shadow:#000000:1><red>You do not have MANAGE_SHOPS in your guild</shadow>"
     stall_missing: "<prefix><shadow:#000000:1><red>Stall not found:</red> <stall></shadow>"
     auction_live: "<prefix><shadow:#000000:1><yellow>Auction is live on</yellow> <aqua><stall></aqua> <gray>— use /em bid</shadow>"
+    moderation_hold: "<prefix><shadow:#000000:1><yellow>This stall is unavailable during staff review.</yellow></shadow>"
     emergency_auction_alert: "<prefix><shadow:#000000:1><dark_red>EMERGENCY AUCTION:</dark_red> <red><stall></red> <gray>rent overdue — starting bid <gold><bid></gold>. Use <click:run_command:'/em bid'><aqua>/em bid</aqua></click> to participate!</shadow>"
     already_owned: "<prefix><shadow:#000000:1><gray>This stall is already owned</shadow>"
     buy_no_permission: "<prefix><shadow:#000000:1><red>You do not have permission to buy stalls (enthusiamarket.stall.buyout)</shadow>"

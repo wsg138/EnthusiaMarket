@@ -10,6 +10,14 @@ The public contract is under `net.enthusia.market.api.moderation`. Its records c
 only JDK types and remain safe to share through Paper's services manager. Consumers must
 compile against the contract without shading a second copy into their runtime JAR.
 
+The Bukkit service boundary assumes that installed server plugins are trusted runtime
+code. EnthusiaStaff authenticates the operator and authorizes the case action before it
+calls this provider; Market then validates the target, case, stall, checksum, revision,
+and durable state transition. The API is not a sandbox against a malicious plugin in
+the same JVM, because co-resident plugin code can inspect services, process memory, and
+server configuration. Operators must therefore restrict plugin installation and update
+access to trusted artifacts and administrators.
+
 The provider is registered after migration and repository initialization and is
 unregistered before shutdown cleanup. An absent provider, an API version other than 1,
 or an unavailable database must block new moderation mutations. Existing durable state
@@ -32,8 +40,8 @@ Review deadlines create alerts; they never approve confiscation automatically.
 - `prepare` creates the stall lock, captures the original snapshot, advances the stall
   moderation revision, freezes shops, and applies the prepared acquisition restriction
   in one database transaction.
-- The same operation ID with the same identity is replay-safe. Reusing it for another
-  target, case, or stall is a conflict.
+- The same operation ID with the complete original request is replay-safe. Changing its
+  target, case, stall, review deadline, recovery window, or blacklist expiry is a conflict.
 - Confiscation, release, and restoration verify the expected checksum and optimistic
   revision before changing state.
 - A live stall reservation or player acquisition fence rejects buyouts, auction awards,
@@ -49,7 +57,8 @@ Migration `V025__market_moderation_provider.sql` adds:
 
 - `stalls.moderation_revision` for optimistic fencing;
 - `market_moderation_operations` for versioned snapshots, checksums, reviewer identity,
-  deadlines, recovery windows, revisions, and terminal audit state;
+  deadlines, recovery windows, requested blacklist expiry, revisions, and terminal audit
+  state;
 - `market_moderation_locks` for one active operation per stall;
 - `market_player_fences` for acquisition serialization; and
 - `market_stall_blacklists` for revisioned case-linked acquisition restrictions.

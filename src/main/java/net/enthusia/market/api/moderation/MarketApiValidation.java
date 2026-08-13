@@ -9,7 +9,10 @@ final class MarketApiValidation {
 
     static String identifier(String value, String field, int maximumLength) {
         String checked = text(value, field, maximumLength);
-        if (!checked.equals(checked.trim()) || checked.chars().anyMatch(Character::isISOControl)) {
+        if (checked.codePoints().anyMatch(codePoint ->
+                Character.isWhitespace(codePoint)
+                        || Character.isSpaceChar(codePoint)
+                        || Character.isISOControl(codePoint))) {
             throw new IllegalArgumentException(field + " contains unsupported characters");
         }
         return checked;

@@ -1,6 +1,8 @@
 package net.badgersmc.em.infrastructure.moderation
 
 import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.sql.Connection
@@ -105,8 +107,18 @@ internal class MarketSnapshotCodec(
         if (json.toByteArray(StandardCharsets.UTF_8).size > MAXIMUM_SNAPSHOT_BYTES) {
             throw MarketModerationConflict("Stored market snapshot exceeds the safety limit")
         }
-        return gson.fromJson(json, MarketSnapshot::class.java)
-            ?: throw MarketModerationConflict("Stored market snapshot is empty")
+        val snapshotObject = parseSnapshotRoot(json)
+        validateSnapshotShape(snapshotObject)
+        return parseSnapshot(snapshotObject)
+    }
+
+    private fun parseSnapshot(snapshotObject: JsonObject): MarketSnapshot {
+        val decoded = try {
+            gson.fromJson(snapshotObject, MarketSnapshot::class.java)
+        } catch (_: RuntimeException) {
+            throw MarketModerationConflict("Stored market snapshot has an invalid structure")
+        }
+        return decoded ?: throw MarketModerationConflict("Stored market snapshot is empty")
     }
 
     fun decodeVerified(json: String, expectedChecksum: String): MarketSnapshot? {
@@ -120,29 +132,6 @@ internal class MarketSnapshotCodec(
             null
         }
     }
-
-    fun prepared(snapshot: CapturedMarketSnapshot): CapturedMarketSnapshot = captured(
-        snapshot.snapshot.copy(
-            shops = snapshot.snapshot.shops.map { it.copy(frozen = true) },
-        ),
-        snapshot.stallRevision + 1L,
-    )
-
-    fun held(snapshot: CapturedMarketSnapshot, heldRevision: Long): CapturedMarketSnapshot = captured(
-        snapshot.snapshot.copy(
-            stall = snapshot.snapshot.stall.copy(
-                state = "MODERATION_HOLD",
-                ownerType = "NONE",
-                ownerId = "",
-                ownerSince = null,
-                winningBid = 0L,
-                members = emptyList(),
-                nextRentAt = null,
-            ),
-            shops = snapshot.snapshot.shops.map { it.copy(frozen = true) },
-        ),
-        heldRevision,
-    )
 
     private fun readStall(
         connection: Connection,
@@ -253,6 +242,30 @@ internal class MarketSnapshotCodec(
             result[parts[0]] = parts.getOrElse(1) { "0" }.toIntOrNull() ?: 0
         }
         return result
+    }
+
+    private fun parseSnapshotRoot(json: String): JsonObject {
+        val root = try {
+            JsonParser.parseString(json)
+        } catch (_: RuntimeException) {
+            throw MarketModerationConflict("Stored market snapshot is not valid JSON")
+        }
+        if (!root.isJsonObject) throw MarketModerationConflict("Stored market snapshot root is not an object")
+        return root.asJsonObject
+    }
+
+    private fun validateSnapshotShape(snapshot: JsonObject) {
+        val shops = snapshot["shops"]
+        val blacklist = snapshot["blacklist"]
+        val problem = when {
+            snapshot["stall"]?.isJsonObject != true -> "Stored market snapshot has no stall object"
+            shops?.isJsonArray != true || shops.asJsonArray.any { !it.isJsonObject } ->
+                "Stored market snapshot has an invalid shops array"
+            blacklist != null && !blacklist.isJsonNull && !blacklist.isJsonObject ->
+                "Stored market snapshot has an invalid blacklist object"
+            else -> null
+        }
+        if (problem != null) throw MarketModerationConflict(problem)
     }
 
     private fun nullableLong(result: ResultSet, column: String): Long? {

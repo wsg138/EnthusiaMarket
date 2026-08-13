@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS market_moderation_operations (
     current_checksum CHAR(64),
     review_due_at BIGINT NOT NULL,
     recovery_until BIGINT NOT NULL,
+    blacklist_expires_at BIGINT,
     reviewer_uuid VARCHAR(36),
     detail VARCHAR(512) NOT NULL,
     revision BIGINT NOT NULL DEFAULT 1,

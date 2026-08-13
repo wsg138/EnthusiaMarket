@@ -96,7 +96,7 @@ internal class JdbcMarketModerationPolicy(
         }
 
     private fun SQLException.asAcquisitionFailure(): Exception =
-        if (isConstraintViolation() || isTransactionContention()) {
+        if (isDuplicateKeyViolation() || isTransactionContention()) {
             MarketAcquisitionBlockedException("Market acquisition fence changed concurrently")
         } else {
             this

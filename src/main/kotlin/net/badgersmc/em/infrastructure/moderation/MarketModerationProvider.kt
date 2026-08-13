@@ -81,8 +81,13 @@ internal class MarketModerationProvider(
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         executor.shutdown()
-        if (!executor.awaitTermination(SHUTDOWN_SECONDS, TimeUnit.SECONDS)) {
+        try {
+            if (!executor.awaitTermination(SHUTDOWN_SECONDS, TimeUnit.SECONDS)) {
+                executor.shutdownNow()
+            }
+        } catch (_: InterruptedException) {
             executor.shutdownNow()
+            Thread.currentThread().interrupt()
         }
     }
 
@@ -152,7 +157,13 @@ internal class MarketModerationProvider(
         }
         val result = store.restore(request)
         val restored = result.operation().map { it.state() == MarketOperationRecord.State.RESTORED }.orElse(false)
-        if (restored && snapshot != null) regionAccess.restore(snapshot)
+        if (restored && snapshot != null) {
+            try {
+                regionAccess.restore(snapshot)
+            } finally {
+                reconcileGate(result)
+            }
+        }
         return result
     }
 
@@ -178,7 +189,7 @@ internal class MarketModerationProvider(
             return Executors.newFixedThreadPool(2) { task ->
                 Thread(task, "enthusia-market-moderation-${counter.incrementAndGet()}").apply {
                     isDaemon = true
-                    contextClassLoader = null
+                    contextClassLoader = MarketModerationProvider::class.java.classLoader
                 }
             }
         }

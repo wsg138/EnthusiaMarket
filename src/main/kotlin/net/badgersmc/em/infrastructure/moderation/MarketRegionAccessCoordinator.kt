@@ -9,6 +9,7 @@ import org.bukkit.plugin.Plugin
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 internal data class MarketRegionAccessSnapshot(
     val world: String,
@@ -64,10 +65,22 @@ internal class BukkitMarketRegionAccessCoordinator(
             return
         }
         val completion = CompletableFuture<Unit>()
-        Bukkit.getScheduler().runTask(plugin, Runnable {
+        val task = Bukkit.getScheduler().runTask(plugin, Runnable {
+            if (completion.isDone) return@Runnable
             runCatching(action).fold(completion::complete, completion::completeExceptionally)
         })
-        completion.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        try {
+            completion.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } catch (timeout: TimeoutException) {
+            completion.cancel(false)
+            task.cancel()
+            throw IllegalStateException("Timed out waiting for the Market region mutation", timeout)
+        } catch (interrupted: InterruptedException) {
+            completion.cancel(false)
+            task.cancel()
+            Thread.currentThread().interrupt()
+            throw interrupted
+        }
     }
 
     private companion object {

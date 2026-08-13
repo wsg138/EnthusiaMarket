@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.moderation
 
 import net.enthusia.market.api.moderation.MarketOperationRecord
+import net.enthusia.market.api.moderation.MarketOperationRequest
 import java.sql.Connection
 import java.sql.ResultSet
 import java.time.Instant
@@ -18,12 +19,21 @@ internal data class MarketOperationRow(
     val currentChecksum: String?,
     val reviewDueAt: Long,
     val recoveryUntil: Long,
+    val blacklistExpiresAt: Long?,
     val reviewerId: UUID?,
     val detail: String,
     val revision: Long,
     val createdAt: Long,
     val updatedAt: Long,
 ) {
+    fun matches(request: MarketOperationRequest): Boolean =
+        targetId == request.targetId() &&
+            caseId == request.caseId() &&
+            stallId == request.stallId() &&
+            reviewDueAt == request.reviewDueAt().toEpochMilli() &&
+            recoveryUntil == request.recoveryUntil().toEpochMilli() &&
+            blacklistExpiresAt == request.blacklistExpiresAt().map(Instant::toEpochMilli).orElse(null)
+
     fun toRecord(): MarketOperationRecord = MarketOperationRecord(
         operationId,
         targetId,
@@ -61,6 +71,7 @@ internal fun ResultSet.toMarketOperationRow(): MarketOperationRow = MarketOperat
     currentChecksum = getString("current_checksum"),
     reviewDueAt = getLong("review_due_at"),
     recoveryUntil = getLong("recovery_until"),
+    blacklistExpiresAt = getLong("blacklist_expires_at").takeUnless { wasNull() },
     reviewerId = getString("reviewer_uuid")?.let(UUID::fromString),
     detail = getString("detail"),
     revision = getLong("revision"),

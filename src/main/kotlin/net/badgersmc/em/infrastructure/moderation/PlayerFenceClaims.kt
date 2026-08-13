@@ -94,7 +94,7 @@ internal object PlayerFenceClaims {
                 statement.executeUpdate()
             }
         } catch (failure: SQLException) {
-            if (!failure.isConstraintViolation()) throw failure
+            if (!failure.isDuplicateKeyViolation()) throw failure
         }
     }
 

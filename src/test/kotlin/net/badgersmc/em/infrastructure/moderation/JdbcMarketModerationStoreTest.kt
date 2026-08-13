@@ -45,8 +45,9 @@ class JdbcMarketModerationStoreTest {
     @BeforeTest
     fun setUp() {
         dataSource = HikariDataSource(HikariConfig().apply {
-            jdbcUrl = "jdbc:sqlite::memory:"
-            maximumPoolSize = 1
+            jdbcUrl = "jdbc:sqlite:file:moderation-${UUID.randomUUID()}?mode=memory&cache=shared"
+            minimumIdle = 1
+            maximumPoolSize = 4
         })
         net.badgersmc.nexus.persistence.MigrationRunner(
             dataSource,
@@ -78,6 +79,31 @@ class JdbcMarketModerationStoreTest {
         assertTrue(shopFrozen())
         assertFalse(store.canAcquire(ownerId))
         assertEquals(prepared.operation().orElseThrow(), store.findOperation(request.operationId()).orElseThrow())
+    }
+
+    @Test
+    fun `prepare replay requires the complete original request`() {
+        val original = request(blacklistExpiresAt = Optional.of(now.plusSeconds(14 * DAY_SECONDS)))
+        assertEquals(MarketOperationResult.Status.PREPARED, store.prepare(original).status())
+        assertEquals(MarketOperationResult.Status.REPLAYED, store.prepare(original).status())
+
+        val mismatches = listOf(
+            request(
+                reviewDueAt = now.plusSeconds(8 * DAY_SECONDS),
+                blacklistExpiresAt = original.blacklistExpiresAt(),
+            ),
+            request(
+                recoveryUntil = now.plusSeconds(31 * DAY_SECONDS),
+                blacklistExpiresAt = original.blacklistExpiresAt(),
+            ),
+            request(blacklistExpiresAt = Optional.of(now.plusSeconds(15 * DAY_SECONDS))),
+            request(blacklistExpiresAt = Optional.empty()),
+        )
+
+        mismatches.forEach { mismatch ->
+            assertEquals(MarketOperationResult.Status.CONFLICT, store.prepare(mismatch).status())
+        }
+        assertEquals(1, scalar("SELECT COUNT(*) FROM market_moderation_operations"))
     }
 
     @Test
@@ -123,6 +149,18 @@ class JdbcMarketModerationStoreTest {
         assertEquals("OWNED", stallValue("state"))
         assertFalse(shopFrozen())
         assertTrue(store.canAcquire(ownerId))
+    }
+
+    @Test
+    fun `release maps a missing reservation to conflict and rolls back restoration`() {
+        val prepared = store.prepare(request()).operation().orElseThrow()
+        execute("DELETE FROM market_moderation_locks WHERE stall_id = 'stall-1'")
+
+        val result = store.release(prepared.operationId(), prepared.snapshotChecksum())
+
+        assertEquals(MarketOperationResult.Status.CONFLICT, result.status())
+        assertEquals("PREPARED", store.findOperation(prepared.operationId()).orElseThrow().state().name)
+        assertTrue(shopFrozen())
     }
 
     @Test
@@ -268,11 +306,28 @@ class JdbcMarketModerationStoreTest {
     }
 
     @Test
+    fun `stock batch skips a moderated shop without discarding unlocked updates`() {
+        val original = stallRepository.findById(StallId("stall-1"))!!
+        stallRepository.create(original.copy(id = StallId("stall-2"), regionId = "market-stall-2"))
+        createShop(signX = 2, stallId = "stall-2")
+        val shops = ShopRepositorySql(dataSource)
+        val locked = shops.findByStall("stall-1").single()
+        val unlocked = shops.findByStall("stall-2").single()
+        store.prepare(request())
+
+        shops.updateStockBatch(mapOf(locked.id to 99, unlocked.id to 20))
+
+        assertEquals(10, shops.findById(locked.id)?.stockCount)
+        assertEquals(20, shops.findById(unlocked.id)?.stockCount)
+    }
+
+    @Test
     fun `provider retries region access failures without claiming premature success`() {
         val regions = RecordingRegionAccess()
+        val gate = DurableMarketMutationGate(dataSource)
         val provider = MarketModerationProvider(
             store,
-            DurableMarketMutationGate(dataSource),
+            gate,
             regions,
             Executors.newSingleThreadExecutor(),
         )
@@ -296,6 +351,7 @@ class JdbcMarketModerationStoreTest {
                 ).toCompletableFuture().join()
             }
             assertEquals("RESTORED", store.findOperation(held.operationId()).orElseThrow().state().name)
+            assertFalse(gate.isStallLocked("stall-1"))
 
             regions.failRestore = false
             val replayed = provider.restore(
@@ -311,14 +367,17 @@ class JdbcMarketModerationStoreTest {
     private fun request(
         operationId: UUID = UUID.fromString("31cb0b96-992c-4678-b5d6-09d372f4ef12"),
         caseId: String = "CASE-100",
+        reviewDueAt: Instant = now.plusSeconds(7 * DAY_SECONDS),
+        recoveryUntil: Instant = now.plusSeconds(30 * DAY_SECONDS),
+        blacklistExpiresAt: Optional<Instant> = Optional.empty(),
     ): MarketOperationRequest = MarketOperationRequest(
         operationId,
         ownerId,
         caseId,
         "stall-1",
-        now.plusSeconds(7 * DAY_SECONDS),
-        now.plusSeconds(30 * DAY_SECONDS),
-        Optional.empty(),
+        reviewDueAt,
+        recoveryUntil,
+        blacklistExpiresAt,
     )
 
     private fun approval(operation: net.enthusia.market.api.moderation.MarketOperationRecord) =
@@ -355,7 +414,7 @@ class JdbcMarketModerationStoreTest {
         )
     }
 
-    private fun createShop(signX: Int = 1) {
+    private fun createShop(signX: Int = 1, stallId: String = "stall-1") {
         dataSource.connection.use { connection ->
             connection.prepareStatement(
                 """INSERT INTO shop_items
@@ -364,13 +423,14 @@ class JdbcMarketModerationStoreTest {
                     sell_item, sell_amount, cost_item, cost_amount, trusted,
                     hopper_allow_in, hopper_allow_out, frozen, admin_shop,
                     direction, search_enabled, sell_material, stock_count)
-                   VALUES ('stall-1', ?, 'market', ?, 65, 1,
+                   VALUES (?, ?, 'market', ?, 65, 1,
                            'market', ?, 64, 1, 'c2VsbA==', 1, 'Y29zdA==', 5, '',
                            1, 1, 0, 0, 'SELL', 1, 'DIAMOND', 10)""",
             ).use { statement ->
-                statement.setString(1, ownerId.toString())
-                statement.setInt(2, signX)
+                statement.setString(1, stallId)
+                statement.setString(2, ownerId.toString())
                 statement.setInt(3, signX)
+                statement.setInt(4, signX)
                 statement.executeUpdate()
             }
         }

@@ -302,7 +302,7 @@ internal class MarketRestrictionJournal(
     }
 
     private fun SQLException.asBlacklistWriteFailure(): Exception =
-        if (isConstraintViolation() || isTransactionContention()) {
+        if (isDuplicateKeyViolation() || isTransactionContention()) {
             MarketModerationConflict("Market blacklist changed concurrently")
         } else {
             this
