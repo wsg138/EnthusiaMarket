@@ -13,6 +13,7 @@ public record MarketOperationRecord(
         State state,
         String snapshotChecksum,
         Optional<String> currentChecksum,
+        Optional<UUID> reviewerId,
         Instant reviewDueAt,
         Instant recoveryUntil,
         long revision,
@@ -30,6 +31,7 @@ public record MarketOperationRecord(
         currentChecksum = currentChecksum.map(value ->
                 MarketApiValidation.checksum(value, "current checksum")
         );
+        reviewerId = Objects.requireNonNull(reviewerId, "reviewerId");
         reviewDueAt = Objects.requireNonNull(reviewDueAt, "reviewDueAt");
         recoveryUntil = Objects.requireNonNull(recoveryUntil, "recoveryUntil");
         if (revision < 1L) {

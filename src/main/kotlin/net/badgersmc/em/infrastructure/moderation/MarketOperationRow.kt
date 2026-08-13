@@ -32,6 +32,7 @@ internal data class MarketOperationRow(
         state,
         snapshotChecksum,
         Optional.ofNullable(currentChecksum),
+        Optional.ofNullable(reviewerId),
         Instant.ofEpochMilli(reviewDueAt),
         Instant.ofEpochMilli(recoveryUntil),
         revision,
