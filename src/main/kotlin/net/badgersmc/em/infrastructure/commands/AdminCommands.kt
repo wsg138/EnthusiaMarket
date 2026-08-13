@@ -528,59 +528,69 @@ class AdminCommands(
 
     // ----- WG resync (operator backfill) -----
 
+    private enum class RegionResyncResult { FIXED, SKIPPED, ERROR, NO_CHANGE }
+
     @Subcommand("rg resync")
     @Permission("enthusiamarket.admin")
-    @Suppress("NestedBlockDepth")
     fun rgResync(@Context sender: CommandSender) {
         var fixed = 0
         var skipped = 0
         var errors = 0
         for (stall in stalls.all()) {
-            // Re-apply region flags (idempotent — safe to run on already-correct regions)
             regionProvisioner.provision(stall.world, stall.regionId, config.market.stallPriority)
-            when (stall.state) {
-                StallState.OWNED, StallState.GRACE -> when (stall.owner.type) {
-                    OwnerType.SOLO -> try {
-                        val uuid = UUID.fromString(stall.owner.id)
-                        // Rebuild full ACL: clear first, set owner, then replay members.
-                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                        regionMembers.setOwner(stall.world, stall.regionId, uuid)
-                        for (memberId in stall.members) {
-                            regionMembers.addMember(stall.world, stall.regionId, memberId)
-                        }
-                        fixed++
-                    } catch (_: Exception) {
-                        errors++
-                    }
-                    OwnerType.GUILD -> try {
-                        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                        val guids = guildProvider.memberIds(stall.owner.id)
-                        if (guids.isNotEmpty()) {
-                            regionMembers.syncGuildMembers(stall.world, stall.regionId, guids)
-                        }
-                        fixed++  // owners/members always cleared above; sync best-effort
-                    } catch (_: Exception) {
-                        errors++
-                    }
-                    OwnerType.NONE -> Unit
-                }
-                StallState.UNOWNED, StallState.MODERATION_HOLD -> try {
-                    regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-                    fixed++
-                } catch (_: Exception) {
-                    errors++
-                }
-                // Active auctions left alone — the winning bid will
-                // run setOwner via settleWithWinner at expiry.
-                StallState.AUCTIONING,
-                StallState.RE_AUCTIONING,
-                StallState.EMERGENCY_AUCTIONING -> skipped++
+            when (resyncRegionAcl(stall)) {
+                RegionResyncResult.FIXED -> fixed++
+                RegionResyncResult.SKIPPED -> skipped++
+                RegionResyncResult.ERROR -> errors++
+                RegionResyncResult.NO_CHANGE -> Unit
             }
         }
         sender.sendMessage(lang.msg(
             "admin.rg_resync.result",
             "fixed" to fixed, "skipped" to skipped, "errors" to errors,
         ))
+    }
+
+    private fun resyncRegionAcl(stall: net.badgersmc.em.domain.stall.Stall): RegionResyncResult {
+        return when (stall.state) {
+            StallState.OWNED, StallState.GRACE -> resyncOwnedRegion(stall)
+            StallState.UNOWNED, StallState.MODERATION_HOLD -> attemptRegionResync {
+                regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+            }
+            StallState.AUCTIONING,
+            StallState.RE_AUCTIONING,
+            StallState.EMERGENCY_AUCTIONING -> RegionResyncResult.SKIPPED
+        }
+    }
+
+    private fun resyncOwnedRegion(stall: net.badgersmc.em.domain.stall.Stall): RegionResyncResult {
+        return when (stall.owner.type) {
+            OwnerType.SOLO -> attemptRegionResync { resyncSoloRegion(stall) }
+            OwnerType.GUILD -> attemptRegionResync { resyncGuildRegion(stall) }
+            OwnerType.NONE -> RegionResyncResult.NO_CHANGE
+        }
+    }
+
+    private fun resyncSoloRegion(stall: net.badgersmc.em.domain.stall.Stall) {
+        val owner = UUID.fromString(stall.owner.id)
+        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        regionMembers.setOwner(stall.world, stall.regionId, owner)
+        stall.members.forEach { regionMembers.addMember(stall.world, stall.regionId, it) }
+    }
+
+    private fun resyncGuildRegion(stall: net.badgersmc.em.domain.stall.Stall) {
+        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        val members = guildProvider.memberIds(stall.owner.id)
+        if (members.isNotEmpty()) regionMembers.syncGuildMembers(stall.world, stall.regionId, members)
+    }
+
+    private fun attemptRegionResync(action: () -> Unit): RegionResyncResult {
+        return try {
+            action()
+            RegionResyncResult.FIXED
+        } catch (_: Exception) {
+            RegionResyncResult.ERROR
+        }
     }
 
     @Subcommand("stall setkind")
