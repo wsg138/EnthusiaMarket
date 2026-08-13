@@ -68,28 +68,36 @@ class ShopSearchService {
         private const val MAX_ITEMS_SCANNED = 1024
 
         private val CATEGORY_MATCHERS: Map<String, (Material) -> Boolean> = mapOf(
-            "ARMOR" to { it.name.endsWith("_HELMET") || it.name.endsWith("_CHESTPLATE") ||
-                it.name.endsWith("_LEGGINGS") || it.name.endsWith("_BOOTS") || it.name.endsWith("_HORSE_ARMOR") ||
-                it.name == "ELYTRA" },
-            "ARMOUR" to { it.name.endsWith("_HELMET") || it.name.endsWith("_CHESTPLATE") ||
-                it.name.endsWith("_LEGGINGS") || it.name.endsWith("_BOOTS") || it.name.endsWith("_HORSE_ARMOR") ||
-                it.name == "ELYTRA" },
-            "TOOLS" to { it.name.endsWith("_PICKAXE") || it.name.endsWith("_AXE") ||
-                it.name.endsWith("_SHOVEL") || it.name.endsWith("_HOE") || it.name.endsWith("_SWORD") ||
-                it.name in TOOL_MATERIALS },
-            "TOOL" to { it.name.endsWith("_PICKAXE") || it.name.endsWith("_AXE") ||
-                it.name.endsWith("_SHOVEL") || it.name.endsWith("_HOE") || it.name.endsWith("_SWORD") ||
-                it.name in TOOL_MATERIALS },
-            "WEAPONS" to { it.name.endsWith("_SWORD") || it.name.endsWith("_AXE") || it.name in WEAPON_MATERIALS },
-            "WEAPON" to { it.name.endsWith("_SWORD") || it.name.endsWith("_AXE") || it.name in WEAPON_MATERIALS },
+            "ARMOR" to ::isArmor,
+            "ARMOUR" to ::isArmor,
+            "TOOLS" to ::isTool,
+            "TOOL" to ::isTool,
+            "WEAPONS" to ::isWeapon,
+            "WEAPON" to ::isWeapon,
             "POTIONS" to { it.name in POTION_MATERIALS },
             "POTION" to { it.name in POTION_MATERIALS },
             "FOOD" to { it.isEdible },
-            "WOOD" to { "WOOD" in it.name || "LOG" in it.name || "STEM" in it.name || "PLANKS" in it.name },
-            "ORES" to { it.name.endsWith("_ORE") || it.name in ORE_MATERIALS },
-            "ORE" to { it.name.endsWith("_ORE") || it.name in ORE_MATERIALS },
+            "WOOD" to ::isWood,
+            "ORES" to ::isOre,
+            "ORE" to ::isOre,
             "REDSTONE" to { it.name in REDSTONE_MATERIALS },
         )
+
+        private fun isArmor(material: Material): Boolean = material.name == "ELYTRA" ||
+            listOf("_HELMET", "_CHESTPLATE", "_LEGGINGS", "_BOOTS", "_HORSE_ARMOR")
+                .any(material.name::endsWith)
+
+        private fun isTool(material: Material): Boolean = material.name in TOOL_MATERIALS ||
+            listOf("_PICKAXE", "_AXE", "_SHOVEL", "_HOE", "_SWORD").any(material.name::endsWith)
+
+        private fun isWeapon(material: Material): Boolean = material.name in WEAPON_MATERIALS ||
+            listOf("_SWORD", "_AXE").any(material.name::endsWith)
+
+        private fun isWood(material: Material): Boolean =
+            listOf("WOOD", "LOG", "STEM", "PLANKS").any(material.name::contains)
+
+        private fun isOre(material: Material): Boolean =
+            material.name.endsWith("_ORE") || material.name in ORE_MATERIALS
         private val TOOL_MATERIALS = setOf("SHEARS", "FISHING_ROD", "FLINT_AND_STEEL", "BRUSH", "SPYGLASS")
         private val WEAPON_MATERIALS = setOf("BOW", "CROSSBOW", "TRIDENT", "MACE", "SPEAR")
         private val POTION_MATERIALS = setOf("POTION", "SPLASH_POTION", "LINGERING_POTION", "TIPPED_ARROW")

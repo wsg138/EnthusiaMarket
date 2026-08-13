@@ -122,50 +122,99 @@ class WebsiteSyncConfigLoader(private val dataFolder: File) {
         }
     }
 
-    @Suppress("LongMethod", "MagicNumber", "CyclomaticComplexMethod")
     private fun validate(yaml: YamlConfiguration): WebsiteSyncConfigResult {
-        val errors = mutableListOf<String>()
-        if (yaml.getInt("config-version") != 1) errors += "config_version"
-        val endpoint = runCatching { URI(yaml.getString("endpoint") ?: "") }.getOrNull()
-        if (endpoint == null || endpoint.scheme != "https" || endpoint.host.isNullOrBlank()) errors += "endpoint"
-        val serverId = yaml.getString("server-id") ?: ""
-        if (serverId != "enthusia-main") errors += "server_id"
-        fun bounded(path: String, min: Int, max: Int): Int {
-            val value = yaml.getInt(path, Int.MIN_VALUE)
-            if (value !in min..max) errors += path.replace('.', '_')
-            return value
+        val validation = ConfigValidation(yaml)
+        val endpoint = validation.endpoint()
+        val serverId = validation.serverId()
+        val values = validation.values()
+        validation.checkOrdering(values)
+        if (validation.failed(endpoint)) {
+            return WebsiteSyncConfigResult(null, validation.errors())
         }
-        val startup = bounded("timing.startup-delay-seconds", 0, 3600)
-        val debounce = bounded("timing.stall-debounce-milliseconds", 50, 30_000)
-        val maximumDebounce = bounded("timing.maximum-debounce-milliseconds", 50, 30_000)
-        val reconciliation = bounded("timing.reconciliation-minutes", 1, 1440)
-        val connect = bounded("http.connect-timeout-seconds", 1, 120)
-        val request = bounded("http.request-timeout-seconds", 1, 300)
-        val concurrent = bounded("http.maximum-concurrent-requests", 1, 1)
-        val initial = bounded("retry.initial-delay-seconds", 1, 3600)
-        val maximum = bounded("retry.maximum-delay-seconds", 1, 86_400)
-        if (maximumDebounce < debounce) errors += "maximum_debounce"
-        if (maximum < initial) errors += "maximum_retry"
-        if (errors.isNotEmpty() || endpoint == null) return WebsiteSyncConfigResult(null, errors.distinct())
         return WebsiteSyncConfigResult(
             WebsiteSyncConfig(
                 configuredEnabled = yaml.getBoolean("enabled", false),
-                endpoint = endpoint,
+                endpoint = requireNotNull(endpoint),
                 serverId = serverId,
                 secret = yaml.getString("sync-secret", "") ?: "",
-                startupDelay = Duration.ofSeconds(startup.toLong()),
-                debounce = Duration.ofMillis(debounce.toLong()),
-                maximumDebounce = Duration.ofMillis(maximumDebounce.toLong()),
-                reconciliation = Duration.ofMinutes(reconciliation.toLong()),
-                connectTimeout = Duration.ofSeconds(connect.toLong()),
-                requestTimeout = Duration.ofSeconds(request.toLong()),
-                maximumConcurrentRequests = concurrent,
-                initialRetry = Duration.ofSeconds(initial.toLong()),
-                maximumRetry = Duration.ofSeconds(maximum.toLong()),
+                startupDelay = Duration.ofSeconds(values.startup.toLong()),
+                debounce = Duration.ofMillis(values.debounce.toLong()),
+                maximumDebounce = Duration.ofMillis(values.maximumDebounce.toLong()),
+                reconciliation = Duration.ofMinutes(values.reconciliation.toLong()),
+                connectTimeout = Duration.ofSeconds(values.connect.toLong()),
+                requestTimeout = Duration.ofSeconds(values.request.toLong()),
+                maximumConcurrentRequests = values.concurrent,
+                initialRetry = Duration.ofSeconds(values.initial.toLong()),
+                maximumRetry = Duration.ofSeconds(values.maximum.toLong()),
                 logStatusChanges = yaml.getBoolean("logging.status-changes", true),
                 logSuccessfulStallUpdates = yaml.getBoolean("logging.successful-stall-updates", false),
             ),
             emptyList(),
         )
+    }
+
+    private data class ConfigValues(
+        val startup: Int,
+        val debounce: Int,
+        val maximumDebounce: Int,
+        val reconciliation: Int,
+        val connect: Int,
+        val request: Int,
+        val concurrent: Int,
+        val initial: Int,
+        val maximum: Int,
+    )
+
+    private class ConfigValidation(private val yaml: YamlConfiguration) {
+        private val errors = mutableListOf<String>()
+
+        init {
+            if (yaml.getInt("config-version") != CONFIG_VERSION) errors += "config_version"
+        }
+
+        fun endpoint(): URI? {
+            val endpoint = runCatching { URI(yaml.getString("endpoint") ?: "") }.getOrNull()
+            if (endpoint?.scheme != HTTPS || endpoint?.host.isNullOrBlank()) errors += "endpoint"
+            return endpoint
+        }
+
+        fun serverId(): String {
+            val serverId = yaml.getString("server-id") ?: ""
+            if (serverId != REQUIRED_SERVER_ID) errors += "server_id"
+            return serverId
+        }
+
+        fun values(): ConfigValues = ConfigValues(
+            startup = bounded("timing.startup-delay-seconds", 0, 3600),
+            debounce = bounded("timing.stall-debounce-milliseconds", 50, 30_000),
+            maximumDebounce = bounded("timing.maximum-debounce-milliseconds", 50, 30_000),
+            reconciliation = bounded("timing.reconciliation-minutes", 1, 1440),
+            connect = bounded("http.connect-timeout-seconds", 1, 120),
+            request = bounded("http.request-timeout-seconds", 1, 300),
+            concurrent = bounded("http.maximum-concurrent-requests", 1, 1),
+            initial = bounded("retry.initial-delay-seconds", 1, 3600),
+            maximum = bounded("retry.maximum-delay-seconds", 1, 86_400),
+        )
+
+        fun checkOrdering(values: ConfigValues) {
+            if (values.maximumDebounce < values.debounce) errors += "maximum_debounce"
+            if (values.maximum < values.initial) errors += "maximum_retry"
+        }
+
+        fun failed(endpoint: URI?): Boolean = errors.isNotEmpty() || endpoint == null
+
+        fun errors(): List<String> = errors.distinct()
+
+        private fun bounded(path: String, minimum: Int, maximum: Int): Int {
+            val value = yaml.getInt(path, Int.MIN_VALUE)
+            if (value !in minimum..maximum) errors += path.replace('.', '_')
+            return value
+        }
+
+        private companion object {
+            const val CONFIG_VERSION = 1
+            const val HTTPS = "https"
+            const val REQUIRED_SERVER_ID = "enthusia-main"
+        }
     }
 }
