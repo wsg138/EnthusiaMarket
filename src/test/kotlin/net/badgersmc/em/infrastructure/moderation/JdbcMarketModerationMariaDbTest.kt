@@ -125,7 +125,7 @@ class JdbcMarketModerationMariaDbTest {
 
             val blocked = store().prepare(request())
             release.countDown()
-            acquisition.get()
+            acquisition.get(10, TimeUnit.SECONDS)
             val prepared = store().prepare(request())
 
             assertEquals(MarketOperationResult.Status.CONFLICT, blocked.status())
