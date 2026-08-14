@@ -89,6 +89,7 @@ class StallSellbackService(
         return QuoteResult.Ok(Quote(stall, refund, shopCount, periods))
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     fun execute(stallId: StallId, actor: UUID): ExecuteResult {
         val stall = stalls.findById(stallId) ?: return ExecuteResult.NotFound
         if (stall.state !in OWNERSHIP_STATES) return ExecuteResult.NotOwned
@@ -98,59 +99,54 @@ class StallSellbackService(
 
         val (refund, _) = computeRefund(stall)
         val boundShops = shops.findByStall(stallId.value)
+
+        // Reset stall to UNOWNED FIRST — ownership durable before money moves.
         val previousState = stall.state
-        if (!reset(stall)) {
+        try {
+            val cleared = stall.copy(
+                state = StallState.UNOWNED,
+                owner = OwnerRef.unowned(),
+                ownerSince = null,
+                winningBid = 0L,
+                members = emptySet(),
+                nextRentAt = null,
+            )
+            stalls.save(cleared)
+            ipLimiter.releaseStallByOwnerId(stall.owner.id)
+            // M3 — drop any lingering sell offer on the now-UNOWNED
+            // stall so a follow-up click doesn't trip the
+            // offer-mutex check (matches StallBuyoutService cleanup
+            // pattern: best-effort, logged, never re-thrown).
+            if (offers.findByStall(stallId) != null) {
+                try {
+                    offers.delete(stallId)
+                } catch (cleanupErr: Exception) {
+                    log.warning(
+                        "StallSellbackService.execute: failed to cleanup lingering sell offer for " +
+                            "${stallId.value}. cause=${cleanupErr.message}"
+                    )
+                }
+            }
+        } catch (e: Exception) {
             return ExecuteResult.Rejected("Stall reset failed; contact an admin")
         }
-        if (!refund(stall, actor, refund)) {
+
+        // Pay refund. If deposit fails, rollback stall to previous state.
+        if (refund > 0 && !economy.deposit(actor, refund)) {
+            try {
+                stalls.save(stall.copy(
+                    state = previousState,
+                    owner = stall.owner,
+                    ownerSince = stall.ownerSince,
+                    winningBid = stall.winningBid,
+                    members = stall.members,
+                    nextRentAt = stall.nextRentAt,
+                ))
+            } catch (_: Exception) { }
             return ExecuteResult.Rejected("Failed to deposit refund of $refund to your account")
         }
-        val wiped = wipeShops(boundShops, stallId)
-        clearRegion(stall)
-        fireStateChanged(stallId.value, previousState, StallState.UNOWNED)
-        restoreGeometry(stall)
-        return ExecuteResult.Sold(refund, wiped)
-    }
 
-    private fun reset(stall: Stall): Boolean = try {
-        stalls.save(stall.copy(
-            state = StallState.UNOWNED,
-            owner = OwnerRef.unowned(),
-            ownerSince = null,
-            winningBid = 0L,
-            members = emptySet(),
-            nextRentAt = null,
-        ))
-        ipLimiter.releaseStallByOwnerId(stall.owner.id)
-        cleanupOffer(stall.id)
-        true
-    } catch (_: Exception) {
-        false
-    }
-
-    private fun cleanupOffer(stallId: StallId) {
-        if (offers.findByStall(stallId) == null) return
-        try {
-            offers.delete(stallId)
-        } catch (cleanupError: Exception) {
-            log.warning(
-                "StallSellbackService.execute: failed to cleanup lingering sell offer for " +
-                    "${stallId.value}. cause=${cleanupError.message}"
-            )
-        }
-    }
-
-    private fun refund(stall: Stall, actor: UUID, amount: Long): Boolean {
-        if (amount <= 0 || economy.deposit(actor, amount)) return true
-        try {
-            stalls.save(stall)
-        } catch (_: Exception) {
-            // The rejection below remains operator-visible even when rollback also fails.
-        }
-        return false
-    }
-
-    private fun wipeShops(boundShops: List<net.badgersmc.em.domain.shop.Shop>, stallId: StallId): Int {
+        // Wipe shops bound to the stall.
         var wiped = 0
         for (shop in boundShops) {
             try {
@@ -163,30 +159,37 @@ class StallSellbackService(
                 )
             }
         }
-        return wiped
-    }
 
-    private fun clearRegion(stall: Stall) {
+        // Strip WG owner + member rights from the released region so
+        // the previous owner can no longer build inside a stall they
+        // no longer own. The next buyer's StallBuyoutService.buy call
+        // will re-set the owner.
         try {
             regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
         } catch (e: Exception) {
             log.warning(
                 "StallSellbackService: WG owner/member clear failed for stall " +
-                    "${stall.id.value}. The DB owner is UNOWNED but WG perms may need a " +
+                    "${stallId.value}. The DB owner is UNOWNED but WG perms may need a " +
                     "manual /rg removeowner. cause=${e.message}"
             )
         }
-    }
 
-    private fun restoreGeometry(stall: Stall) {
-        if (!config.schematics.enabled) return
-        val result = schematics.restore(stall.id.value, stall.world, stall.regionId)
-        if (result is SchematicService.Result.Failure) {
-            log.warning(
-                "StallSellbackService.execute: schematic restore failed for stall " +
-                    "${stall.id.value}; geometry left as-is. cause=${result.cause.message}"
-            )
+        fireStateChanged(stallId.value, previousState, StallState.UNOWNED)
+
+        // REQ-271 — revert the geometry to the pre-claim snapshot now the
+        // stall is UNOWNED. Best-effort: a failed restore must not roll back
+        // the completed sellback (REQ-272/273). Gated on schematics.enabled.
+        if (config.schematics.enabled) {
+            val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+            if (restore is SchematicService.Result.Failure) {
+                log.warning(
+                    "StallSellbackService.execute: schematic restore failed for stall " +
+                        "${stallId.value}; geometry left as-is. cause=${restore.cause.message}"
+                )
+            }
         }
+
+        return ExecuteResult.Sold(refund, wiped)
     }
 
     /**

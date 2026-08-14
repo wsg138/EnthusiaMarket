@@ -19,32 +19,21 @@ class FloodgateSkinListener @JvmOverloads constructor(
         if (closed.get()) return
         diagnostics?.eventReceived()
         try {
-            capture(event)
+            val skin = event.newSkin() ?: return diagnostics?.reject("skin_missing") ?: Unit
+            val player = event.player()
+            val playerId = player.javaUniqueId ?: return diagnostics?.reject("player_missing") ?: Unit
+            val property = skin.value() ?: return diagnostics?.reject("property_missing") ?: Unit
+            val value = property.takeIf { it.length <= FloodgateTexturePropertyParser.MAX_ENCODED }
+                ?: return diagnostics?.reject("property_oversize") ?: Unit
+            val signature = skin.signature()?.take(FloodgateTexturePropertyParser.MAX_SIGNATURE)
+            capture.capture(playerId, value, signature)
+            player.correctUniqueId?.takeIf { it != playerId }?.let { capture.capture(it, value, signature) }
         } catch (_: LinkageError) {
             diagnostics?.reject("floodgate_api")
             close()
         } catch (_: Exception) {
             diagnostics?.reject("listener")
         }
-    }
-
-    private fun capture(event: SkinApplyEvent) {
-        val skin = event.newSkin() ?: return reject("skin_missing")
-        val player = event.player()
-        val playerId = player.javaUniqueId ?: return reject("player_missing")
-        val property = skin.value() ?: return reject("property_missing")
-        if (property.length > FloodgateTexturePropertyParser.MAX_ENCODED) {
-            return reject("property_oversize")
-        }
-        val signature = skin.signature()?.take(FloodgateTexturePropertyParser.MAX_SIGNATURE)
-        capture.capture(playerId, property, signature)
-        player.correctUniqueId
-            ?.takeIf { it != playerId }
-            ?.let { capture.capture(it, property, signature) }
-    }
-
-    private fun reject(reason: String) {
-        diagnostics?.reject(reason)
     }
 
     override fun close() {

@@ -193,31 +193,25 @@ class ShopCommands(
         val fmt = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm")
             .withZone(java.time.ZoneId.systemDefault())
         for (t in displayRows) {
-            sendHistoryRow(player, t, fmt)
+            if (t.owner == player.uniqueId) {
+                val buyerName = org.bukkit.Bukkit.getOfflinePlayer(t.buyer).name ?: "Unknown"
+                player.sendMessage(lang.msg(
+                    "shop.history.sold",
+                    "when" to fmt.format(java.time.Instant.ofEpochMilli(t.createdAt)),
+                    "qty" to t.quantity, "item" to t.item, "price" to t.totalPrice, "buyer" to buyerName,
+                ))
+            } else {
+                val sellerName = org.bukkit.Bukkit.getOfflinePlayer(t.owner).name ?: "Unknown"
+                player.sendMessage(lang.msg(
+                    "shop.history.bought",
+                    "when" to fmt.format(java.time.Instant.ofEpochMilli(t.createdAt)),
+                    "qty" to t.quantity, "item" to t.item, "price" to t.totalPrice, "seller" to sellerName,
+                ))
+            }
         }
         if (hasNext) {
             player.sendMessage(lang.msg("shop.history.more", "page" to (safePage + 1)))
         }
-    }
-
-    private fun sendHistoryRow(
-        player: Player,
-        transaction: net.badgersmc.em.domain.shop.ShopTransaction,
-        formatter: java.time.format.DateTimeFormatter,
-    ) {
-        val sold = transaction.owner == player.uniqueId
-        val otherId = if (sold) transaction.buyer else transaction.owner
-        val otherName = org.bukkit.Bukkit.getOfflinePlayer(otherId).name ?: "Unknown"
-        val relation = if (sold) "buyer" else "seller"
-        val message = if (sold) "shop.history.sold" else "shop.history.bought"
-        player.sendMessage(lang.msg(
-            message,
-            "when" to formatter.format(java.time.Instant.ofEpochMilli(transaction.createdAt)),
-            "qty" to transaction.quantity,
-            "item" to transaction.item,
-            "price" to transaction.totalPrice,
-            relation to otherName,
-        ))
     }
 
     private fun lookAtShop(player: Player): net.badgersmc.em.domain.shop.Shop? {

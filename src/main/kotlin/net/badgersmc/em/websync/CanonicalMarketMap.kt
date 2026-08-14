@@ -20,30 +20,23 @@ class CanonicalMarketMap private constructor(
 
     fun validate(): List<String> {
         val expected = (1..stallCount).map { "stall$it" }.toSet()
-        return listOfNotNull(
-            "canonical_ids".takeIf { stalls.keys != expected },
-            "canonical_count".takeIf { provenance.recordCount != stallCount },
-            "canonical_provenance".takeIf { !provenanceMatches() },
-            "canonical_values".takeIf { stalls.values.any(::invalidStall) },
-            "canonical_duplicate_keys".takeIf { REQUIRED_DUPLICATE_KEYS.any { it !in stalls } },
-        )
+        val errors = mutableListOf<String>()
+        if (stalls.keys != expected) errors += "canonical_ids"
+        if (stalls.size != stallCount || provenance.recordCount != stallCount) errors += "canonical_count"
+        if (provenance.mapperCommit != MAPPER_COMMIT || provenance.sourceSha256 != SOURCE_SHA256 ||
+            provenance.approvedPolygonFingerprint != POLYGON_FINGERPRINT
+        ) errors += "canonical_provenance"
+        if (stalls.values.any { !it.buildingId.matches(Regex("building-[1-9][0-9]*")) || it.floor !in -64..1024 }) {
+            errors += "canonical_values"
+        }
+        if (!stalls.containsKey("stall60") || !stalls.containsKey("stall62")) errors += "canonical_duplicate_keys"
+        return errors
     }
-
-    private fun provenanceMatches(): Boolean = provenance.mapperCommit == MAPPER_COMMIT &&
-        provenance.sourceSha256 == SOURCE_SHA256 &&
-        provenance.approvedPolygonFingerprint == POLYGON_FINGERPRINT
-
-    private fun invalidStall(stall: CanonicalStall): Boolean =
-        !stall.buildingId.matches(BUILDING_ID) || stall.floor !in MINIMUM_FLOOR..MAXIMUM_FLOOR
 
     companion object {
         const val MAPPER_COMMIT = "f35e53c22d30191546330ba84bcefd839cc65ee7"
         const val SOURCE_SHA256 = "ac49bd18f335f453e7c788d16a53fae22f1fd4187227660baec3134c433cb302"
         const val POLYGON_FINGERPRINT = "6f6d926c79fecbcf250043aab2445dccc94c60d92ff70bc042ac8b4650f5b2d8"
-        private const val MINIMUM_FLOOR = -64
-        private const val MAXIMUM_FLOOR = 1024
-        private val BUILDING_ID = Regex("building-[1-9][0-9]*")
-        private val REQUIRED_DUPLICATE_KEYS = setOf("stall60", "stall62")
 
         fun load(classLoader: ClassLoader = CanonicalMarketMap::class.java.classLoader): CanonicalMarketMap {
             val stallsJson = classLoader.getResourceAsStream("market/canonical-market-stalls.json")

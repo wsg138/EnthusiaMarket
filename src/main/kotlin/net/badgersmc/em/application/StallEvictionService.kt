@@ -39,6 +39,7 @@ class StallEvictionService(
         data object NotOwned : Result
     }
 
+    @Suppress("TooGenericExceptionCaught")
     fun evict(stallId: StallId): Result {
         val stall = stalls.findById(stallId) ?: return Result.NotFound
         if (stall.state != StallState.OWNED && stall.state != StallState.GRACE) {
@@ -58,43 +59,33 @@ class StallEvictionService(
         ipLimiter.releaseStallByOwnerId(stall.owner.id)
         // M-4 — wipe shops bound to the stall (parity with sellback) so the
         // next buyer never inherits the evicted owner's live shops.
-        deleteBoundShops(stall.id.value)
-        clearRegion(stall.world, stall.regionId, stall.id.value)
-        fireStateChanged(stall.id.value, previous, StallState.UNOWNED)
-        restoreGeometry(stall.id.value, stall.world, stall.regionId)
-        return Result.Evicted
-    }
-
-    private fun deleteBoundShops(stallId: String) {
-        for (shop in shops.findByStall(stallId)) {
+        for (shop in shops.findByStall(stall.id.value)) {
             try {
                 shops.delete(shop.id)
-            } catch (e: RuntimeException) {
+            } catch (e: Exception) {
                 log.warning(
                     "Evict: failed to delete shop ${shop.id} bound to stall " +
-                        "$stallId; continuing. cause=${e.message}"
+                        "${stall.id.value}; continuing. cause=${e.message}"
                 )
             }
         }
-    }
-
-    private fun clearRegion(world: String, regionId: String, stallId: String) {
         try {
-            regionMembers.clearOwnersAndMembers(world, regionId)
-        } catch (e: RuntimeException) {
-            log.warning("Evict: WG owner/member clear failed for $stallId: ${e.message}")
+            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        } catch (e: Exception) {
+            // DB is authoritative; WG can be resynced via /em rg resync.
+            log.warning("Evict: WG owner/member clear failed for ${stall.id.value}: ${e.message}")
         }
-    }
-
-    private fun restoreGeometry(stallId: String, world: String, regionId: String) {
-        if (!config.schematics.enabled) return
-        val restore = schematics.restore(stallId, world, regionId)
-        if (restore is SchematicService.Result.Failure) {
-            log.warning(
-                "Evict: schematic restore failed for $stallId; " +
-                    "geometry left as-is. cause=${restore.cause.message}"
-            )
+        fireStateChanged(stall.id.value, previous, StallState.UNOWNED)
+        if (config.schematics.enabled) {
+            val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+            if (restore is SchematicService.Result.Failure) {
+                log.warning(
+                    "Evict: schematic restore failed for ${stall.id.value}; " +
+                        "geometry left as-is. cause=${restore.cause.message}"
+                )
+            }
         }
+        return Result.Evicted
     }
 
     @Suppress("TooGenericExceptionCaught")

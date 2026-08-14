@@ -36,10 +36,10 @@ open class PurchaseSignCreateListener(
     private val config: EnthusiaMarketConfig,
     private val lang: LangService,
 ) : Listener {
-    private val plain = PlainTextComponentSerializer.plainText()
 
     @EventHandler(ignoreCancelled = true)
     fun onSignPlace(event: SignChangeEvent) {
+        val plain = PlainTextComponentSerializer.plainText()
         val lines = event.lines()
         val firstLine = plain.serialize(lines[0]).trim()
         if (!firstLine.equals(config.signs.triggerToken, ignoreCase = true)) return
@@ -51,11 +51,28 @@ open class PurchaseSignCreateListener(
             return
         }
 
-        val input = parse(event) ?: return
+        val stallName = plain
+            .serialize(lines.getOrElse(1) { net.kyori.adventure.text.Component.empty() })
+            .trim()
+        if (stallName.isBlank()) {
+            player.sendMessage(lang.msg("purchase_sign.msg.invalid_stall", "stall" to ""))
+            event.isCancelled = true
+            return
+        }
 
-        val stall = stalls.findById(StallId(input.stallName))
+        val priceRaw = plain
+            .serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
+            .trim()
+        val price = priceRaw.toLongOrNull()
+        if (price == null || price <= 0) {
+            player.sendMessage(lang.msg("purchase_sign.msg.invalid_price", "price" to priceRaw))
+            event.isCancelled = true
+            return
+        }
+
+        val stall = stalls.findById(StallId(stallName))
         if (stall == null) {
-            player.sendMessage(lang.msg("purchase_sign.msg.invalid_stall", "stall" to input.stallName))
+            player.sendMessage(lang.msg("purchase_sign.msg.invalid_stall", "stall" to stallName))
             event.isCancelled = true
             return
         }
@@ -77,54 +94,20 @@ open class PurchaseSignCreateListener(
             return
         }
 
-        save(event, stall.id, input)
-    }
-
-    private fun parse(event: SignChangeEvent): ParsedSign? {
-        val lines = event.lines()
-        val stallName = plain
-            .serialize(lines.getOrElse(1) { net.kyori.adventure.text.Component.empty() })
-            .trim()
-        if (stallName.isBlank()) {
-            event.player.sendMessage(lang.msg("purchase_sign.msg.invalid_stall", "stall" to ""))
-            event.isCancelled = true
-            return null
-        }
-        val priceText = plain
-            .serialize(lines.getOrElse(2) { net.kyori.adventure.text.Component.empty() })
-            .trim()
-        val price = priceText.toLongOrNull()
-        if (price == null || price <= 0) {
-            event.player.sendMessage(lang.msg("purchase_sign.msg.invalid_price", "price" to priceText))
-            event.isCancelled = true
-            return null
-        }
-        return ParsedSign(stallName, price)
-    }
-
-    private fun save(event: SignChangeEvent, stallId: StallId, input: ParsedSign) {
-        val block = event.block
         val sign = PurchaseSign(
-            stallId = stallId,
-            world = block.world.name,
-            x = block.x,
-            y = block.y,
-            z = block.z,
-            price = input.price,
+            stallId = stall.id,
+            world = worldName,
+            x = block.x, y = block.y, z = block.z,
+            price = price,
         )
         signs.save(sign)
+
         val rendered = renderer.render(sign)
-        repeat(SIGN_LINES) { index ->
-            event.line(index, rendered.getOrElse(index) { net.kyori.adventure.text.Component.empty() })
+        for (i in 0 until 4) {
+            event.line(i, rendered.getOrElse(i) { net.kyori.adventure.text.Component.empty() })
         }
-        event.player.sendMessage(
-            lang.msg("purchase_sign.msg.created", "stall" to input.stallName, "price" to input.price)
+        player.sendMessage(
+            lang.msg("purchase_sign.msg.created", "stall" to stallName, "price" to price)
         )
-    }
-
-    private data class ParsedSign(val stallName: String, val price: Long)
-
-    private companion object {
-        const val SIGN_LINES = 4
     }
 }

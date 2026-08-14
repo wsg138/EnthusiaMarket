@@ -113,29 +113,18 @@ class CreateShopMenu(
         // Row 3: confirm + cancel
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.create.confirm"))) { event ->
             event.isCancelled = true
-            val shop = ShopFactory.build(ShopFactory.Input(
-                stallId = stallId,
-                owner = stallOwner,
-                sign = ShopFactory.Position(
-                    signLoc.world?.name ?: "world",
-                    signLoc.blockX,
-                    signLoc.blockY,
-                    signLoc.blockZ,
-                ),
-                container = ShopFactory.Position(
-                    containerLoc.world?.name ?: "world",
-                    containerLoc.blockX,
-                    containerLoc.blockY,
-                    containerLoc.blockZ,
-                ),
-                sell = ShopFactory.ItemAmount(sellItemBase64, amount),
-                cost = ShopFactory.Cost(
-                    price,
-                    costItemB64,
-                    if (direction == SignDirection.TRADE) costItemAmount else null,
-                ),
+            val shop = ShopFactory.build(
+                stallId = stallId, owner = stallOwner,
+                signWorld = signLoc.world?.name ?: "world",
+                signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
+                containerWorld = containerLoc.world?.name ?: "world",
+                containerX = containerLoc.blockX, containerY = containerLoc.blockY, containerZ = containerLoc.blockZ,
+                sellItemBase64 = sellItemBase64, sellAmount = amount, price = price,
                 direction = direction,
-            ))
+                searchEnabled = true,
+                costItemBase64 = costItemB64,
+                costAmountOverride = if (direction == SignDirection.TRADE) costItemAmount else null,
+            )
             if (!writeSignText(shop)) {
                 player.closeInventory()
                 player.sendMessage(lang.msg("shop.create.sign_failed"))

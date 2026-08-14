@@ -44,48 +44,32 @@ class ShopAuditScheduler(
     private fun tick() {
         val all = shops.all()
         if (all.isEmpty()) return
+        var processed = 0
+        var removed = 0
+        val skips = mutableListOf<String>()
         // Cap at the list size so a tick never re-audits the same shop when
         // there are fewer shops than maxPerTick. The cursor still advances
         // across ticks, so over time every shop is swept.
         val max = minOf(config.shopAudit.maxPerTick, all.size)
-        report(auditBatch(all, max))
-    }
-
-    private fun auditBatch(
-        all: List<net.badgersmc.em.domain.shop.Shop>,
-        maximum: Int,
-    ): AuditSummary {
-        val results = buildList {
-            repeat(maximum) {
-                if (cursor >= all.size) cursor = 0
-                val shop = all[cursor++]
-                add(shop to auditOne(shop))
+        while (processed < max) {
+            if (cursor >= all.size) cursor = 0
+            val shop = all[cursor]
+            cursor++
+            processed++
+            val decision = auditOne(shop)
+            if (decision == Decision.REMOVED) removed++ else if (decision == Decision.SKIPPED) {
+                skips.add(shop.id.toString())
             }
         }
-        return AuditSummary(
-            processed = results.size,
-            removed = results.count { it.second == Decision.REMOVED },
-            skipped = results.filter { it.second == Decision.SKIPPED }.map { it.first.id.toString() },
-        )
-    }
-
-    private fun report(summary: AuditSummary) {
-        if (summary.removed == 0 && summary.skipped.isEmpty()) return
-        val skipped = summary.skipped.takeIf { it.isNotEmpty() }?.let {
-            ", ${it.size} skipped (unloaded chunks: ${it.take(3).joinToString()})"
-        }.orEmpty()
-        plugin.logger.info(
-            "[audit] sweep: ${summary.processed} checked, ${summary.removed} removed$skipped"
-        )
+        if (removed > 0 || skips.isNotEmpty()) {
+            plugin.logger.info(
+                "[audit] sweep: $processed checked, $removed removed" +
+                if (skips.isNotEmpty()) ", ${skips.size} skipped (unloaded chunks: ${skips.take(3).joinToString()})" else ""
+            )
+        }
     }
 
     private enum class Decision { KEPT, REMOVED, SKIPPED }
-
-    private data class AuditSummary(
-        val processed: Int,
-        val removed: Int,
-        val skipped: List<String>,
-    )
 
     private fun auditOne(shop: net.badgersmc.em.domain.shop.Shop): Decision {
         if (containerIsMissing(shop) && config.shopAudit.repairEnabled) {

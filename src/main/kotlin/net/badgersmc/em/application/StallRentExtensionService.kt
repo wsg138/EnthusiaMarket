@@ -48,7 +48,9 @@ class StallRentExtensionService(
     fun extend(stallId: StallId, actor: UUID): Result {
         val stall = stalls.findById(stallId) ?: return Result.NotFound
 
-        if (!rentable(stall.state)) return Result.NotOwned
+        if (stall.state != StallState.OWNED && stall.state != StallState.GRACE) {
+            return Result.NotOwned
+        }
         if (!stall.canManage(actor, guildProvider)) return Result.NotAuthorised
 
         prepaidCapRejection(stall)?.let { return it }
@@ -60,51 +62,31 @@ class StallRentExtensionService(
         // until operators tune formulaPct (typically 1.0 = 1% per
         // period). True rent-free stalls (winningBid <= 0) keep the
         // no-charge path so admin-gifted regions don't surprise-bill.
-        val amount = rentAmount(stall)
-        if (amount <= 0) return extendWithoutCharge(stall)
+        val computed = stall.rentTerms.dailyRent(stall.winningBid)
+        val amount = if (stall.winningBid > 0L) maxOf(computed, 1L) else computed
+        if (amount <= 0) {
+            // Truly rent-free (winningBid == 0). Bump the timer for
+            // sign-display purposes; no economy involvement.
+            val pushed = pushTimer(stall.nextRentAt)
+            val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
+            stalls.save(updated)
+            fireStateChanged(stallId.value, stall.state, updated.state)
+            return Result.Extended(pushed, 0L)
+        }
 
         val isGuild = stall.owner.type == OwnerType.GUILD
-        charge(stall, actor, amount, isGuild)?.let { return it }
+        val charged = if (isGuild) guildProvider.bankWithdraw(stall.owner.id, amount)
+                      else economy.withdraw(actor, amount)
+        if (!charged) {
+            return Result.Rejected(
+                if (isGuild) "The guild bank has insufficient funds: $amount required"
+                else "Insufficient funds: $amount required"
+            )
+        }
 
         val pushed = pushTimer(stall.nextRentAt)
         persistExtension(stall, stallId, actor, amount, isGuild, pushed)
         return Result.Extended(pushed, amount)
-    }
-
-    private fun rentable(state: StallState): Boolean =
-        state == StallState.OWNED || state == StallState.GRACE
-
-    private fun rentAmount(stall: Stall): Long {
-        val computed = stall.rentTerms.dailyRent(stall.winningBid)
-        return if (stall.winningBid > 0L) maxOf(computed, 1L) else computed
-    }
-
-    private fun extendWithoutCharge(stall: Stall): Result.Extended {
-        val pushed = pushTimer(stall.nextRentAt)
-        val updated = stall.copy(nextRentAt = pushed, state = StallState.OWNED)
-        stalls.save(updated)
-        fireStateChanged(stall.id.value, stall.state, updated.state)
-        return Result.Extended(pushed, 0L)
-    }
-
-    private fun charge(
-        stall: Stall,
-        actor: UUID,
-        amount: Long,
-        guildOwned: Boolean,
-    ): Result.Rejected? {
-        val charged = if (guildOwned) {
-            guildProvider.bankWithdraw(stall.owner.id, amount)
-        } else {
-            economy.withdraw(actor, amount)
-        }
-        if (charged) return null
-        val reason = if (guildOwned) {
-            "The guild bank has insufficient funds: $amount required"
-        } else {
-            "Insufficient funds: $amount required"
-        }
-        return Result.Rejected(reason)
     }
 
     /**

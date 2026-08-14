@@ -101,51 +101,57 @@ class SellOfferService(
         }
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun purchaseWithPermit(stallId: StallId, buyer: UUID): Result {
         val offer = offers.findByStall(stallId) ?: return Result.NotFound
         val stall = stalls.findById(stallId) ?: return Result.NotFound
-        validatePurchase(offer, stall, buyer)?.let { return it }
+
+        if (buyer == offer.sellerUuid) {
+            return Result.Rejected("You cannot buy your own stall")
+        }
+
         val taxPct = config.shop.taxPct
+        if (taxPct < 0.0 || taxPct > 1.0) {
+            return Result.Rejected("Invalid tax percentage: $taxPct")
+        }
         val tax = (offer.price * taxPct).toLong()
         val total = offer.price + tax
+
+        // M1: ownership-cap gate. StallBuyoutService enforces the same
+        // limit on a fresh click-to-buy; sell-offer purchase also flips
+        // the stall's owner to the buyer, so the cap must apply here too.
+        // Run BEFORE the economy withdraw — refusing after charging would
+        // force a refund path. LimitResolutionService.canClaim returns
+        // Allowed for unlimited groups, so the existing tests (no limits
+        // configured) still pass.
+        val counts = ownership.counts(buyer)
+        when (val decision = limits.canClaim(buyer, stall.kind, counts.total, counts.byKind[stall.kind] ?: 0)) {
+            is LimitResolutionService.ClaimDecision.Rejected.TotalCapReached ->
+                return Result.Rejected("Stall limit reached (${decision.cap})")
+            is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
+                return Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
+            LimitResolutionService.ClaimDecision.Allowed -> { /* proceed */ }
+        }
+
+        // 0. Withdraw total from buyer. If this fails the buyer wasn't
+        // charged — bail without touching ownership or the seller.
         if (!economy.withdraw(buyer, total)) {
             return Result.Rejected("Insufficient funds: $total required")
         }
+
+        // 1. Persist ownership transfer + close offer atomically from
+        // the caller's perspective. Failure here leaves the buyer
+        // charged but no ownership change — operators can refund manually
+        // (logged below). Matches the auction settlement compensation
+        // pattern: charge → persist → pay, never the reverse.
         val previousState = stall.state
+        // M-18: capture the pre-transfer owner so step 2 can route
+        // proceeds correctly (guild bank vs seller wallet). `stall`
+        // is the un-transferred load; `awardTo` returns a copy and
+        // never mutates it. Buyer always becomes the personal owner
+        // below — the original owner only matters for the payout.
         val sellerIsGuild = stall.owner.type == OwnerType.GUILD
-        transfer(stall, offer, buyer, total, previousState)
-        payProceeds(stallId, offer, buyer, sellerIsGuild, stall.owner.id)
-        depositTax(tax)
-        notifyCompleted(stallId, offer, buyer, tax)
-        return Result.Purchased(offer, tax)
-    }
-
-    private fun validatePurchase(offer: SellOffer, stall: net.badgersmc.em.domain.stall.Stall, buyer: UUID): Result? {
-        if (buyer == offer.sellerUuid) return Result.Rejected("You cannot buy your own stall")
-        val taxPct = config.shop.taxPct
-        if (taxPct < 0.0 || taxPct > 1.0) return Result.Rejected("Invalid tax percentage: $taxPct")
-        val counts = ownership.counts(buyer)
-        return when (val decision = limits.canClaim(
-            buyer,
-            stall.kind,
-            counts.total,
-            counts.byKind[stall.kind] ?: 0,
-        )) {
-            is LimitResolutionService.ClaimDecision.Rejected.TotalCapReached ->
-                Result.Rejected("Stall limit reached (${decision.cap})")
-            is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
-                Result.Rejected("Limit reached for ${decision.kind} stalls (${decision.cap})")
-            LimitResolutionService.ClaimDecision.Allowed -> null
-        }
-    }
-
-    private fun transfer(
-        stall: net.badgersmc.em.domain.stall.Stall,
-        offer: SellOffer,
-        buyer: UUID,
-        total: Long,
-        previousState: net.badgersmc.em.domain.stall.StallState,
-    ) {
+        val proceedsGuildId = stall.owner.id // valid only when sellerIsGuild
         try {
             val now = Instant.now()
             val updated = stall.awardTo(
@@ -155,27 +161,23 @@ class SellOfferService(
                 now.plus(RentTimingPolicy.collectionInterval(config)),
             )
             stalls.save(updated)
-            offers.delete(offer.stallId)
+            offers.delete(stallId)
             Bukkit.getServer()?.pluginManager?.callEvent(
-                StallStateChangedEvent(offer.stallId.value, previousState, updated.state)
+                StallStateChangedEvent(stallId.value, previousState, updated.state)
             )
         } catch (e: Exception) {
             log.severe(
                 "SellOfferService.purchase: ownership transfer failed for stall " +
-                    "${offer.stallId.value} after charging buyer $buyer total=$total. " +
+                    "${stallId.value} after charging buyer $buyer total=$total. " +
                     "Manual refund required. cause=${e.message}"
             )
             throw e
         }
-    }
 
-    private fun payProceeds(
-        stallId: StallId,
-        offer: SellOffer,
-        buyer: UUID,
-        sellerIsGuild: Boolean,
-        proceedsGuildId: String,
-    ) {
+        // 2. Pay seller (or guild bank) + route tax. Failures here are
+        // logged but don't roll back — the stall is already transferred.
+        // The alternative (paying before transferring) risks double-pay
+        // on retry. Tax destination of "system" routes nowhere.
         val proceedsPaid = if (sellerIsGuild) {
             guildProvider.bankDeposit(proceedsGuildId, offer.price)
         } else {
@@ -195,9 +197,6 @@ class SellOfferService(
                 amount = offer.price,
             )
         }
-    }
-
-    private fun depositTax(tax: Long) {
         val taxDestination = parseTaxDestination(config.shop.taxDestination)
         if (taxDestination != null && tax > 0) {
             if (!economy.deposit(taxDestination, tax)) {
@@ -207,12 +206,11 @@ class SellOfferService(
                 )
             }
         }
-    }
 
-    private fun notifyCompleted(stallId: StallId, offer: SellOffer, buyer: UUID, tax: Long) {
         Bukkit.getServer()?.pluginManager?.callEvent(
             SellOfferCompletedEvent(stallId.value, offer.sellerUuid, buyer, offer.price, tax)
         )
+        return Result.Purchased(offer, tax)
     }
 
     /**

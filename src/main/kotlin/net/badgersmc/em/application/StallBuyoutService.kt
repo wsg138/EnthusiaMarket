@@ -187,66 +187,71 @@ class StallBuyoutService(
         }
     }
 
+    @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun buyForOwnerWithPermit(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
         val stall = stalls.findById(stallId) ?: return Result.NotFound
+
         validatePurchase(stall, stallId, owner, payer, price)?.let { return it }
+
         val reservation = ipLimiter.acquireStall(ip, owner.id)
         if (!reservation.allowed) return Result.Rejected("Your IP already owns a stall.")
         var completed = false
         try {
-            if (!economy.withdraw(payer, price)) {
-                return Result.Rejected("Insufficient funds: $price required")
-            }
-            val updated = award(stall, stallId, payer, owner, price)
-            syncRegion(stallId, updated, owner)
-            fireStateChanged(stallId.value, stall.state, updated.state)
-            completed = true
-            return Result.Purchased(updated, price, owner)
-        } finally {
-            if (!completed) ipLimiter.rollback(reservation.reservation)
-        }
-    }
 
-    private fun award(stall: Stall, stallId: StallId, payer: UUID, owner: OwnerRef, price: Long): Stall {
-        try {
+        if (!economy.withdraw(payer, price)) {
+            return Result.Rejected("Insufficient funds: $price required")
+        }
+
+        val previousState = stall.state
+        val updated = try {
             val now = clock.instant()
-            val awarded = stall.awardTo(
-                owner,
-                price,
-                now,
-                now.plus(RentTimingPolicy.collectionInterval(config)),
-            )
+            val awarded = stall.awardTo(owner, price, now, now.plus(RentTimingPolicy.collectionInterval(config)))
             stalls.save(awarded)
-            cleanupOffer(stallId)
-            return awarded
+            // Defensive: if a sell offer somehow lingered on an UNOWNED
+            // stall, clean it up so a follow-up click doesn't trip the
+            // mutex check next door.
+            if (offers.findByStall(stallId) != null) {
+                try {
+                    offers.delete(stallId)
+                } catch (cleanupErr: Exception) {
+                    log.warning(
+                        "StallBuyoutService: failed to cleanup lingering sell offer for " +
+                            "${stallId.value}. cause=${cleanupErr.message}"
+                    )
+                }
+            }
+            awarded
         } catch (e: Exception) {
             refundAfterFailedAward(payer, price, stallId, owner, e)
             throw e
         }
-    }
 
-    private fun cleanupOffer(stallId: StallId) {
-        if (offers.findByStall(stallId) == null) return
-        try {
-            offers.delete(stallId)
-        } catch (cleanupError: Exception) {
-            log.warning(
-                "StallBuyoutService: failed to cleanup lingering sell offer for " +
-                    "${stallId.value}. cause=${cleanupError.message}"
-            )
-        }
-    }
-
-    private fun syncRegion(stallId: StallId, stall: Stall, owner: OwnerRef) {
+        // Sync ownership to WorldGuard so the new owner can actually
+        // build / break / interact inside the region without being op.
+        // SOLO → WG owner = buyer UUID. GUILD → can't map a guild to
+        // a WG player UUID directly; log + skip. Operators can wire
+        // a LumaGuilds → WG bridge later. Failures are logged but
+        // don't roll back the purchase — the DB owner remains the
+        // canonical source of truth and a resync command can be added.
         try {
             when (owner.type) {
                 OwnerType.SOLO -> regionMembers.setOwner(
-                    stall.world,
-                    stall.regionId,
-                    UUID.fromString(owner.id),
+                    updated.world, updated.regionId, java.util.UUID.fromString(owner.id)
                 )
-                OwnerType.GUILD -> syncGuildRegion(stallId, stall, owner.id)
-                OwnerType.NONE -> Unit
+                OwnerType.GUILD -> {
+                    regionMembers.clearOwnersAndMembers(updated.world, updated.regionId)
+                    val guids = guildProvider.memberIds(owner.id)
+                    if (guids.isNotEmpty()) {
+                        regionMembers.syncGuildMembers(updated.world, updated.regionId, guids)
+                    } else {
+                        log.warning(
+                            "StallBuyoutService: stall ${stallId.value} awarded to guild ${owner.id} " +
+                                "but no online guild members found — region owners/members cleared; " +
+                                "members will gain access when /em rg resync runs with them online."
+                        )
+                    }
+                }
+                OwnerType.NONE -> Unit // unreachable; awardTo rejects NONE.
             }
         } catch (e: Exception) {
             log.warning(
@@ -255,20 +260,18 @@ class StallBuyoutService(
                     "the region is resynced. cause=${e.message}"
             )
         }
-    }
 
-    private fun syncGuildRegion(stallId: StallId, stall: Stall, guildId: String) {
-        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
-        val members = guildProvider.memberIds(guildId)
-        if (members.isNotEmpty()) {
-            regionMembers.syncGuildMembers(stall.world, stall.regionId, members)
-            return
+        // C6: remove the OUTER guild WG sync that was previously in
+        // buyForGuild — the inner block above correctly handles GUILD
+        // by logging+skipping. The outer call tried UUID.fromString on
+        // the guild id, which never resolves to a real player UUID.
+
+        fireStateChanged(stallId.value, previousState, updated.state)
+        completed = true
+        return Result.Purchased(updated, price, owner)
+        } finally {
+            if (!completed) ipLimiter.rollback(reservation.reservation)
         }
-        log.warning(
-            "StallBuyoutService: stall ${stallId.value} awarded to guild $guildId " +
-                "but no online guild members found — region owners/members cleared; " +
-                "members will gain access when /em rg resync runs with them online."
-        )
     }
 
     private fun fireStateChanged(
