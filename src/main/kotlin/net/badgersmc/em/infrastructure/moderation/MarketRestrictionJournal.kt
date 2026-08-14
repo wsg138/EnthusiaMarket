@@ -110,30 +110,14 @@ internal class MarketRestrictionJournal(
     ) {
         val current = readBlacklist(connection, operation.targetId)
         if (original == null) {
-            if (current == null) return
-            if (current.operationId() != operation.operationId) {
-                throw MarketModerationConflict("A newer market blacklist prevents restoration")
-            }
-            connection.prepareStatement(
-                """DELETE FROM market_stall_blacklists
-                   WHERE player_uuid = ? AND operation_id = ? AND revision = ?""",
-            ).use { statement ->
-                statement.setString(1, operation.targetId.toString())
-                statement.setString(2, operation.operationId.toString())
-                statement.setLong(3, current.revision())
-                if (statement.executeUpdate() != 1) {
-                    throw MarketModerationConflict("Market blacklist changed concurrently")
-                }
-            }
+            restoreAbsentBlacklist(connection, operation, current)
             return
         }
         if (current == null) {
             throw MarketModerationConflict("Market blacklist is missing during restoration")
         }
         if (current.matches(original)) return
-        if (current.operationId() != operation.operationId) {
-            throw MarketModerationConflict("A newer market blacklist prevents restoration")
-        }
+        requireCurrentBlacklistOperation(current, operation.operationId)
         writeBlacklistSnapshot(connection, original, current.revision())
     }
 
@@ -150,6 +134,32 @@ internal class MarketRestrictionJournal(
             if (statement.executeUpdate() != 1) {
                 throw MarketModerationConflict("Market player reservation is missing")
             }
+        }
+    }
+
+    private fun restoreAbsentBlacklist(
+        connection: Connection,
+        operation: MarketOperationRow,
+        current: StallBlacklistState?,
+    ) {
+        if (current == null) return
+        requireCurrentBlacklistOperation(current, operation.operationId)
+        connection.prepareStatement(
+            """DELETE FROM market_stall_blacklists
+               WHERE player_uuid = ? AND operation_id = ? AND revision = ?""",
+        ).use { statement ->
+            statement.setString(1, operation.targetId.toString())
+            statement.setString(2, operation.operationId.toString())
+            statement.setLong(3, current.revision())
+            if (statement.executeUpdate() != 1) {
+                throw MarketModerationConflict("Market blacklist changed concurrently")
+            }
+        }
+    }
+
+    private fun requireCurrentBlacklistOperation(current: StallBlacklistState, operationId: UUID) {
+        if (current.operationId() != operationId) {
+            throw MarketModerationConflict("A newer market blacklist prevents restoration")
         }
     }
 
