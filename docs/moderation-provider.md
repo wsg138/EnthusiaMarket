@@ -83,6 +83,10 @@ performed separately. Unit and MariaDB integration tests do not authorize live d
 
 ## Validation
 
+Repository validation is self-contained: this provider uses only its ordinary repository
+CI and disposable test databases. Consumer-specific runtime acceptance, deployment,
+credentials, runners, or environment bridges belong outside this repository.
+
 Run the complete build and the focused MariaDB provider test before release:
 
 ```bash
