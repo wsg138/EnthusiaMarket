@@ -97,4 +97,5 @@ Run the complete build and the focused MariaDB provider test before release:
 
 Use a disposable MariaDB instance only. Confirm the shaded JAR contains the provider
 contract exactly once and that the consuming Staff JAR contains no provider-owned API
-classes.
+classes. Release evidence must belong to the exact reviewed commit; stale, missing,
+skipped, superseded, or different-revision runs are not substitutes.
