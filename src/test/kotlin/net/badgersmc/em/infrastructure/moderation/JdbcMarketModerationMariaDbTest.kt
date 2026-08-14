@@ -97,7 +97,7 @@ class JdbcMarketModerationMariaDbTest {
                 }
             }
             start.countDown()
-            val statuses = results.map { it.get().status() }
+            val statuses = results.map { it.get(10, TimeUnit.SECONDS).status() }
 
             assertEquals(1, statuses.count { it == MarketOperationResult.Status.PREPARED })
             assertEquals(1, statuses.count { it == MarketOperationResult.Status.CONFLICT })
