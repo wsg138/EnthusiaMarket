@@ -114,13 +114,27 @@ internal class MarketRestrictionJournal(
             if (current.operationId() != operation.operationId) {
                 throw MarketModerationConflict("A newer market blacklist prevents restoration")
             }
-            connection.prepareStatement("DELETE FROM market_stall_blacklists WHERE player_uuid = ?").use { statement ->
+            connection.prepareStatement(
+                """DELETE FROM market_stall_blacklists
+                   WHERE player_uuid = ? AND operation_id = ? AND revision = ?""",
+            ).use { statement ->
                 statement.setString(1, operation.targetId.toString())
-                statement.executeUpdate()
+                statement.setString(2, operation.operationId.toString())
+                statement.setLong(3, current.revision())
+                if (statement.executeUpdate() != 1) {
+                    throw MarketModerationConflict("Market blacklist changed concurrently")
+                }
             }
             return
         }
-        writeBlacklistSnapshot(connection, original)
+        if (current == null) {
+            throw MarketModerationConflict("Market blacklist is missing during restoration")
+        }
+        if (current.matches(original)) return
+        if (current.operationId() != operation.operationId) {
+            throw MarketModerationConflict("A newer market blacklist prevents restoration")
+        }
+        writeBlacklistSnapshot(connection, original, current.revision())
     }
 
     fun releasePlayerReservation(connection: Connection, operation: MarketOperationRow) {
@@ -308,35 +322,27 @@ internal class MarketRestrictionJournal(
             this
         }
 
-    private fun writeBlacklistSnapshot(connection: Connection, snapshot: ModeratedBlacklistSnapshot) {
-        val existing = readBlacklist(connection, UUID.fromString(snapshot.playerId))
-        val sql = if (existing == null) {
-            """INSERT INTO market_stall_blacklists
-               (player_uuid, status, expires_at, case_id, operation_id, revision, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)"""
-        } else {
+    private fun writeBlacklistSnapshot(
+        connection: Connection,
+        snapshot: ModeratedBlacklistSnapshot,
+        expectedRevision: Long,
+    ) {
+        connection.prepareStatement(
             """UPDATE market_stall_blacklists
                SET status = ?, expires_at = ?, case_id = ?, operation_id = ?,
-                   revision = ?, updated_at = ? WHERE player_uuid = ?"""
-        }
-        connection.prepareStatement(sql).use { statement ->
-            if (existing == null) bindSnapshotInsert(statement, snapshot)
-            else bindSnapshotUpdate(statement, snapshot)
-            statement.executeUpdate()
+                   revision = ?, updated_at = ?
+               WHERE player_uuid = ? AND revision = ?""",
+        ).use { statement ->
+            bindSnapshotUpdate(statement, snapshot, expectedRevision)
+            executeBlacklistWrite(statement)
         }
     }
 
-    private fun bindSnapshotInsert(statement: java.sql.PreparedStatement, snapshot: ModeratedBlacklistSnapshot) {
-        statement.setString(1, snapshot.playerId)
-        statement.setString(2, snapshot.status)
-        statement.setNullableLong(3, snapshot.expiresAt)
-        statement.setString(4, snapshot.caseId)
-        statement.setString(5, snapshot.operationId)
-        statement.setLong(6, snapshot.revision)
-        statement.setLong(7, snapshot.updatedAt)
-    }
-
-    private fun bindSnapshotUpdate(statement: java.sql.PreparedStatement, snapshot: ModeratedBlacklistSnapshot) {
+    private fun bindSnapshotUpdate(
+        statement: java.sql.PreparedStatement,
+        snapshot: ModeratedBlacklistSnapshot,
+        expectedRevision: Long,
+    ) {
         statement.setString(1, snapshot.status)
         statement.setNullableLong(2, snapshot.expiresAt)
         statement.setString(3, snapshot.caseId)
@@ -344,7 +350,17 @@ internal class MarketRestrictionJournal(
         statement.setLong(5, snapshot.revision)
         statement.setLong(6, snapshot.updatedAt)
         statement.setString(7, snapshot.playerId)
+        statement.setLong(8, expectedRevision)
     }
+
+    private fun StallBlacklistState.matches(snapshot: ModeratedBlacklistSnapshot): Boolean =
+        playerId().toString() == snapshot.playerId &&
+            status().name == snapshot.status &&
+            expiresAt().orElse(null)?.toEpochMilli() == snapshot.expiresAt &&
+            caseId() == snapshot.caseId &&
+            operationId().toString() == snapshot.operationId &&
+            revision() == snapshot.revision &&
+            updatedAt().toEpochMilli() == snapshot.updatedAt
 
     private fun result(
         status: MarketBlacklistResult.Status,
