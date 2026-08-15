@@ -38,6 +38,7 @@ jobs:
         run: |
           JAR="$RUNNER_TEMP/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
           curl --fail --location --retry 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 300 \
             --output "$JAR" \
             "https://github.com/BadgersMC/LumaGuilds/releases/download/v${LUMAGUILDS_VERSION}/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
           echo "${LUMAGUILDS_SHA256}  ${JAR}" | sha256sum --check --strict
