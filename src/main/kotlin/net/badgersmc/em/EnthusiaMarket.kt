@@ -313,11 +313,12 @@ open class EnthusiaMarket : JavaPlugin() {
 
         // Container stock sign refresh — 50 shops per tick, cycles through all shops
         // continuously. Scales to 1000+ shops without tick-stealing. Flushes DB writes
-        // at the end of each full cycle.
+        // at the end of each full cycle. Runs every 4 ticks to spread load; stock drift
+        // from hoppers/pipes happens over seconds, not milliseconds.
         val stockRefresh = ctx.getBean<net.badgersmc.em.infrastructure.listeners.ContainerStockListener>()
         Bukkit.getScheduler().runTaskTimer(this, Runnable {
             stockRefresh.refreshBatch(50)
-        }, 20L, 1L)
+        }, 20L, 4L)
 
         // M-20: one-time backfill of sell_material for shops written before V018.
         // Off the main thread + fail-open so a large table or a DB hiccup can't stall boot.

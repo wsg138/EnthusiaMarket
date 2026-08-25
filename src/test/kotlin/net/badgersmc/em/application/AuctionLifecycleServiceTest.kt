@@ -27,6 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class AuctionLifecycleServiceTest {
 
     private val playerUuid = UUID.fromString("00000000-0000-0000-0000-000000000001")
@@ -789,5 +790,65 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         val cleared = svc.service.clearStaleBidData(stallId)
         assertEquals(2, cleared)
+    }
+
+    // ===== Emergency auction revert (PR #182) =====
+
+    @Test
+    fun `settleExpired reverts emergency auction with no bids to UNOWNED`() {
+        val emergencyStall = sampleStall.copy(
+            state = StallState.EMERGENCY_AUCTIONING,
+            owner = OwnerRef.solo(playerUuid),
+        )
+        val expiredNoBid = sampleAuction.copy(
+            state = AuctionState.OPEN,
+            highBid = null,
+            endAt = now.minusSeconds(60),
+        )
+        val svc = buildService(
+            stall = emergencyStall,
+            expiredAuctions = listOf(expiredNoBid),
+        )
+
+        svc.service.settleExpired()
+
+        verify {
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED &&
+                    it.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            })
+        }
+        verify {
+            svc.auctionRepo.save(match { it.state == AuctionState.CLOSED })
+        }
+    }
+
+    @Test
+    fun `cancelAllAuctions reverts emergency auction stall to UNOWNED`() {
+        val emergencyStall = sampleStall.copy(
+            state = StallState.EMERGENCY_AUCTIONING,
+            owner = OwnerRef.solo(playerUuid),
+        )
+        val openAuction = sampleAuction.copy(
+            state = AuctionState.OPEN,
+            highBid = null,
+        )
+        val svc = buildService(
+            stall = emergencyStall,
+            openAuctions = listOf(openAuction),
+            auction = openAuction,
+        )
+
+        svc.service.cancelAllAuctions()
+
+        verify {
+            svc.auctionRepo.save(match { it.state == AuctionState.CANCELLED })
+        }
+        verify {
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED &&
+                    it.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE
+            })
+        }
     }
 }

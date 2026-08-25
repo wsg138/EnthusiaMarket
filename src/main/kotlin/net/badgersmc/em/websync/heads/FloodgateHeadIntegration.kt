@@ -3,21 +3,35 @@ package net.badgersmc.em.websync.heads
 import org.bukkit.Bukkit
 import org.bukkit.plugin.java.JavaPlugin
 
-fun interface FloodgateTextureCapture { fun capture(playerId: java.util.UUID, value: String, signature: String?) }
+fun interface FloodgateTextureCapture { fun capture(playerId: java.util.UUID, value: String, signature: String?): Boolean }
 
 /** Loads Floodgate-linked code only when the optional backend plugin is present. */
 object FloodgateHeadIntegration {
     @Suppress("TooGenericExceptionCaught")
-    fun start(plugin: JavaPlugin, capture: FloodgateTextureCapture): AutoCloseable? {
+    fun start(plugin: JavaPlugin, capture: FloodgateSkinCaptureService): AutoCloseable? {
         if (!Bukkit.getPluginManager().isPluginEnabled("floodgate")) return null
         return try {
-            FloodgateSkinListener(capture)
+            registerListeners(plugin, capture)
         } catch (_: LinkageError) {
             plugin.logger.warning("Bedrock head capture is unavailable (safe category: floodgate_api)")
             null
         } catch (_: Exception) {
             plugin.logger.warning("Bedrock head capture is unavailable (safe category: floodgate_registration)")
             null
+        }
+    }
+
+    private fun registerListeners(plugin: JavaPlugin, capture: FloodgateSkinCaptureService): AutoCloseable {
+        val skinEventListener = FloodgateSkinListener(capture)
+        val profileListener = try {
+            FloodgateProfileSkinListener(plugin, capture)
+        } catch (error: Throwable) {
+            skinEventListener.close()
+            throw error
+        }
+        return AutoCloseable {
+            skinEventListener.close()
+            profileListener.close()
         }
     }
 }

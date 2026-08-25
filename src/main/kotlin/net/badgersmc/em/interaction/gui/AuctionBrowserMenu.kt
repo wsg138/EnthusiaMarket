@@ -238,7 +238,8 @@ class AuctionBrowserMenu(
     private fun entryIcon(entry: EntryView, now: Instant): ItemStack {
         val auction = entry.auction
         val currentBid = auction.highBid?.amount ?: auction.startingBid
-        val remaining = Duration.between(now, auction.endAt)
+        val timerNotStarted = auction.endAt == Instant.MAX
+        val remaining = if (timerNotStarted) Duration.ZERO else Duration.between(now, auction.endAt)
 
         val bidLine: Component = if (auction.highBid != null) {
             val bidder = entry.bidderName ?: lang.raw("common.unknown_player")
@@ -270,8 +271,12 @@ class AuctionBrowserMenu(
                 bidLine,
                 lang.msg("gui.auctions.entry_lore_starting", KEY_AMOUNT to auction.startingBid)
                     .decoration(TextDecoration.ITALIC, false),
-                lang.msg("gui.auctions.entry_lore_time_left", "time" to formatRemaining(remaining))
-                    .decoration(TextDecoration.ITALIC, false),
+                if (timerNotStarted)
+                    lang.msg("gui.auctions.entry_lore_awaiting_first_bid")
+                        .decoration(TextDecoration.ITALIC, false)
+                else
+                    lang.msg("gui.auctions.entry_lore_time_left", "time" to formatRemaining(remaining))
+                        .decoration(TextDecoration.ITALIC, false),
                 lang.msg("gui.auctions.entry_lore_click")
                     .decoration(TextDecoration.ITALIC, false)
             )

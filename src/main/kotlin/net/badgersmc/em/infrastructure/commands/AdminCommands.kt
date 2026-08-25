@@ -21,6 +21,7 @@ import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.infrastructure.bedrock.PlayerNameResolver
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.application.GuildTradePolicyService
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -70,6 +71,9 @@ class AdminCommands(
     private val rentResync: net.badgersmc.em.application.RentTermsResyncService,
     private val shopRepository: ShopRepository,
     private val signRenderer: ShopSignRenderer,
+    private val maintenanceFreeze: net.badgersmc.em.application.MaintenanceFreezeService,
+    private val playerNameResolver: PlayerNameResolver,
+    private val pricing: net.badgersmc.em.application.StallVolumePricingService? = null,
     private val websiteSync: WebsiteSyncService? = null,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
@@ -119,6 +123,53 @@ class AdminCommands(
         // rent-config change (e.g. formula → flat) because terms are snapshotted per-stall at import.
         val n = rentResync.resync()
         sender.sendMessage(lang.msg("admin.rent.resync.result", "count" to n))
+    }
+
+    @Subcommand("pricing preview")
+    @Permission("enthusiamarket.admin.reload")
+    fun pricingPreview(@Context sender: CommandSender) {
+        // Dry-run: show each stall's region volume and the rent the current pricing config
+        // would compute, WITHOUT writing anything. Lets operators eyeball the variance before
+        // flipping pricing.enabled or running /em pricing apply.
+        val service = pricing ?: run {
+            sender.sendMessage(lang.msg("admin.pricing.unavailable"))
+            return
+        }
+        val rows = service.preview(config.market.world, config.market.regionPrefix)
+        if (rows.isEmpty()) {
+            sender.sendMessage(
+                lang.msg(
+                    "admin.pricing.preview.empty",
+                    KEY_WORLD to config.market.world,
+                    KEY_REGION_PREFIX to config.market.regionPrefix,
+                )
+            )
+            return
+        }
+        sender.sendMessage(lang.msg("admin.pricing.preview.header", "count" to rows.size))
+        for (row in rows) {
+            sender.sendMessage(
+                lang.msg(
+                    "admin.pricing.preview.row",
+                    "stall" to row.stallId,
+                    "volume" to row.volume,
+                    "rent" to row.computedRent,
+                )
+            )
+        }
+    }
+
+    @Subcommand("pricing apply")
+    @Permission("enthusiamarket.admin.reload")
+    fun pricingApply(@Context sender: CommandSender) {
+        // Rewrite every stall's stored rent terms to the volume-computed flat amount.
+        // Requires pricing.enabled=true in the config; otherwise a no-op.
+        val service = pricing ?: run {
+            sender.sendMessage(lang.msg("admin.pricing.unavailable"))
+            return
+        }
+        val n = service.apply(config.market.world, config.market.regionPrefix)
+        sender.sendMessage(lang.msg("admin.pricing.apply.result", "count" to n))
     }
 
     @Suppress("TooGenericExceptionCaught")
@@ -288,12 +339,12 @@ class AdminCommands(
         @Arg("stall") stall: String,
         @Arg("player") player: String,
     ) {
-        val offline = org.bukkit.Bukkit.getOfflinePlayer(player)
-        if (!offline.hasPlayedBefore()) {
+        val target = playerNameResolver.resolve(player)
+        if (target == null) {
             sender.sendMessage(lang.msg("stall.members.unknown_player", "player" to player))
             return
         }
-        val targetUuid = offline.uniqueId
+        val targetUuid = target.uniqueId
         renderMemberMutation(sender, stall, "added") {
             stallMembers.addMember(StallId(stall), sender.uniqueId, targetUuid) to targetUuid
         }
@@ -306,12 +357,12 @@ class AdminCommands(
         @Arg("stall") stall: String,
         @Arg("player") player: String,
     ) {
-        val offline = org.bukkit.Bukkit.getOfflinePlayer(player)
-        if (!offline.hasPlayedBefore()) {
+        val target = playerNameResolver.resolve(player)
+        if (target == null) {
             sender.sendMessage(lang.msg("stall.members.unknown_player", "player" to player))
             return
         }
-        val targetUuid = offline.uniqueId
+        val targetUuid = target.uniqueId
         renderMemberMutation(sender, stall, "removed") {
             stallMembers.removeMember(StallId(stall), sender.uniqueId, targetUuid) to targetUuid
         }
@@ -692,6 +743,74 @@ class AdminCommands(
             player.sendMessage(lang.msg("guildpolicy.no_permission")); return
         }
         GuildTradePolicyMenu(player.uniqueId, guild.id, policyService, guildProvider, lang).open(player)
+    }
+
+    // ----- Maintenance freeze (server-closure maintenance window) -----
+
+    /** Pause all rent/auction timers before the server closes for maintenance. */
+    @Subcommand("maintenance freeze")
+    @Permission("enthusiamarket.admin.maintenance")
+    fun maintenanceFreeze(@Context sender: CommandSender) {
+        val msg = when (val result = maintenanceFreeze.begin()) {
+            is net.badgersmc.em.application.MaintenanceFreezeResult.Activated ->
+                lang.msg("admin.maintenance.freeze.activated")
+            is net.badgersmc.em.application.MaintenanceFreezeResult.AlreadyActive ->
+                lang.msg(
+                    "admin.maintenance.freeze.already_active",
+                    "since" to result.since.toString()
+                )
+            else -> lang.msg("admin.maintenance.freeze.activated")
+        }
+        sender.sendMessage(msg)
+    }
+
+    /** Lift the freeze and shift every timer forward by the frozen duration. */
+    @Subcommand("maintenance unfreeze")
+    @Permission("enthusiamarket.admin.maintenance")
+    fun maintenanceUnfreeze(@Context sender: CommandSender) {
+        val msg = when (val result = maintenanceFreeze.end()) {
+            is net.badgersmc.em.application.MaintenanceFreezeResult.Lifted ->
+                lang.msg(
+                    "admin.maintenance.unfreeze.done",
+                    "stalls" to result.stalls,
+                    "auctions" to result.auctions,
+                    "duration" to formatFreezeDuration(result.elapsed)
+                )
+            net.badgersmc.em.application.MaintenanceFreezeResult.NotFrozen ->
+                lang.msg("admin.maintenance.unfreeze.not_frozen")
+            else -> lang.msg("admin.maintenance.unfreeze.not_frozen")
+        }
+        sender.sendMessage(msg)
+    }
+
+    /** Show whether a maintenance freeze is active. */
+    @Subcommand("maintenance status")
+    @Permission("enthusiamarket.admin.maintenance")
+    fun maintenanceStatus(@Context sender: CommandSender) {
+        val status = maintenanceFreeze.status()
+        val msg = if (status.frozen && status.since != null) {
+            lang.msg(
+                "admin.maintenance.status.active",
+                "since" to status.since.toString(),
+                "duration" to formatFreezeDuration(
+                    java.time.Duration.between(status.since, java.time.Instant.now()).coerceAtLeast(java.time.Duration.ZERO)
+                )
+            )
+        } else {
+            lang.msg("admin.maintenance.status.inactive")
+        }
+        sender.sendMessage(msg)
+    }
+
+    private fun formatFreezeDuration(d: java.time.Duration): String {
+        val days = d.toDays()
+        val hours = d.toHours() % 24
+        val minutes = d.toMinutes() % 60
+        return buildString {
+            if (days > 0) append("${days}d ")
+            if (hours > 0 || days > 0) append("${hours}h ")
+            append("${minutes}m")
+        }
     }
 
     // ----- Admin evict (force unclaim) -----

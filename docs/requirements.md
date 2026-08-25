@@ -407,6 +407,40 @@ return the stall to UNOWNED.
 
 **Ubiquitous.** THE SYSTEM SHALL display the traded item's custom display name (from an anvil rename) on shop signs when one exists, preserving its color formatting, and fall back to the Material name when no custom name is set. Item names longer than 14 characters SHALL be truncated to 14 characters followed by an ellipsis ("…") in plain text while preserving the original Component style (color, decorations).
 
+### REQ-300 — Item data component preservation through serialization
+
+**Ubiquitous.** THE SYSTEM SHALL preserve all item data components (including modern Paper 1.21+ component types such as `minecraft:ominous`, `minecraft:item_model`, custom data, enchantments, and display properties) through the full serialize → store → deserialize pipeline without loss or alteration.
+
+### REQ-301 — Trade delivers actual container items
+
+**Unwanted.** IF a trade delivers items to a player (SELL direction or barter) THEN THE SYSTEM SHALL deliver items cloned from the actual container inventory rather than from the deserialized serialization template.
+
+### REQ-302 — Shop freeze follows every stall-state transition out of penalty
+
+**Event-driven.** WHEN a stall transitions into OWNED or UNOWNED from any state other than OWNED THE SYSTEM SHALL unfreeze all shops bound to that stall.
+
+**Note:** Closes the audit finding L-1 (2026-08-01, PR #186 audit): `ShopFreezeStateListener.shouldUnfreeze` previously matched only `GRACE` / `EMERGENCY_AUCTIONING` / `UNOWNED` as source states, so a stall reaching AUCTIONING or RE_AUCTIONING while carrying frozen shops (admin force-auction of a GRACE stall) and then settling (→OWNED) or reverting (→UNOWNED) kept its shops frozen forever. The predicate must be source-agnostic: any non-OWNED source landing on OWNED/UNOWNED unfreezes. OWNED→OWNED stays excluded so a manual `/shop edit` freeze is not clobbered by a rent-extension re-fire.
+
+### REQ-303 — Freeze activation self-heals a missing state row
+
+**Unwanted.** IF the `maintenance_freeze` row does not exist WHEN a freeze is activated THEN THE SYSTEM SHALL create it so the freeze state persists across restarts.
+
+**Note:** Closes the audit finding L-2 (2026-08-01, PR #186 audit): `MaintenanceFreezeRepositorySql.begin()` runs `UPDATE ... WHERE id = 1` and ignores the affected-row count. If the V026 seed row is ever deleted, begin() silently succeeds, the in-memory cache reports frozen, but the DB row is absent — the freeze is lost on restart with no warning. The fix is portable (SQLite + MariaDB): UPDATE first, INSERT when zero rows matched.
+
+### REQ-304 — Player transactions stay live during a maintenance freeze
+
+**State-driven.** WHILE a maintenance freeze is active THE SYSTEM SHALL continue to accept rent payments and stall buyouts, applying the unfreeze timer shift to their newly-set rent deadlines.
+
+**Note:** Codifies the design decision behind audit finding M-2 (2026-08-01, PR #186 audit): buyout (`StallBuyoutService`) and rent payment (`StallRentExtensionService.extend`) are deliberately NOT gated by `MaintenanceFreezeService` — the PR's sign-refresh doc already promises rent payments stay live. The consequence is that a transaction performed during the freeze window receives the interval credit AND the unfreeze shift (player-favorable, admin-gated). This REQ makes that a documented contract rather than an accident.
+
+### REQ-305 — No potion effects inside market regions
+
+**Event-driven.** WHEN a splash potion, lingering potion, area-effect cloud, or tipped arrow would apply a potion effect to an entity located inside a market region THE SYSTEM SHALL cancel the effect application.
+
+**Event-driven.** WHEN a splash or lingering potion breaks inside a market region THE SYSTEM SHALL cancel the break so no area-effect cloud is created there.
+
+**Notes (2026-08-02, critical exploit report):** Players stack potion effects in stalls — MC 1.21 applies splash/cloud effects additively, so repeated splashes (or a lingering cloud re-applying each tick) inside a stall stack durations without bound (observed: Resistance IV with a ~52-day duration in a stall). The WorldGuard `POTION_SPLASH: DENY` flag in `WorldGuardRegionProvisioner.applyFlags()` is insufficient on two counts: (a) it is stamped only at provision/resync time, so existing production regions never received it; (b) even when present, WG's flag cancels only the thrown `PotionSplashEvent` — it does not gate lingering clouds (`AreaEffectCloudApplyEvent`), clouds drifting in from outside, or tipped arrows (`EntityPotionEffectEvent` cause `ARROW`). This REQ enforces the invariant at runtime for **every** stall region regardless of flag state: an entity inside a market region must never receive a potion effect from any splash/cloud/arrow source.
+
 ---
 
 ## Acceptance

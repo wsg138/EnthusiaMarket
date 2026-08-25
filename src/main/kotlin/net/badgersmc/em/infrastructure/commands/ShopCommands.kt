@@ -11,6 +11,7 @@ import net.badgersmc.em.application.ShopVaultService
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.ShopTransactionRepository
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.infrastructure.bedrock.PlayerNameResolver
 import net.badgersmc.nexus.commands.annotations.Arg
 import net.badgersmc.nexus.commands.annotations.Command
 import net.badgersmc.nexus.commands.annotations.Context
@@ -38,6 +39,7 @@ class ShopCommands(
     private val vaultService: ShopVaultService,
     private val stallRepository: StallRepository,
     private val shopSearchService: ShopSearchService,
+    private val playerNameResolver: PlayerNameResolver,
 ) {
     @Subcommand("list")
     @Permission("enthusiamarket.shop.use")
@@ -69,8 +71,7 @@ class ShopCommands(
         @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "menu",
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
-        val target = org.bukkit.Bukkit.getOfflinePlayer(name)
-        if (target.name == null && !target.hasPlayedBefore()) {
+        val target = playerNameResolver.resolve(name) ?: run {
             player.sendMessage(lang.msg("shop.cmd.unknown_player", "name" to name)); return
         }
         if (mode.equals("all", ignoreCase = true)) {
@@ -92,8 +93,7 @@ class ShopCommands(
         @net.badgersmc.nexus.commands.annotations.Arg("mode") mode: String = "all",
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
-        val target = org.bukkit.Bukkit.getOfflinePlayer(name)
-        if (target.name == null && !target.hasPlayedBefore()) {
+        val target = playerNameResolver.resolve(name) ?: run {
             player.sendMessage(lang.msg("shop.cmd.unknown_player", "name" to name)); return
         }
         val n = management.untrustAll(player.uniqueId, target.uniqueId)
@@ -305,8 +305,7 @@ class ShopCommands(
         @net.badgersmc.nexus.commands.annotations.Arg("player") name: String,
     ) {
         val player = sender as? Player ?: run { sender.sendMessage(lang.msg("shop.cmd.players_only")); return }
-        val target = org.bukkit.Bukkit.getOfflinePlayer(name)
-        if (target.name == null && !target.hasPlayedBefore()) {
+        val target = playerNameResolver.resolve(name) ?: run {
             player.sendMessage(lang.msg("shop.cmd.unknown_player", "name" to name)); return
         }
         val displayName = target.name ?: name
