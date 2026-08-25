@@ -7,6 +7,7 @@ import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Bukkit
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Resolves a display name for a stall owner — used by the purchase
@@ -27,6 +28,11 @@ class OwnerNameResolver(
     private val guildProvider: GuildProvider,
 ) {
 
+    /** Player names rarely change — cache the NBT-derived name to avoid
+     *  `PlayerDataStorage.load() → NbtIo.readCompressed()` on every sign
+     *  render (every 3s per stall, was 4.43% server thread at 34 players). */
+    private val nameCache: ConcurrentHashMap<UUID, String> = ConcurrentHashMap()
+
     fun displayNameFor(owner: OwnerRef): String = when (owner.type) {
         OwnerType.NONE -> ""
         OwnerType.SOLO -> resolveSolo(owner.id)
@@ -39,11 +45,14 @@ class OwnerNameResolver(
         } catch (_: IllegalArgumentException) {
             return uuidStr
         }
-        val bukkitName = try {
-            Bukkit.getOfflinePlayer(uuid).name ?: uuidStr
-        } catch (_: Throwable) {
-            // Bukkit may be unavailable (unit tests etc).
-            uuidStr
+        val bukkitName = nameCache[uuid] ?: run {
+            val resolved = try {
+                Bukkit.getOfflinePlayer(uuid).name
+            } catch (_: Throwable) {
+                null
+            }
+            if (resolved != null) nameCache.putIfAbsent(uuid, resolved) ?: resolved
+            else uuidStr  // don't cache misses — transient failures aren't permanent
         }
         // Resolve %player_name% from data we already hold (the owner's name),
         // rather than delegating it to PAPI's optional "Player" expansion —

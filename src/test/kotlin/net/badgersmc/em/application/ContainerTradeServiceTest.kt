@@ -2,8 +2,11 @@ package net.badgersmc.em.application
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkAll
+import io.mockk.unmockkObject
 import io.mockk.verify
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
@@ -23,9 +26,11 @@ import org.bukkit.inventory.ItemStack
 import org.bukkit.inventory.PlayerInventory
 import org.mockbukkit.mockbukkit.MockBukkit
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import java.util.UUID
 import java.util.logging.Logger
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 // Comprehensive trade-path coverage (buy/sell, frozen, stock, rollback, dupe guards) —
@@ -442,8 +447,9 @@ class ContainerTradeServiceTest {
 
         assertTrue(result is ContainerTradeResult.CompensationFailed, "Expected reversal, got $result")
         // The items that landed in the buyer's inventory must be removed before the full stack
-        // is restored to the container — otherwise they're duplicated (free-item exploit). Assert
-        // the EXACT amount (received = 10 requested − 4 bounced = 6); a wrong quantity must fail.
+        // is restored to the container — otherwise they're duplicated (free-item exploit).
+        // REQ-301: rollback uses sellStack.clone().apply { amount = received } where
+        // received = 10 requested - 4 leftover = 6.
         verify { sellStack.amount = 6 }
         verify { playerInv.removeItem(sellStack) }
     }
@@ -507,8 +513,14 @@ class ContainerTradeServiceTest {
         every { Bukkit.getPlayer(playerUuid) } returns player
         every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
 
+        val sellStack = mockk<ItemStack>(relaxed = true)
+        every { sellStack.amount } returns shop.sellAmount
+        every { sellStack.clone() } returns sellStack
+        every { sellStack.type } returns org.bukkit.Material.DIAMOND
+
         val containerInv = mockk<Inventory>(relaxed = true)
         every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+        every { containerInv.contents } returns arrayOf(sellStack)
         every { playerInv.addItem(any()) } returns hashMapOf()
 
         val container = mockk<Container>(relaxed = true)
@@ -517,6 +529,7 @@ class ContainerTradeServiceTest {
         val service = buildService(
             stallRepo = stallRepo,
             economy = economy,
+            mockItemStack = sellStack,
             mockContainer = container
         )
 
@@ -810,6 +823,173 @@ class ContainerTradeServiceTest {
         verify(exactly = 0) { guildProvider.bankBalance(any()) }
         verify(exactly = 0) { guildProvider.bankWithdraw(any(), any()) }
         verify(exactly = 0) { guildProvider.bankDeposit(any(), any()) }
+    }
+
+    // ===== REQ-301: Trade delivers actual container items =====
+
+    @Test
+    fun `executeSell delivers items from container inventory not deserialized template`() {
+        // REQ-301: Prove that trade execution delivers actual container items,
+        // not the deserialized template. Uses mockk to verify addItem receives
+        // the container item identity, not the template identity.
+
+        val shop = testShop(sellAmount = 1, costAmount = 10)
+
+        val stallRepo = mockk<StallRepository>(relaxed = true)
+        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+
+        val economy = mockk<EconomyProvider>(relaxed = true)
+        every { economy.balance(playerUuid) } returns 100L
+        every { economy.withdraw(playerUuid, 10L) } returns true
+        every { economy.deposit(ownerUuid, 10L) } returns true
+
+        // The container has its own mock item
+        val containerItem = mockk<ItemStack>(relaxed = true)
+        every { containerItem.amount } returns 64
+        every { containerItem.type } returns org.bukkit.Material.DIAMOND
+        every { containerItem.clone() } returns containerItem
+        every { containerItem.isSimilar(any()) } returns true
+
+        // The template (deserialized from DB) is a DIFFERENT mock
+        val templateItem = mockk<ItemStack>(relaxed = true)
+        every { templateItem.amount } returns 1
+        every { templateItem.type } returns org.bukkit.Material.DIAMOND
+        every { templateItem.clone() } returns templateItem
+        every { templateItem.isSimilar(any()) } returns true
+
+        val playerInv = mockk<PlayerInventory>(relaxed = true)
+        every { playerInv.addItem(any()) } returns hashMapOf()
+        every { playerInv.storageContents } returns arrayOf()
+        every { playerInv.contents } returns arrayOf()
+
+        val player = mockPlayer(playerInv)
+
+        mockkStatic(Bukkit::class)
+        every { Bukkit.getPlayer(playerUuid) } returns player
+        every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
+
+        val containerInv = mockk<Inventory>(relaxed = true)
+        every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+        every { containerInv.storageContents } returns arrayOf(containerItem)
+        every { containerInv.contents } returns arrayOf(containerItem)
+        every { containerInv.removeItem(any()) } returns hashMapOf()
+
+        val container = mockk<Container>(relaxed = true)
+        every { container.inventory } returns containerInv
+
+        val service = buildService(
+            stallRepo = stallRepo,
+            economy = economy,
+            mockItemStack = templateItem,
+            mockContainer = container,
+            hasAtLeast = inventoryAlwaysHas,
+            canFit = inventoryFitsWhenPositive,
+        )
+
+        val result = service.executeSell(shop, playerUuid)
+        assertTrue(result is ContainerTradeResult.Success, "Expected Success but got $result")
+
+        // After fix: playerInv.addItem receives containerItem (or its clone→containerItem).
+        // Before fix: playerInv.addItem receives templateItem.clone() = templateItem.
+        verify { playerInv.addItem(containerItem) }
+        verify(exactly = 0) { playerInv.addItem(templateItem) }
+    }
+
+    @Test
+    @Suppress("LongMethod")
+    fun `executeSell tracks partial delivery correctly with multiple collected items`() {
+        // CR: When collectedItems has 2+ entries and both partially fail to fit,
+        // the old putAll-based remainder tracking only kept the last leftover.
+        // This test proves totalLeftoverAmount correctly sums across all items.
+
+        val shop = testShop(sellAmount = 20, costAmount = 10)
+
+        val stallRepo = mockk<StallRepository>(relaxed = true)
+        every { stallRepo.findById(StallId("stall_01")) } returns sampleStall()
+
+        val economy = mockk<EconomyProvider>(relaxed = true)
+        every { economy.balance(playerUuid) } returns 100L
+        every { economy.withdraw(playerUuid, 10L) } returns true
+        every { economy.deposit(ownerUuid, 10L) } returns true
+
+        // Two distinct container items — simulate a stack split across slots
+        // item1 has 12, item2 has 15. removeAndCollectSimilar takes 12+8=20
+        val containerItem1 = mockk<ItemStack>(relaxed = true)
+        every { containerItem1.type } returns org.bukkit.Material.DIAMOND
+        every { containerItem1.clone() } returns containerItem1
+        every { containerItem1.isSimilar(any()) } returns true
+
+        val containerItem2 = mockk<ItemStack>(relaxed = true)
+        every { containerItem2.type } returns org.bukkit.Material.DIAMOND
+        every { containerItem2.clone() } returns containerItem2
+        every { containerItem2.isSimilar(any()) } returns true
+
+        val templateItem = mockk<ItemStack>(relaxed = true)
+        every { templateItem.amount } returns 20
+        every { templateItem.clone() } returns templateItem
+        every { templateItem.type } returns org.bukkit.Material.DIAMOND
+        every { templateItem.isSimilar(any()) } returns true
+
+        // Track amounts with mutable vars so clone/apply updates propagate.
+        // Stubbed getters don't reflect setter calls — answers{} does.
+        var item1Amount = 12
+        var item2Amount = 15
+        every { containerItem1.amount } answers { item1Amount }
+        every { containerItem1.amount = any() } answers { item1Amount = it.invocation.args[0] as Int; Unit }
+        every { containerItem2.amount } answers { item2Amount }
+        every { containerItem2.amount = any() } answers { item2Amount = it.invocation.args[0] as Int; Unit }
+
+        // item1: 12 requested, 3 leftover → 9 added. item2: 8 requested, 2 leftover → 6 added.
+        // Total leftover = 5, so 15 of 20 delivered
+        val leftover1 = mockk<ItemStack>(relaxed = true)
+        every { leftover1.amount } returns 3
+        val leftover2 = mockk<ItemStack>(relaxed = true)
+        every { leftover2.amount } returns 2
+
+        val playerInv = mockk<PlayerInventory>(relaxed = true)
+        // item1 clone gets amount=12 set, item2 clone gets amount=8 set
+        every { playerInv.addItem(containerItem1) } returns hashMapOf(0 to leftover1)
+        every { playerInv.addItem(containerItem2) } returns hashMapOf(0 to leftover2)
+        every { playerInv.addItem(templateItem) } returns hashMapOf()
+        every { playerInv.storageContents } returns arrayOf()
+        every { playerInv.contents } returns arrayOf()
+
+        val player = mockPlayer(playerInv)
+
+        mockkStatic(Bukkit::class)
+        every { Bukkit.getPlayer(playerUuid) } returns player
+        every { Bukkit.getPluginManager() } returns mockk(relaxed = true)
+
+        val containerInv = mockk<Inventory>(relaxed = true)
+        every { containerInv.containsAtLeast(any<ItemStack>(), any()) } returns true
+        every { containerInv.storageContents } returns arrayOf(containerItem1, containerItem2)
+        every { containerInv.contents } returns arrayOf(containerItem1, containerItem2)
+        every { containerInv.removeItem(any()) } returns hashMapOf()
+
+        val container = mockk<Container>(relaxed = true)
+        every { container.inventory } returns containerInv
+
+        val service = buildService(
+            stallRepo = stallRepo, economy = economy,
+            mockItemStack = templateItem, mockContainer = container,
+            hasAtLeast = inventoryAlwaysHas, canFit = inventoryFitsWhenPositive,
+        )
+
+        val result = service.executeSell(shop, playerUuid)
+        // 15 of 20 successful, 5 leftover → CompensationFailed
+        assertTrue(result is ContainerTradeResult.CompensationFailed, "Expected CompensationFailed but got $result")
+
+        // Verify: per-item removal uses collected items (not template).
+        // containerItem1: 12 taken, addItem leftover(3), 9 added, rolled back → amount=9
+        // containerItem2: 8 taken, addItem leftover(2), 6 added, rolled back → amount=6
+        verify { playerInv.removeItem(containerItem1) }
+        verify { playerInv.removeItem(containerItem2) }
+        verify { playerInv.addItem(containerItem1) }
+        verify { playerInv.addItem(containerItem2) }
+        // Verify per-item quantity: answers{} tracks the setter so the getter
+        // reflects the final amounts set by the rollback.
+        assertEquals(9, item1Amount, "containerItem1: 12 taken - 3 leftover = 9 rolled back")
+        assertEquals(6, item2Amount, "containerItem2: 8 taken - 2 leftover = 6 rolled back")
     }
 
     @Test

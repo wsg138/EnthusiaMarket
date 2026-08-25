@@ -7,6 +7,22 @@
 Tags: `TDD` (failing test before code), `DOC` (markdown / template authoring), `INFRA` (manifests, CI, repo plumbing).
 State legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[!]` blocked.
 
+## Item data component preservation (REQ-300, REQ-301)
+
+Reported: Ominous keys purchased from market have their data components stripped, making them non-functional. Root cause: (1) `ItemStackSerializer.deserialize()` round-trips through legacy `ItemStack.serialize()`/`deserialize()` Map format which drops modern Paper 1.21+ data components. (2) SELL/TRADE trade paths deliver `sellStack.clone()` (deserialized template) instead of items cloned from the actual container inventory.
+
+- [x] **TDD-300** — ItemStackSerializer preserves data components through round-trip
+  References: REQ-300
+  Tag: TDD
+  Description: Remove the `ItemStack.deserialize(item.serialize())` round-trip from `ItemStackSerializer.deserialize()`. The `deserializeBytes()` path already handles data version migration internally in Paper 1.21+. Add a test that creates an ItemStack with a custom data component, serializes it, deserializes it, and verifies the component is preserved. Also verify that material, amount, display name, enchantments, and lore survive the round-trip.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/ItemStackSerializer.kt:35`, `src/test/kotlin/net/badgersmc/em/application/ItemStackSerializerTest.kt`
+
+- [x] **TDD-301** — Trade execution delivers container items not templates
+  References: REQ-301
+  Tag: TDD
+  Description: Change `executeSellTransaction`, `executeBarterTransaction`, and `executeSlotTradeTransfer` to collect the items removed by `removeSimilar` and add THOSE to the player inventory, instead of `sellStack.clone()`. Add a test that verifies a SELL trade delivers items with the same NBT/display name as the items in the container (not the deserialized template).
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt:206-229,393-408,538-545`, `src/test/kotlin/net/badgersmc/em/application/ContainerTradeServiceTest.kt`
+
 ## Sign item display names & truncation (REQ-299)
 
 Reported: Netherite_Ingot (15 chars) doesn't show on sign. Custom anvil names lost.
@@ -930,3 +946,50 @@ set only at insert (no relocate path), so create + delete fully cover location c
   Tag: INFRA
   Description: Create `.github/workflows/wiki-deploy.yml` (build + deploy to GitHub Pages on push to main touching wiki/**, mkdocs.yml). Create `.github/workflows/wiki-checks.yml` (frontmatter lint, topic parity, markdown lint, mkdocs strict build on PR). Create `tools/wiki/lint_frontmatter.py` (pyyaml-based frontmatter validator). Create `tools/wiki/check_topic_parity.py` (ensure every wiki page topic has a corresponding in-game help topic). Create `.markdownlint.jsonc` (MD013/025/033/034/041/047/060 off, MD031/040 on, MD024 siblings_only). Verify wiki-deploy.yml targets `badgersmc.github.io/EnthusiaMarket`.
   Evidence: `mkdocs.yml site_url: badgersmc.github.io/EnthusiaMarket; wiki-deploy.yml pushes on main; wiki-checks.yml 4 jobs (frontmatter-lint, topic-parity, markdown-lint, mkdocs-strict-build); lint_frontmatter.py adapted from LumaGuilds (SLUG_EXEMPT reduced to index.md only); check_topic_parity.py adapted for EM (frontmatter check only, no HelpTopics yet); .markdownlint.jsonc copied from LumaGuilds`
+
+---
+
+## Maintenance freeze + shop-freeze audit follow-ups (REQ-302..304)
+
+Audit of PR #186 (2026-08-01) produced three in-scope findings converted to requirements. TDD-302 closes the shop-freeze invariant gap; TDD-303 hardens freeze activation; DOC-304 codifies the freeze-window transaction contract.
+
+- [x] **TDD-302** — ShopFreezeStateListener unfreezes on ANY non-OWNED → OWNED/UNOWNED transition
+  References: REQ-302
+  Tag: TDD
+  Description: Replace the source-state whitelist in `ShopFreezeStateListener.shouldUnfreeze` with a source-agnostic predicate: unfreeze when `current ∈ {OWNED, UNOWNED}` AND `previous != OWNED`. This closes the L-1 gap where AUCTIONING/RE_AUCTIONING → OWNED/UNOWNED left shops frozen. Keep OWNED → OWNED excluded (manual /shop edit freeze must survive a rent-extension re-fire). Update `ShopFreezeStateListenerTest` — existing cases must stay green; add cases for AUCTIONING → OWNED, RE_AUCTIONING → OWNED, AUCTIONING → UNOWNED, RE_AUCTIONING → UNOWNED (all unfreeze).
+  Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopFreezeStateListener.kt:60-65`, `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/ShopFreezeStateListenerTest.kt` — 13/13 green after predicate change to `previous != OWNED`; 4 new AUCTIONING/RE_AUCTIONING cases red before, green after.
+
+- [x] **TDD-303** — MaintenanceFreezeRepositorySql.begin() self-heals a missing row
+  References: REQ-303
+  Tag: TDD
+  Description: In `MaintenanceFreezeRepositorySql.begin()`, check the UPDATE affected-row count; when zero rows matched (V026 seed row deleted), fall back to an INSERT of the (1, frozen=1, started_at) row. Portable across SQLite + MariaDB — no `INSERT OR REPLACE` (SQLite-only), no `ON DUPLICATE KEY` (MariaDB-only). Add a repo test: delete the row, call begin(), assert frozenSince() returns the start instant and the row is recreated.
+  Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/MaintenanceFreezeRepositorySql.kt:35-44`, `src/test/kotlin/net/badgersmc/em/infrastructure/persistence/MaintenanceFreezeRepositorySqlTest.kt` — 8/8 green after UPDATE→INSERT fallback; `begin recreates the state row when it was deleted` red before, green after.
+
+- [x] **DOC-304** — Document the freeze-window transaction contract
+  References: REQ-304
+  Tag: DOC
+  Description: Add a wiki admin page (or extend the existing maintenance-freeze documentation) stating that rent payments and stall buyouts remain live during a maintenance freeze and their timers receive both the interval credit and the unfreeze shift. Reference REQ-304 as the contract source.
+  Evidence: `wiki/docs/admins/maintenance.md` (created 2026-08-01, frontmatter-validated against lint_frontmatter schema), `docs/requirements.md` REQ-304
+
+---
+
+## Potion-effect stacking exploit in market stalls (REQ-305)
+
+Critical exploit: MC 1.21 applies splash/cloud potion effects additively, so repeated splashes (or a lingering cloud re-applying each tick) inside a stall stack durations without bound (observed: Resistance IV with ~52-day duration). WG `POTION_SPLASH: DENY` exists in the provisioner but only covers provisioned regions and only the thrown-splash event. Runtime listener enforces the invariant for every stall region.
+
+- [x] **TDD-305** — PotionSplashPreventionListener blocks potion effects inside market regions
+  References: REQ-305
+  Tag: TDD
+  Description: Create `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/PotionSplashPreventionListener.kt` (@Listener + @Component, deps: RegionProvider + EnthusiaMarketConfig) with four handlers, each cancelling when the target entity/cloud is inside a market region (`regions.regionAt(world, x, y, z)?.startsWith(config.market.regionPrefix)`):
+  - `PotionSplashEvent` — cancel when the potion entity's location is in a market region.
+  - `LingeringPotionSplashEvent` — cancel when the potion entity's location is in a market region (prevents area-effect-cloud creation).
+  - `AreaEffectCloudApplyEvent` — cancel when the cloud is in a market region (covers clouds drifting in from outside).
+  - `EntityPotionEffectEvent` — cancel when cause ∈ {POTION_SPLASH, AREA_EFFECT_CLOUD, ARROW} and the affected entity is in a market region (covers tipped arrows + any splash landing on an entity in the region).
+  Test `PotionSplashPreventionListenerTest` with mocked RegionProvider: splash in region cancelled; splash outside region allowed; lingering in region cancelled; cloud apply in region cancelled; arrow effect on entity in region cancelled; same-state/non-potion causes (BEACON, POTION_DRINK, MILK) NOT cancelled.
+  Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt:81-82` (existing flag, insufficient), `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/EntityLimitListener.kt:104-105` (regionAt + prefix pattern), `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/GuildShopPolicyEntryListenerTest.kt` (mock RegionProvider pattern) — 14/14 green, detekt clean, ListenerWiringTest 3/3 green.
+
+- [x] **DOC-305** — Document potion-splash prevention in the wiki
+  References: REQ-305
+  Tag: DOC
+  Description: Add a short section to `wiki/docs/admins/` (e.g. in `maintenance.md` or a new `market-protection.md`) stating potion effects (splash/lingering/cloud/tipped arrow) are cancelled for entities inside stall regions; note the WG flag is provision-time-only and the runtime listener enforces the invariant for all regions.
+  Evidence: `wiki/docs/admins/market-protection.md` (created 2026-08-02, frontmatter-validated), `docs/requirements.md` REQ-305

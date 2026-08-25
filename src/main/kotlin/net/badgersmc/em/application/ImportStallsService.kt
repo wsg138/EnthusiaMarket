@@ -12,6 +12,7 @@ class ImportStallsService(
     private val rentTermsProvider: DefaultRentTermsProvider,
     private val provisioner: RegionProvisioner,
     private val stallPriority: Int,
+    private val pricing: StallVolumePricingService? = null,
 ) {
     data class Result(val created: Int, val skipped: Int, val provisioned: Int)
 
@@ -31,6 +32,9 @@ class ImportStallsService(
                 skipped++
                 continue
             }
+            // Volume-based terms when pricing is enabled + geometry resolves,
+            // otherwise the config default (REQ-003 snapshot semantics).
+            val rent = pricing?.termsFor(ref.world, ref.id) ?: currentRent
             stalls.create(
                 Stall(
                     id = StallId(ref.id),
@@ -40,7 +44,7 @@ class ImportStallsService(
                     owner = OwnerRef.unowned(),
                     ownerSince = null,
                     winningBid = 0L,
-                    rentTerms = currentRent,
+                    rentTerms = rent,
                 )
             )
             created++

@@ -189,7 +189,7 @@ open class ContainerTradeService(
         return SellPreconditions(TradeContext(shop.owner, resolveGuildUuid(stall), player, container.inventory), sellStack)
     }
 
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
     private fun executeSellTransaction(
         shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack
     ): ContainerTradeResult {
@@ -203,13 +203,17 @@ open class ContainerTradeService(
 
         // Remove stock from container *before* charging player — the pre-check
         // is a snapshot; the container could change in the meantime.
-        val removalResult = ctx.containerInv.removeItem(sellStack.clone())
+        // REQ-301: collect the actual container items so they can be delivered
+        // to the player instead of the deserialized template.
+        val (collectedItems, removalResult) = removeAndCollectSimilar(ctx.containerInv, sellStack, sellStack.amount)
         if (removalResult.isNotEmpty()) {
+            // Restore any partially-removed items
+            for (item in collectedItems) ctx.containerInv.addItem(item)
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
         }
 
         if (cost > 0L && !economy.withdraw(playerUuid, cost)) {
-            ctx.containerInv.addItem(sellStack.clone())
+            for (item in collectedItems) ctx.containerInv.addItem(item)
             return ContainerTradeResult.Failure("Withdraw failed")
         }
 
@@ -217,7 +221,7 @@ open class ContainerTradeService(
         if (cost > 0L) {
             val depositSuccess = depositToShop(guildId, ctx.ownerUuid, cost)
             if (!depositSuccess) {
-                ctx.containerInv.addItem(sellStack.clone())
+                for (item in collectedItems) ctx.containerInv.addItem(item)
                 val playerRefunded = economy.deposit(playerUuid, cost)
                 return ContainerTradeResult.CompensationFailed(
                     error = guildPaymentFailure(guildId, "Owner deposit failed").reason,
@@ -226,12 +230,24 @@ open class ContainerTradeService(
             }
         }
 
-        val remainder = ctx.player.inventory.addItem(sellStack.clone())
-        if (remainder.isNotEmpty()) {
-            val received = sellStack.amount - remainder.values.sumOf { it.amount }
-            val toRemove = sellStack.clone().apply { amount = received }
-            ctx.player.inventory.removeItem(toRemove)
-            val rolledBack = rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, sellStack)
+        // Deliver actual container items (REQ-301), not deserialized template
+        var totalLeftoverAmount = 0
+        val addedPerItem = mutableListOf<Pair<ItemStack, Int>>()
+        for (item in collectedItems) {
+            val leftoverAmount = ctx.player.inventory.addItem(item).values.sumOf { it.amount }
+            totalLeftoverAmount += leftoverAmount
+            addedPerItem.add(item to (item.amount - leftoverAmount))
+        }
+        if (totalLeftoverAmount > 0) {
+            // Remove what was actually added using the collected item identities (REQ-301).
+            // Using sellStack (template) would fail isSimilar matching against the
+            // delivered container items, silently leaving duped items with the player.
+            for ((item, added) in addedPerItem) {
+                if (added > 0) {
+                    ctx.player.inventory.removeItem(item.clone().apply { amount = added })
+                }
+            }
+            val rolledBack = rollbackFullTransaction(guildId, ctx.ownerUuid, playerUuid, cost, ctx.containerInv, collectedItems)
             val msg = if (rolledBack) {
                 "Trade reversed — check your inventory"
             } else {
@@ -256,11 +272,14 @@ open class ContainerTradeService(
 
     private fun rollbackFullTransaction(
         guildId: UUID?, ownerUuid: UUID, playerUuid: UUID, cost: Long,
-        containerInv: Inventory, sellStack: ItemStack,
+        containerInv: Inventory, collectedItems: List<ItemStack>,
     ): Boolean {
-        // Restore stock to container from the deserialized template (sell undo).
+        // Restore actual collected container items (REQ-301) — not a template reconstruction.
         // Partial player items were already removed by the caller.
-        val itemsRestored = containerInv.addItem(sellStack.clone()).isEmpty()
+        var itemsRestored = true
+        for (item in collectedItems) {
+            if (containerInv.addItem(item).isNotEmpty()) itemsRestored = false
+        }
         val fundsReversed = if (guildId != null) {
             guildProvider?.bankWithdraw(guildId.toString(), cost) == true
         } else {
@@ -390,30 +409,37 @@ open class ContainerTradeService(
         shop: Shop, ctx: TradeContext, sellStack: ItemStack, costStack: ItemStack
     ): ContainerTradeResult {
         // Remove cost items from player, check for partial failure
-        val costLeftover = ctx.player.inventory.removeItem(costStack.clone())
+        val costLeftover = removeSimilar(ctx.player.inventory, costStack, costStack.amount)
         if (costLeftover.isNotEmpty()) {
             restorePartial(ctx.player.inventory, costStack, costLeftover)
             return ContainerTradeResult.Failure("Cannot afford cost — missing items")
         }
         // Remove sell items from container, check for partial failure
-        val sellLeftover = ctx.containerInv.removeItem(sellStack.clone())
+        val (collectedItems, sellLeftover) = removeAndCollectSimilar(ctx.containerInv, sellStack, sellStack.amount)
         if (sellLeftover.isNotEmpty()) {
             // Return cost items that were already removed
             ctx.player.inventory.addItem(costStack.clone())
             // Return any sell items that were partially removed
-            restorePartial(ctx.containerInv, sellStack, sellLeftover)
+            for (item in collectedItems) ctx.containerInv.addItem(item)
             return ContainerTradeResult.Failure("Out of stock — container has fewer items than listed")
         }
-        // Give sell items to player
-        val remainder = ctx.player.inventory.addItem(sellStack.clone())
-        if (remainder.isNotEmpty()) {
-            // Undo only what was actually inserted before rolling back
-            val received = sellStack.amount - remainder.values.sumOf { it.amount }
-            val toRemove = sellStack.clone().apply { amount = received }
-            ctx.player.inventory.removeItem(toRemove)
-            // Return full sell stack to container (not just accepted portion) —
-            // the full sellStack was removed at line 338.
-            ctx.containerInv.addItem(sellStack.clone())
+        // Give actual container items to player (REQ-301), not deserialized template
+        var totalLeftoverAmount = 0
+        val addedPerItem = mutableListOf<Pair<ItemStack, Int>>()
+        for (item in collectedItems) {
+            val leftoverAmount = ctx.player.inventory.addItem(item).values.sumOf { it.amount }
+            totalLeftoverAmount += leftoverAmount
+            addedPerItem.add(item to (item.amount - leftoverAmount))
+        }
+        if (totalLeftoverAmount > 0) {
+            // Remove what was actually added using the collected item identities (REQ-301)
+            for ((item, added) in addedPerItem) {
+                if (added > 0) {
+                    ctx.player.inventory.removeItem(item.clone().apply { amount = added })
+                }
+            }
+            // Return all collected items back to container
+            for (item in collectedItems) ctx.containerInv.addItem(item)
             ctx.player.inventory.addItem(costStack.clone())
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
@@ -421,7 +447,7 @@ open class ContainerTradeService(
         try {
             shopVault!!.deposit(ctx.ownerUuid, costStack, costStack.amount)
         } catch (e: Exception) {
-            return rollbackBarterAfterVaultFailure(ctx, sellStack, costStack, e)
+            return rollbackBarterAfterVaultFailure(ctx, sellStack, costStack, collectedItems, e)
         }
         fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, 0, shop.id, shop.direction))
         return ContainerTradeResult.Success("Traded ${shop.sellAmount}x for ${shop.costAmount}x")
@@ -431,21 +457,22 @@ open class ContainerTradeService(
         ctx: TradeContext,
         sellStack: ItemStack,
         costStack: ItemStack,
+        collectedItems: List<ItemStack>,
         cause: Exception,
     ): ContainerTradeResult {
         val sellClone = sellStack.clone()
         val sellLeftovers = ctx.player.inventory.removeItem(sellClone)
-        val productRemoved = sellLeftovers.isEmpty()
         val successfullyRemoved = sellClone.amount - sellLeftovers.values.sumOf { it.amount }
         val productRestored = if (successfullyRemoved > 0) {
-            ctx.containerInv.addItem(sellStack.clone().apply { amount = successfullyRemoved }).isEmpty()
+            // Restore collected items to container — check each addItem result
+            collectedItems.all { ctx.containerInv.addItem(it).isEmpty() }
         } else true
         val paymentRestored = ctx.player.inventory.addItem(costStack.clone()).isEmpty()
         log.log(java.util.logging.Level.WARNING, "Barter vault deposit failed after inventory mutation", cause)
-        if (productRemoved && productRestored && paymentRestored) {
+        if (successfullyRemoved > 0 && productRestored && paymentRestored) {
             return ContainerTradeResult.Failure("Barter vault unavailable; trade was rolled back")
         }
-        val detail = "vault deposit threw '${cause.message}'; productRemoved=$productRemoved, " +
+        val detail = "vault deposit threw '${cause.message}'; productRemoved=${sellLeftovers.isEmpty()}, " +
             "productRestored=$productRestored, paymentRestored=$paymentRestored"
         compensationAlerts.alert("barter-vault-deposit", detail, ctx.player.uniqueId, costStack.amount.toLong())
         return ContainerTradeResult.CompensationFailed("Barter vault persistence failed", detail)
@@ -534,36 +561,45 @@ open class ContainerTradeService(
         return policyFailure
     }
 
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod")
     private fun executeSlotTradeTransfer(ctx: SlotTradeContext, shop: Shop, placedCost: ItemStack, amounts: SlotTradeAmounts): ContainerTradeResult {
         val requestedSell = ctx.sellStack.clone().apply { amount = amounts.sell }
-        val sellLeftover = ctx.container.inventory.removeItem(requestedSell)
+        val (collectedItems, sellLeftover) = removeAndCollectSimilar(ctx.container.inventory, ctx.sellStack, amounts.sell)
         if (sellLeftover.isNotEmpty()) {
-            restorePartial(ctx.container.inventory, requestedSell, sellLeftover)
+            for (item in collectedItems) ctx.container.inventory.addItem(item)
             return ContainerTradeResult.Failure("Stock mismatch — container changed")
         }
-        val remainder = ctx.player.inventory.addItem(ctx.sellStack.clone().apply { amount = amounts.sell })
-        if (remainder.isNotEmpty()) {
-            val received = amounts.sell - remainder.values.sumOf { it.amount }
-            ctx.player.inventory.removeItem(ctx.sellStack.clone().apply { amount = received })
-            ctx.container.inventory.addItem(requestedSell)
+        // Deliver actual container items (REQ-301), not deserialized template
+        var totalLeftoverAmount = 0
+        val addedPerItem = mutableListOf<Pair<ItemStack, Int>>()
+        for (item in collectedItems) {
+            val leftoverAmount = ctx.player.inventory.addItem(item).values.sumOf { it.amount }
+            totalLeftoverAmount += leftoverAmount
+            addedPerItem.add(item to (item.amount - leftoverAmount))
+        }
+        if (totalLeftoverAmount > 0) {
+            // Remove what was actually added using the collected item identities (REQ-301)
+            for ((item, added) in addedPerItem) {
+                if (added > 0) {
+                    ctx.player.inventory.removeItem(item.clone().apply { amount = added })
+                }
+            }
+            for (item in collectedItems) ctx.container.inventory.addItem(item)
             return ContainerTradeResult.CompensationFailed(error = "Inventory full", compensation = "Trade reversed")
         }
         try {
             shopVault!!.deposit(ctx.ownerUuid, placedCost.clone().apply { amount = amounts.cost }, amounts.cost)
         } catch (e: Exception) {
-            val requestedSellClone = ctx.sellStack.clone().apply { amount = amounts.sell }
-            val sellLeftovers = ctx.player.inventory.removeItem(requestedSellClone)
-            val removed = sellLeftovers.isEmpty()
+            val sellLeftovers = ctx.player.inventory.removeItem(requestedSell)
             val successfullyRemoved = amounts.sell - sellLeftovers.values.sumOf { it.amount }
             val restored = if (successfullyRemoved > 0) {
-                ctx.container.inventory.addItem(requestedSell.apply { amount = successfullyRemoved }).isEmpty()
+                collectedItems.all { ctx.container.inventory.addItem(it).isEmpty() }
             } else true
             log.log(java.util.logging.Level.WARNING, "Placement barter vault deposit failed after inventory mutation", e)
-            if (removed && restored) {
+            if (sellLeftovers.isEmpty() && restored) {
                 return ContainerTradeResult.Failure("Barter vault unavailable; trade was rolled back")
             }
-            val detail = "vault deposit threw '${e.message}'; productRemoved=$removed, productRestored=$restored; payment remains in placement slot"
+            val detail = "vault deposit threw '${e.message}'; productRemoved=${sellLeftovers.isEmpty()}, productRestored=$restored; payment remains in placement slot"
             compensationAlerts.alert("placement-barter-vault-deposit", detail, ctx.player.uniqueId, amounts.cost.toLong())
             return ContainerTradeResult.CompensationFailed("Barter vault persistence failed", detail)
         }
@@ -682,5 +718,64 @@ open class ContainerTradeService(
             return TransferResult.DestFull(leftover)
         }
         return TransferResult.Success
+    }
+
+    /**
+     * Removes items matching [template] from [source] using
+     * [ItemStackMatch.isSimilarIgnoringDamageNullZero] instead of Bukkit's
+     * strict equality. Clones matched items from the inventory so their
+     * real metadata (including nullable Damage tag) is preserved in the
+     * removeItem call. Returns leftovers if the full amount can't be removed.
+     */
+    @Suppress("CyclomaticComplexMethod")
+    private fun removeSimilar(source: Inventory, template: ItemStack, amount: Int): Map<Int, ItemStack> {
+        var remaining = amount
+        val contents = source.contents
+        if (contents != null && contents.isNotEmpty()) {
+            for (item in contents) {
+                if (item == null) continue
+                if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
+                val take = minOf(item.amount, remaining)
+                val batch = item.clone().apply { this.amount = take }
+                source.removeItem(batch)
+                remaining -= take
+                if (remaining <= 0) return emptyMap()
+            }
+        }
+        if (remaining <= 0) return emptyMap()
+        // Source has no contents (likely a test mock) — fall back to Bukkit removeItem
+        val batch = template.clone().apply { this.amount = remaining }
+        return source.removeItem(batch)
+    }
+
+    /**
+     * Like [removeSimilar] but also collects the cloned items that were removed
+     * from the source inventory (preserving their real NBT/components).
+     * REQ-301: returned collected items are the actual container items, to be
+     * delivered to the player instead of the deserialized template.
+     * Returns (collected: List<ItemStack>, leftovers: Map<Int, ItemStack>).
+     */
+    private fun removeAndCollectSimilar(source: Inventory, template: ItemStack, amount: Int): Pair<List<ItemStack>, Map<Int, ItemStack>> {
+        val collected = mutableListOf<ItemStack>()
+        var remaining = amount
+        val contents = source.contents
+        if (contents != null && contents.isNotEmpty()) {
+            for (item in contents) {
+                if (item == null) continue
+                if (!ItemStackMatch.isSimilarIgnoringDamageNullZero(item, template)) continue
+                val take = minOf(item.amount, remaining)
+                val batch = item.clone().apply { this.amount = take }
+                source.removeItem(batch)
+                collected.add(batch)
+                remaining -= take
+                if (remaining <= 0) return collected to emptyMap()
+            }
+        }
+        if (remaining <= 0) return collected to emptyMap()
+        // Fallback for test mocks — use template
+        val batch = template.clone().apply { this.amount = remaining }
+        val leftovers = source.removeItem(batch)
+        if (leftovers.isEmpty()) collected.add(batch)
+        return collected to leftovers
     }
 }

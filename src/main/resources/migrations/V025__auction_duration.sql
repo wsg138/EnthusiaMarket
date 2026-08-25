@@ -1,0 +1,1 @@
+ALTER TABLE auctions ADD COLUMN auction_duration_sec INTEGER NOT NULL DEFAULT 0;
