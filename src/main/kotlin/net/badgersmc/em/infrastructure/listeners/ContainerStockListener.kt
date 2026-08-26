@@ -17,6 +17,7 @@ import org.bukkit.event.EventHandler
 import org.bukkit.event.EventPriority
 import org.bukkit.inventory.Inventory
 import java.util.concurrent.ConcurrentHashMap
+import java.util.logging.Logger
 
 /**
  * Keeps shop sign stock text in sync with linked container inventories.
@@ -41,6 +42,8 @@ class ContainerStockListener(
     private val lastRawStock: MutableMap<Long, Int> = mutableMapOf()
     private var previouslyDepletedShops: MutableSet<Long> = mutableSetOf()
 
+    private val log = Logger.getLogger(ContainerStockListener::class.java.name)
+
     /** shopId → pending raw stock to flush to DB on next timer tick. */
     private val dirtyStock: ConcurrentHashMap<Long, Int> = ConcurrentHashMap()
 
@@ -63,16 +66,29 @@ class ContainerStockListener(
 
     /** Shops per tick for incremental refresh (scales to 1000+ shops). */
     private var cursor = 0
+    /** Cached shop list — refreshed once per full cycle to avoid querying the
+     *  DB every tick for the same data. Invalidation is triggered by cursor
+     *  wrap (cycle end) so new shops are picked up within one full cycle. */
+    private var cachedShops: List<Shop> = emptyList()
 
     /** Recompute stock for a batch of shops and flush on cycle completion. */
     fun refreshBatch(batchSize: Int = 50) {
-        val shops = shopRepository.all().toList()
+        // Only re-query the full shop list at cycle start — not every tick.
+        // With 200-300 shops, this cuts DB queries from 20/s to ~0.25/s.
+        if (cachedShops.isEmpty() || cursor == 0) {
+            cachedShops = shopRepository.all().toList()
+        }
+        val shops = cachedShops
         if (shops.isEmpty()) return
         val end = (cursor + batchSize).coerceAtMost(shops.size)
         for (i in cursor until end) {
-            val shop = shops[i]
-            val inventory = liveContainerInventory(shop) ?: continue
-            refreshOne(shop, inventory)
+            try {
+                val shop = shops[i]
+                val inventory = liveContainerInventory(shop) ?: continue
+                refreshOne(shop, inventory)
+            } catch (e: Exception) {
+                log.warning("Stock refresh failed for shop ${shops[i].id}: ${e.message}")
+            }
         }
         cursor = if (end >= shops.size) 0 else end
         if (cursor == 0) flushDirtyStock()  // full cycle complete → persist
@@ -106,12 +122,19 @@ class ContainerStockListener(
         loadedSign(shop)?.let { updateSignStock(it, shop, trades) }
     }
 
-    /** Flush all batched [dirtyStock] writes to SQLite in a single batch (PERF-5). */
+    /** Flush all batched [dirtyStock] writes to SQLite in a single batch (PERF-5).
+     *  Drains entries atomically so concurrent writes from [onTransaction] during
+     *  flushing are preserved for the next cycle. */
     private fun flushDirtyStock() {
         if (dirtyStock.isEmpty()) return
-        val batch = HashMap(dirtyStock)
-        dirtyStock.clear()
-        shopRepository.updateStockBatch(batch)
+        val batch = HashMap<Long, Int>()
+        val iter = dirtyStock.entries.iterator()
+        while (iter.hasNext()) {
+            val (id, stock) = iter.next()
+            batch[id] = stock
+            iter.remove()
+        }
+        if (batch.isNotEmpty()) shopRepository.updateStockBatch(batch)
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────
@@ -129,8 +152,23 @@ class ContainerStockListener(
         if (!world.isChunkLoaded(shop.containerX shr 4, shop.containerZ shr 4)) return null
         val block = world.getBlockAt(shop.containerX, shop.containerY, shop.containerZ)
 
-        // Material pre-check avoids snapshot for non-container blocks.
-        return (block.state as? Container)?.inventory
+        // getState(false) sets DISABLE_SNAPSHOT_TL so the state wraps the LIVE tile
+        // entity — no NBT round-trip (spark #1: block.state snapshot was ~50% server
+        // thread at ~300 shops; CraftChest.<init> → createSnapshot() → loadAllItems()
+        // decode + saveWithFullMetadata() re-encode).
+        //
+        // IMPORTANT: use state.inventory, NOT blockInventory.holder. Inventory.getHolder()
+        // → BlockEntity.getOwner() → CraftBlock.getState() recreates the snapshot
+        // (spark #2: 33% server thread). CraftChest.getInventory() already merges
+        // double-chest halves internally (ChestBlock.getMenuProvider → DoubleInventory →
+        // CraftInventoryDoubleChest), so no holder lookup is needed.
+        //
+        // Type-check the STATE (not a material allow-list) so EVERY container type
+        // accepted at placement (SignPlaceListener: `attached.state is Container`)
+        // and by ContainerTradeService.getContainer() is covered — chests, barrels,
+        // shulker boxes, crafter, etc. Non-containers resolve to a plain state and
+        // return null cheaply (no snapshot, no NBT).
+        return (block.getState(false) as? Container)?.inventory
     }
 
     private fun rawStockOf(inventory: Inventory, shop: Shop): Int {
@@ -139,12 +177,14 @@ class ContainerStockListener(
     }
 
     /** The shop's sign block state, or null if the sign chunk isn't loaded.
-     *  The [isChunkLoaded] guard is mandatory — [org.bukkit.World.getBlockAt] force-loads. */
+     *  The [isChunkLoaded] guard is mandatory — [org.bukkit.World.getBlockAt] force-loads.
+     *  Uses [Block.getState](false) (live tile entity) — no NBT snapshot per cycle
+     *  (same spark fix as [liveContainerInventory]). */
     private fun loadedSign(shop: Shop): Sign? {
         val world = Bukkit.getWorld(shop.signWorld) ?: return null
         if (!world.isChunkLoaded(shop.signX shr 4, shop.signZ shr 4)) return null
         return world.getBlockAt(shop.signX, shop.signY, shop.signZ)
-            .state as? Sign
+            .getState(false) as? Sign
     }
 
     /** PERF-5: no-physics update — sign text change doesn't need block physics recalculation. */

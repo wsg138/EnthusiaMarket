@@ -14,7 +14,13 @@ data class Auction(
     val startingBid: Long,
     val highBid: Bid?,
     val antiSnipeWindow: Duration,
-    val antiSnipeExtension: Duration
+    val antiSnipeExtension: Duration,
+    /** Non-zero when the timer should start on the first bid rather than at
+     *  creation. Emergency/re-auction flows set this to the auction duration
+     *  and ship with [endAt] at the max representable instant; the first bid
+     *  sets [endAt] to `now + auctionDuration`. Zero means normal behaviour —
+     *  the timer runs from [startAt] regardless of bids. */
+    val auctionDuration: Duration = Duration.ZERO,
 ) {
     init {
         require(startingBid > 0) { "startingBid must be positive, was $startingBid" }
@@ -26,11 +32,14 @@ data class Auction(
         val current = highBid?.amount ?: (startingBid - 1)
         require(amount > current) { "Bid must exceed current high bid of $current" }
 
-        val newEnd =
-            if (Duration.between(at, endAt) <= antiSnipeWindow) {
+        val newEnd = when {
+            // First bid on a deferred-timer auction: start the clock now.
+            highBid == null && !auctionDuration.isZero ->
+                at.plus(auctionDuration)
+            Duration.between(at, endAt) <= antiSnipeWindow ->
                 maxOf(endAt, at.plus(antiSnipeExtension))
-            }
-            else endAt
+            else -> endAt
+        }
 
         return copy(
             highBid = Bid(bidder, amount, at),

@@ -27,11 +27,8 @@ jobs:
       # See build.gradle.kts for the com.github.BadgersMC.Nexus coordinates.
 
       # LumaGuilds and RoseChat have a circular source-level compile dependency.
-      # LumaGuilds publishes release jars from its own CI, so consume one pinned
-      # release artifact here instead of rebuilding LumaGuilds through unrelated
-      # third-party Maven repositories. The digest binds the exact jar bytes.
-      # RoseChat master is still compiled against that jar below, so its current
-      # LumaGuilds channel hook remains validated before Market itself is tested.
+      # Consume the published LumaGuilds release with an exact digest, then still
+      # compile current RoseChat against it before validating Market.
       - name: Fetch pinned LumaGuilds release
         id: lg
         env:

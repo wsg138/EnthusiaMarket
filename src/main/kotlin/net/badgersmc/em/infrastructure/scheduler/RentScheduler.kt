@@ -1,5 +1,6 @@
 package net.badgersmc.em.infrastructure.scheduler
 
+import net.badgersmc.em.application.MaintenanceFreezeService
 import net.badgersmc.em.application.RentCollectionService
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.nexus.annotations.Component
@@ -18,12 +19,17 @@ import java.util.logging.Level
  * First tick fires immediately (0 delay) so overdue stalls are processed on boot
  * instead of waiting for the full interval. This also means a server restart won't
  * reset the timer — overdue stalls are caught on boot.
+ *
+ * While a maintenance freeze is active ([MaintenanceFreezeService.isFrozen]) the
+ * tick is skipped entirely — no grace/eviction transitions happen during the
+ * maintenance window.
  */
 @Component
 class RentScheduler(
     private val plugin: Plugin,
     private val rentCollectionService: RentCollectionService,
-    private val config: EnthusiaMarketConfig
+    private val config: EnthusiaMarketConfig,
+    private val maintenanceFreeze: MaintenanceFreezeService,
 ) {
 
     @PostConstruct
@@ -32,6 +38,7 @@ class RentScheduler(
         val intervalTicks = parseInterval()
         object : BukkitRunnable() {
             override fun run() {
+                if (maintenanceFreeze.isFrozen()) return
                 try {
                     val report = rentCollectionService.tick()
                     if (report.defaults > 0 || report.evictions > 0 || report.errors > 0) {

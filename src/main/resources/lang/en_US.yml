@@ -16,6 +16,14 @@ admin:
   rent:
     resync:
       result: "<prefix><shadow:#000000:1>rent resync: <green><count></green> <gray>stall(s) updated to the current default rent terms</shadow>"
+  pricing:
+    preview:
+      empty: "<prefix><shadow:#000000:1><yellow>No pricing rows found — no stalls with resolvable region geometry for world=<world> prefix=<region_prefix>. Check the regions or run <white>/em import</white> first.</shadow>"
+      header: "<prefix><shadow:#000000:1><gold>Volume pricing preview:</gold> <gray><count> stall(s) — no changes written</gray></shadow>"
+      row: "<shadow:#000000:1>  <aqua><stall></aqua> <gray>volume=<white><volume></white> blocks</gray> <gray>→ rent <gold><rent></gold></shadow>"
+    apply:
+      result: "<prefix><shadow:#000000:1>pricing apply: <green><count></green> <gray>stall(s) updated to volume-based rent</shadow>"
+    unavailable: "<prefix><shadow:#000000:1><red>Volume pricing service is unavailable.</red></shadow>"
   reload:
     success: "<prefix><shadow:#000000:1>config reloaded <gray>(world=<world>, prefix=<region_prefix>)</shadow>"
     failure: "<prefix><shadow:#000000:1><red>reload failed: <reason></shadow>"
@@ -51,6 +59,16 @@ admin:
     success: "<prefix><shadow:#000000:1><green>Evicted</green> <aqua><stall></aqua> <green>— reset to unowned and WG cleared.</shadow>"
     not_found: "<prefix><shadow:#000000:1><red>Stall not found:</red> <stall></shadow>"
     not_owned: "<prefix><shadow:#000000:1><yellow>Stall</yellow> <aqua><stall></aqua> <yellow>is not currently owned.</shadow>"
+  maintenance:
+    freeze:
+      activated: "<prefix><shadow:#000000:1><green>Maintenance freeze ACTIVE</green> — all rent and auction timers are paused. Run <white>/em maintenance unfreeze</white> when the server is back.</shadow>"
+      already_active: "<prefix><shadow:#000000:1><yellow>Maintenance freeze is already active</yellow> <gray>(since</gray> <gold><since></gold><gray>)</gray>.</shadow>"
+    unfreeze:
+      done: "<prefix><shadow:#000000:1><green>Maintenance freeze lifted.</green> <gray>Shifted</gray> <gold><stalls></gold> <gray>stall rent deadline(s) and</gray> <gold><auctions></gold> <gray>auction(s) forward by</gray> <white><duration></white><gray>.</gray></shadow>"
+      not_frozen: "<prefix><shadow:#000000:1><yellow>No maintenance freeze is active.</yellow></shadow>"
+    status:
+      active: "<prefix><shadow:#000000:1>Maintenance freeze: <green>ACTIVE</green> <gray>since</gray> <gold><since></gold> <gray>(frozen for</gray> <white><duration></white><gray>)</gray>.</shadow>"
+      inactive: "<prefix><shadow:#000000:1>Maintenance freeze: <gray>inactive</gray>.</shadow>"
   limit:
     header: "<shadow:#000000:1><gold>Your stall limits</shadow>"
     total: "<shadow:#000000:1><gray>Total: <white><used></white> / <yellow><cap></shadow>"
@@ -88,11 +106,6 @@ purchase_sign:
     line2: "<shadow:#000000:1><yellow><owner></shadow>"
     line3: "<shadow:#000000:1><red>Expires in…</shadow>"
     line4: "<shadow:#000000:1><gold><time></shadow>"
-  moderation_hold:
-    line1: "<shadow:#000000:1><dark_red>[Staff Review]</dark_red></shadow>"
-    line2: "<shadow:#000000:1><aqua><stall></aqua></shadow>"
-    line3: "<shadow:#000000:1><red>Unavailable</red></shadow>"
-    line4: "<shadow:#000000:1><gray>Contact staff</gray></shadow>"
   missing:
     line1: "<shadow:#000000:1><dark_gray>[<gold>EM</gold>]</shadow>"
     line2: "<shadow:#000000:1><red>?<stall></shadow>"
@@ -108,7 +121,6 @@ purchase_sign:
     no_guild_permission: "<prefix><shadow:#000000:1><red>You do not have MANAGE_SHOPS in your guild</shadow>"
     stall_missing: "<prefix><shadow:#000000:1><red>Stall not found:</red> <stall></shadow>"
     auction_live: "<prefix><shadow:#000000:1><yellow>Auction is live on</yellow> <aqua><stall></aqua> <gray>— use /em bid</shadow>"
-    moderation_hold: "<prefix><shadow:#000000:1><yellow>This stall is unavailable during staff review.</yellow></shadow>"
     emergency_auction_alert: "<prefix><shadow:#000000:1><dark_red>EMERGENCY AUCTION:</dark_red> <red><stall></red> <gray>rent overdue — starting bid <gold><bid></gold>. Use <click:run_command:'/em bid'><aqua>/em bid</aqua></click> to participate!</shadow>"
     already_owned: "<prefix><shadow:#000000:1><gray>This stall is already owned</shadow>"
     buy_no_permission: "<prefix><shadow:#000000:1><red>You do not have permission to buy stalls (enthusiamarket.stall.buyout)</shadow>"
@@ -531,6 +543,7 @@ gui:
     entry_lore_current_with_bidder: "<gray>Current bid: <gold><amount></gold> <gray>(<yellow><bidder><gray>)"
     entry_lore_current_no_bids: "<gray>Current bid: <gold><amount></gold> <gray>(<dark_gray>no bids<gray>)"
     entry_lore_starting: "<gray>Starting bid: <white><amount>"
+    entry_lore_awaiting_first_bid: "<gray>Time left: <gold>Waiting for first bid"
     entry_lore_time_left: "<gray>Time left: <white><time>"
     entry_lore_id: "<dark_gray><id>"
     entry_lore_click: "<green>Click to bid"

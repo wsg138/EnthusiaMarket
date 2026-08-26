@@ -40,7 +40,7 @@ class AdminCommandsTest {
         val repo = mockk<StallRepository>()
         every { service.import("world", "stall_") } returns ImportStallsService.Result(3, 1, 0)
 
-        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.domain.ports.RegionProvisioner>(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
+        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.domain.ports.RegionProvisioner>(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), playerNameResolver = mockk(relaxed = true))
         cmd.import(sender)
 
         verify { service.import("world", "stall_") }
@@ -55,7 +55,7 @@ class AdminCommandsTest {
                   null, 0L, RentTerms.formula(1.0))
         )
 
-        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.domain.ports.RegionProvisioner>(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true))
+        val cmd = AdminCommands(service, repo, config, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.domain.ports.RegionProvisioner>(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), playerNameResolver = mockk(relaxed = true))
         cmd.list(sender)
 
         verify { sender.sendMessage(any<Component>()) }
@@ -95,6 +95,9 @@ class AdminCommandsTest {
                       null, 0L, RentTerms.formula(1.0))
             )
 
+        val playerNameResolver = mockk<net.badgersmc.em.infrastructure.bedrock.PlayerNameResolver>()
+        every { playerNameResolver.resolve("Alice") } returns stubPlayer
+
         val cmd = AdminCommands(
             mockk(relaxed = true), mockk(relaxed = true), config,
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
@@ -116,9 +119,12 @@ class AdminCommandsTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            playerNameResolver,
         )
         cmd.membersAdd(player, "s1", "Alice")
 
+        verify { playerNameResolver.resolve("Alice") }
         verify { members.addMember(StallId("s1"), actorUuid, any<UUID>()) }
     }
 
@@ -130,6 +136,9 @@ class AdminCommandsTest {
         every { members.addMember(any(), any(), any()) } returns
             StallMemberService.Result.NotAuthorised
 
+        val playerNameResolver = mockk<net.badgersmc.em.infrastructure.bedrock.PlayerNameResolver>()
+        every { playerNameResolver.resolve("Alice") } returns stubPlayer
+
         val cmd = AdminCommands(
             mockk(relaxed = true), mockk(relaxed = true), config,
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
@@ -151,9 +160,12 @@ class AdminCommandsTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
+            mockk(relaxed = true),
+            playerNameResolver,
         )
         cmd.membersAdd(player, "s1", "Alice")
 
+        verify { playerNameResolver.resolve("Alice") }
         // i18n migration in flight (handoff #22 — owned by Hermes) means
         // sendMessage takes Component, not String. We just verify a
         // message was sent — content assertion is a lang-key test that
@@ -182,6 +194,8 @@ class AdminCommandsTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk<net.badgersmc.em.domain.ports.RegionProvisioner>(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
             mockk(relaxed = true),
@@ -255,9 +269,147 @@ class AdminCommandsTest {
             mockk(relaxed = true),
             shopRepo,
             signRenderer,
+            mockk(relaxed = true),
+            mockk(relaxed = true),
         )
         cmd.refreshSigns(player)
 
         verify { player.sendMessage(any<Component>()) }
+    }
+
+    // --- maintenance freeze commands (CR 3694370395) ---
+
+    /** Build AdminCommands with a controllable LangService + MaintenanceFreezeService. */
+    private fun freezeCommands(
+        lang: net.badgersmc.nexus.i18n.LangService,
+        freeze: net.badgersmc.em.application.MaintenanceFreezeService,
+    ): AdminCommands = AdminCommands(
+        service = mockk(relaxed = true),
+        stalls = mockk(relaxed = true),
+        config = config,
+        auctionService = mockk(relaxed = true),
+        configManager = mockk(relaxed = true),
+        auctions = mockk(relaxed = true),
+        plugin = mockk(relaxed = true),
+        lang = lang,
+        nexusScheduler = mockk(relaxed = true),
+        stallMembers = mockk(relaxed = true),
+        sellOffers = mockk(relaxed = true),
+        sellback = mockk(relaxed = true),
+        regionMembers = mockk(relaxed = true),
+        regionProvisioner = mockk(relaxed = true),
+        entityCounter = mockk(relaxed = true),
+        regionProvider = mockk(relaxed = true),
+        stallInfo = mockk(relaxed = true),
+        particleBorders = mockk(relaxed = true),
+        stallEviction = mockk(relaxed = true),
+        limits = mockk(relaxed = true),
+        ownership = mockk(relaxed = true),
+        policyService = mockk(relaxed = true),
+        guildProvider = mockk(relaxed = true),
+        rentResync = mockk(relaxed = true),
+        shopRepository = mockk(relaxed = true),
+        signRenderer = mockk(relaxed = true),
+        maintenanceFreeze = freeze,
+        playerNameResolver = mockk(relaxed = true),
+    )
+
+    private val freezeSince = java.time.Instant.parse("2026-06-01T10:00:00Z")
+
+    @Test fun `maintenance freeze activated uses the activated key`() {
+        val freeze = mockk<net.badgersmc.em.application.MaintenanceFreezeService>()
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>()
+        every { freeze.begin(any()) } returns
+            net.badgersmc.em.application.MaintenanceFreezeResult.Activated(freezeSince)
+        every { lang.msg("admin.maintenance.freeze.activated") } returns
+            net.kyori.adventure.text.Component.text("activated")
+
+        freezeCommands(lang, freeze).maintenanceFreeze(sender)
+
+        verify { lang.msg("admin.maintenance.freeze.activated") }
+        verify { sender.sendMessage(any<Component>()) }
+    }
+
+    @Test fun `maintenance freeze already active injects the since value`() {
+        val freeze = mockk<net.badgersmc.em.application.MaintenanceFreezeService>()
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>()
+        every { freeze.begin(any()) } returns
+            net.badgersmc.em.application.MaintenanceFreezeResult.AlreadyActive(freezeSince)
+        every { lang.msg("admin.maintenance.freeze.already_active", "since" to freezeSince.toString()) } returns
+            net.kyori.adventure.text.Component.text("already")
+
+        freezeCommands(lang, freeze).maintenanceFreeze(sender)
+
+        verify { lang.msg("admin.maintenance.freeze.already_active", "since" to freezeSince.toString()) }
+        verify { sender.sendMessage(any<Component>()) }
+    }
+
+    @Test fun `maintenance unfreeze lifted injects stalls auctions and duration`() {
+        val freeze = mockk<net.badgersmc.em.application.MaintenanceFreezeService>()
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>()
+        every { freeze.end(any()) } returns net.badgersmc.em.application.MaintenanceFreezeResult.Lifted(
+            stalls = 3, auctions = 2, elapsed = java.time.Duration.ofHours(26)
+        )
+        // formatFreezeDuration(26h) -> "1d 2h 0m"
+        every { lang.msg("admin.maintenance.unfreeze.done", "stalls" to 3, "auctions" to 2, "duration" to "1d 2h 0m") } returns
+            net.kyori.adventure.text.Component.text("lifted")
+
+        freezeCommands(lang, freeze).maintenanceUnfreeze(sender)
+
+        verify { lang.msg("admin.maintenance.unfreeze.done", "stalls" to 3, "auctions" to 2, "duration" to "1d 2h 0m") }
+        verify { sender.sendMessage(any<Component>()) }
+    }
+
+    @Test fun `maintenance unfreeze not frozen uses the not_frozen key`() {
+        val freeze = mockk<net.badgersmc.em.application.MaintenanceFreezeService>()
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>()
+        every { freeze.end(any()) } returns net.badgersmc.em.application.MaintenanceFreezeResult.NotFrozen
+        every { lang.msg("admin.maintenance.unfreeze.not_frozen") } returns
+            net.kyori.adventure.text.Component.text("not frozen")
+
+        freezeCommands(lang, freeze).maintenanceUnfreeze(sender)
+
+        verify { lang.msg("admin.maintenance.unfreeze.not_frozen") }
+        verify { sender.sendMessage(any<Component>()) }
+    }
+
+    @Test fun `maintenance status active injects since and duration`() {
+        val freeze = mockk<net.badgersmc.em.application.MaintenanceFreezeService>()
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>()
+        every { freeze.status() } returns
+            net.badgersmc.em.application.MaintenanceFreezeStatus(frozen = true, since = freezeSince)
+        // duration is wall-clock (Instant.now()) — match shape, not value
+        every {
+            lang.msg(
+                "admin.maintenance.status.active",
+                "since" to freezeSince.toString(),
+                match<Pair<String, Any?>> { it.first == "duration" && it.second is String }
+            )
+        } returns net.kyori.adventure.text.Component.text("active")
+
+        freezeCommands(lang, freeze).maintenanceStatus(sender)
+
+        verify {
+            lang.msg(
+                "admin.maintenance.status.active",
+                "since" to freezeSince.toString(),
+                match<Pair<String, Any?>> { it.first == "duration" && it.second is String }
+            )
+        }
+        verify { sender.sendMessage(any<Component>()) }
+    }
+
+    @Test fun `maintenance status inactive uses the inactive key`() {
+        val freeze = mockk<net.badgersmc.em.application.MaintenanceFreezeService>()
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>()
+        every { freeze.status() } returns
+            net.badgersmc.em.application.MaintenanceFreezeStatus(frozen = false, since = null)
+        every { lang.msg("admin.maintenance.status.inactive") } returns
+            net.kyori.adventure.text.Component.text("inactive")
+
+        freezeCommands(lang, freeze).maintenanceStatus(sender)
+
+        verify { lang.msg("admin.maintenance.status.inactive") }
+        verify { sender.sendMessage(any<Component>()) }
     }
 }

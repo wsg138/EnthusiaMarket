@@ -86,6 +86,11 @@ data class Stall(
         return copy(members = members - playerUuid)
     }
 
+    /** True when this stall is guild-owned and in an actively-held state
+     *  (OWNED or GRACE). Used to filter stalls for startup WG resync. */
+    fun isActiveGuildStall(): Boolean =
+        state in setOf(StallState.OWNED, StallState.GRACE) && owner.type == OwnerType.GUILD
+
     fun awardTo(newOwner: OwnerRef, winningBid: Long, at: Instant, nextRentAt: Instant): Stall {
         require(newOwner.type != OwnerType.NONE) { "Cannot award stall to nobody" }
         require(winningBid > 0) { "Winning bid must be positive" }

@@ -407,39 +407,39 @@ return the stall to UNOWNED.
 
 **Ubiquitous.** THE SYSTEM SHALL display the traded item's custom display name (from an anvil rename) on shop signs when one exists, preserving its color formatting, and fall back to the Material name when no custom name is set. Item names longer than 14 characters SHALL be truncated to 14 characters followed by an ellipsis ("…") in plain text while preserving the original Component style (color, decorations).
 
-### Staff moderation provider
+### REQ-300 — Item data component preservation through serialization
 
-#### REQ-300 — Versioned moderation service
+**Ubiquitous.** THE SYSTEM SHALL preserve all item data components (including modern Paper 1.21+ component types such as `minecraft:ominous`, `minecraft:item_model`, custom data, enchantments, and display properties) through the full serialize → store → deserialize pipeline without loss or alteration.
 
-**Ubiquitous.** THE SYSTEM SHALL publish a supported versioned Bukkit service for bounded stall lookup, acquisition-blacklist state, durable moderation operations, and recovery without exposing infrastructure or Bukkit implementation types in its API models.
+### REQ-301 — Trade delivers actual container items
 
-#### REQ-301 — Durable compliance preparation
+**Unwanted.** IF a trade delivers items to a player (SELL direction or barter) THEN THE SYSTEM SHALL deliver items cloned from the actual container inventory rather than from the deserialized serialization template.
 
-**Event-driven.** WHEN an authorized caller prepares a case-linked stall operation with a unique operation ID THE SYSTEM SHALL atomically reserve the stall, snapshot its ownership and shop freeze state, freeze its shops, apply the requested acquisition blacklist, and return the same result for an exact retry.
+### REQ-302 — Shop freeze follows every stall-state transition out of penalty
 
-#### REQ-302 — Human-reviewed confiscation hold
+**Event-driven.** WHEN a stall transitions into OWNED or UNOWNED from any state other than OWNED THE SYSTEM SHALL unfreeze all shops bound to that stall.
 
-**Event-driven.** WHEN an authorized human reviewer confirms a prepared operation against its exact snapshot checksum THE SYSTEM SHALL remove ownership into a non-acquirable moderation hold while preserving stall contents and recovery state, and SHALL NOT perform that transition solely because the review deadline elapsed.
+**Note:** Closes the audit finding L-1 (2026-08-01, PR #186 audit): `ShopFreezeStateListener.shouldUnfreeze` previously matched only `GRACE` / `EMERGENCY_AUCTIONING` / `UNOWNED` as source states, so a stall reaching AUCTIONING or RE_AUCTIONING while carrying frozen shops (admin force-auction of a GRACE stall) and then settling (→OWNED) or reverting (→UNOWNED) kept its shops frozen forever. The predicate must be source-agnostic: any non-OWNED source landing on OWNED/UNOWNED unfreezes. OWNED→OWNED stays excluded so a manual `/shop edit` freeze is not clobbered by a rent-extension re-fire.
 
-#### REQ-303 — Exact moderation restoration
+### REQ-303 — Freeze activation self-heals a missing state row
 
-**Event-driven.** WHEN an authorized caller restores a held operation against its exact current checksum THE SYSTEM SHALL restore the prior owner, stall state, members, timing fields, shop freeze states, and provider-owned blacklist state exactly once before releasing the reservation.
+**Unwanted.** IF the `maintenance_freeze` row does not exist WHEN a freeze is activated THEN THE SYSTEM SHALL create it so the freeze state persists across restarts.
 
-#### REQ-304 — Acquisition and listing fencing
+**Note:** Closes the audit finding L-2 (2026-08-01, PR #186 audit): `MaintenanceFreezeRepositorySql.begin()` runs `UPDATE ... WHERE id = 1` and ignores the affected-row count. If the V026 seed row is ever deleted, begin() silently succeeds, the in-memory cache reports frozen, but the DB row is absent — the freeze is lost on restart with no warning. The fix is portable (SQLite + MariaDB): UPDATE first, INSERT when zero rows matched.
 
-**State-driven.** WHILE a player has an active acquisition blacklist or a stall has a live moderation reservation THE SYSTEM SHALL reject new buyout, offer transfer, auction award, and conflicting shop-management mutations before money, ownership, or items change.
+### REQ-304 — Player transactions stay live during a maintenance freeze
 
-#### REQ-305 — Restart-safe conflict handling
+**State-driven.** WHILE a maintenance freeze is active THE SYSTEM SHALL continue to accept rent payments and stall buyouts, applying the unfreeze timer shift to their newly-set rent deadlines.
 
-**Unwanted.** IF a process stops, a request is duplicated, provider state changes unexpectedly, or a recovery checksum does not match THEN THE SYSTEM SHALL preserve the durable reservation, return a bounded conflict or quarantine result, and SHALL NOT guess, overwrite newer state, or double-apply ownership changes.
+**Note:** Codifies the design decision behind audit finding M-2 (2026-08-01, PR #186 audit): buyout (`StallBuyoutService`) and rent payment (`StallRentExtensionService.extend`) are deliberately NOT gated by `MaintenanceFreezeService` — the PR's sign-refresh doc already promises rent payments stay live. The consequence is that a transaction performed during the freeze window receives the interval credit AND the unfreeze shift (player-favorable, admin-gated). This REQ makes that a documented contract rather than an accident.
 
-#### REQ-306 — Moderation bounds and privacy
+### REQ-305 — No potion effects inside market regions
 
-**Ubiquitous.** THE SYSTEM SHALL bound operation identifiers, case identifiers, stall identifiers, result detail, list sizes, executor queues, and recovery retention while excluding credentials, player inventory contents, and production evidence from provider results and logs.
+**Event-driven.** WHEN a splash potion, lingering potion, area-effect cloud, or tipped arrow would apply a potion effect to an entity located inside a market region THE SYSTEM SHALL cancel the effect application.
 
-#### REQ-307 — Moderation service lifecycle
+**Event-driven.** WHEN a splash or lingering potion breaks inside a market region THE SYSTEM SHALL cancel the break so no area-effect cloud is created there.
 
-**Event-driven.** WHEN the plugin enables or disables THE SYSTEM SHALL register or unregister exactly one moderation service, start or stop its bounded workers, reject new work during shutdown, and preserve every uncompleted operation durably for retry after restart.
+**Notes (2026-08-02, critical exploit report):** Players stack potion effects in stalls — MC 1.21 applies splash/cloud effects additively, so repeated splashes (or a lingering cloud re-applying each tick) inside a stall stack durations without bound (observed: Resistance IV with a ~52-day duration in a stall). The WorldGuard `POTION_SPLASH: DENY` flag in `WorldGuardRegionProvisioner.applyFlags()` is insufficient on two counts: (a) it is stamped only at provision/resync time, so existing production regions never received it; (b) even when present, WG's flag cancels only the thrown `PotionSplashEvent` — it does not gate lingering clouds (`AreaEffectCloudApplyEvent`), clouds drifting in from outside, or tipped arrows (`EntityPotionEffectEvent` cause `ARROW`). This REQ enforces the invariant at runtime for **every** stall region regardless of flag state: an entity inside a market region must never receive a potion effect from any splash/cloud/arrow source.
 
 ---
 

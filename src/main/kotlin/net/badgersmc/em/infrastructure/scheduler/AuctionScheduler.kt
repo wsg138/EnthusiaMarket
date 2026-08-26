@@ -1,6 +1,7 @@
 package net.badgersmc.em.infrastructure.scheduler
 
 import net.badgersmc.em.application.AuctionLifecycleService
+import net.badgersmc.em.application.MaintenanceFreezeService
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.vault.VaultHealth
@@ -19,6 +20,10 @@ import net.badgersmc.nexus.annotations.PostConstruct
  *
  * Runs every 20 seconds (400 ticks) asynchronously to avoid blocking the
  * main server thread for database and economy operations.
+ *
+ * While a maintenance freeze is active ([MaintenanceFreezeService.isFrozen]) the
+ * tick is skipped entirely — no auction settles and no reminders fire during the
+ * maintenance window. End times are shifted forward on unfreeze.
  */
 @Component
 class AuctionScheduler(
@@ -27,6 +32,7 @@ class AuctionScheduler(
     private val auctionRepository: AuctionRepository,
     private val vaultHealth: VaultHealth,
     private val lang: LangService,
+    private val maintenanceFreeze: MaintenanceFreezeService,
 ) {
 
     /** Reminder thresholds: at these durations remaining, notify the high bidder. */
@@ -47,6 +53,7 @@ class AuctionScheduler(
         }
         object : BukkitRunnable() {
             override fun run() {
+                if (maintenanceFreeze.isFrozen()) return
                 try {
                     val report = auctionLifecycleService.settleExpired()
                     if (report.settled > 0 || report.errors > 0) {
@@ -65,6 +72,8 @@ class AuctionScheduler(
     private fun sendReminders() {
         val now = Instant.now()
         for (auction in auctionRepository.allOpen()) {
+            // Skip auctions where the timer hasn't started yet (no bids placed).
+            if (auction.endAt == Instant.MAX) continue
             val remaining = Duration.between(now, auction.endAt)
             if (remaining.isNegative) continue
             sendReminderForAuction(auction, remaining)
