@@ -44,13 +44,21 @@ internal class JdbcMarketModerationStore(
                LEFT JOIN market_moderation_locks l ON l.stall_id = s.id
                LEFT JOIN market_moderation_operations o ON o.operation_id = l.operation_id
                WHERE s.owner_type = 'SOLO' AND s.owner_id = ?
-               ORDER BY s.id""",
+               ORDER BY s.id
+               LIMIT ?""",
         ).use { statement ->
             statement.setString(1, playerId.toString())
+            statement.setInt(2, MAXIMUM_STALLS_PER_PLAYER + 1)
             statement.executeQuery().use { result ->
-                buildList {
+                val stalls = buildList {
                     while (result.next()) add(result.toStallRecord())
                 }
+                if (stalls.size > MAXIMUM_STALLS_PER_PLAYER) {
+                    throw MarketModerationRejected(
+                        "Player owns more than $MAXIMUM_STALLS_PER_PLAYER market stalls",
+                    )
+                }
+                stalls
             }
         }
     }
@@ -216,6 +224,7 @@ internal class JdbcMarketModerationStore(
     fun removeBlacklist(removal: MarketBlacklistRemoval): MarketBlacklistResult = restrictions.remove(removal)
 
     private fun prepare(connection: Connection, request: MarketOperationRequest): MarketOperationResult {
+        lockSnapshotRows(connection, request.stallId())
         connection.findMarketOperation(request.operationId())?.let { existing ->
             if (!existing.matches(request)) {
                 throw MarketModerationConflict("Operation id belongs to a different market request")
@@ -235,6 +244,35 @@ internal class JdbcMarketModerationStore(
         insertOperation(connection, request, original, prepared.checksum, now)
         val operation = checkNotNull(connection.findMarketOperation(request.operationId()))
         return operationResult(MarketOperationResult.Status.PREPARED, operation, operation.detail)
+    }
+
+    /**
+     * Acquire write locks before the first snapshot read. The no-op updates are
+     * portable across SQLite and MariaDB; on MariaDB they also close the window
+     * where an already-running ordinary save could commit after the original
+     * snapshot was read and then be overwritten by release or restoration.
+     */
+    private fun lockSnapshotRows(connection: Connection, stallId: String) {
+        connection.prepareStatement(
+            "UPDATE stalls SET moderation_revision = moderation_revision WHERE id = ?",
+        ).use { statement ->
+            statement.setString(1, stallId)
+            statement.executeUpdate()
+        }
+        connection.prepareStatement("SELECT 1 FROM stalls WHERE id = ?").use { statement ->
+            statement.setString(1, stallId)
+            statement.executeQuery().use { result ->
+                if (!result.next()) {
+                    throw MarketModerationRejected("Market stall '$stallId' does not exist")
+                }
+            }
+        }
+        connection.prepareStatement(
+            "UPDATE shop_items SET stock_count = stock_count WHERE stall_id = ?",
+        ).use { statement ->
+            statement.setString(1, stallId)
+            statement.executeUpdate()
+        }
     }
 
     private fun requireTargetOwnership(snapshot: CapturedMarketSnapshot, targetId: UUID) {
@@ -502,6 +540,10 @@ internal class JdbcMarketModerationStore(
     private fun ResultSet.nullableLong(column: String): Long? {
         val value = getLong(column)
         return if (wasNull()) null else value
+    }
+
+    private companion object {
+        const val MAXIMUM_STALLS_PER_PLAYER = 100
     }
 
 }

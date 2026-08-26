@@ -5,6 +5,59 @@ import java.util.UUID
 
 /** Distinguishes a missing shop from a mutation rejected by a moderation fence. */
 internal object ShopModerationFenceQueries {
+    fun lockShopForMutation(connection: Connection, shopId: Long) {
+        connection.prepareStatement(
+            """UPDATE shop_items SET id = id WHERE id = ?
+               AND NOT EXISTS (
+                   SELECT 1 FROM market_moderation_locks l
+                   WHERE l.stall_id = shop_items.stall_id
+               )""",
+        ).use { statement ->
+            statement.setLong(1, shopId)
+            statement.executeUpdate()
+        }
+        rejectLockedShop(connection, shopId, 0)
+    }
+
+    fun lockContainerForMutation(
+        connection: Connection,
+        world: String,
+        x: Int,
+        y: Int,
+        z: Int,
+    ) {
+        connection.prepareStatement(
+            """UPDATE shop_items SET id = id
+               WHERE container_world = ? AND container_x = ?
+                 AND container_y = ? AND container_z = ?
+                 AND NOT EXISTS (
+                     SELECT 1 FROM market_moderation_locks l
+                     WHERE l.stall_id = shop_items.stall_id
+                 )""",
+        ).use { statement ->
+            statement.setString(1, world)
+            statement.setInt(2, x)
+            statement.setInt(3, y)
+            statement.setInt(4, z)
+            statement.executeUpdate()
+        }
+        rejectLockedContainer(connection, world, x, y, z)
+    }
+
+    fun lockOwnerForMutation(connection: Connection, owner: UUID) {
+        connection.prepareStatement(
+            """UPDATE shop_items SET id = id WHERE owner = ?
+               AND NOT EXISTS (
+                   SELECT 1 FROM market_moderation_locks l
+                   WHERE l.stall_id = shop_items.stall_id
+               )""",
+        ).use { statement ->
+            statement.setString(1, owner.toString())
+            statement.executeUpdate()
+        }
+        rejectLockedOwner(connection, owner)
+    }
+
     fun rejectLockedShop(connection: Connection, shopId: Long, updateCount: Int) {
         if (updateCount != 0) return
         connection.prepareStatement(

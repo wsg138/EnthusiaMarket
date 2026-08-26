@@ -13,10 +13,12 @@ import net.enthusia.market.api.moderation.MarketStallRecord
 import net.enthusia.market.api.moderation.StallBlacklistState
 import java.util.Optional
 import java.util.UUID
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CompletionStage
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -95,7 +97,13 @@ internal class MarketModerationProvider(
         if (closed.get()) {
             return CompletableFuture.failedFuture(IllegalStateException("Market moderation provider is closed"))
         }
-        return CompletableFuture.supplyAsync(action, executor)
+        return try {
+            CompletableFuture.supplyAsync(action, executor)
+        } catch (rejected: RejectedExecutionException) {
+            CompletableFuture.failedFuture(
+                IllegalStateException("Market moderation provider is busy or shutting down", rejected),
+            )
+        }
     }
 
     private fun reconcileGate(result: MarketOperationResult): MarketOperationResult {
@@ -183,15 +191,25 @@ internal class MarketModerationProvider(
 
     private companion object {
         const val SHUTDOWN_SECONDS = 5L
+        const val WORKER_COUNT = 2
+        const val QUEUE_CAPACITY = 64
 
         fun providerExecutor(): ExecutorService {
             val counter = AtomicInteger()
-            return Executors.newFixedThreadPool(2) { task ->
-                Thread(task, "enthusia-market-moderation-${counter.incrementAndGet()}").apply {
-                    isDaemon = true
-                    contextClassLoader = MarketModerationProvider::class.java.classLoader
-                }
-            }
+            return ThreadPoolExecutor(
+                WORKER_COUNT,
+                WORKER_COUNT,
+                0L,
+                TimeUnit.MILLISECONDS,
+                ArrayBlockingQueue(QUEUE_CAPACITY),
+                { task ->
+                    Thread(task, "enthusia-market-moderation-${counter.incrementAndGet()}").apply {
+                        isDaemon = true
+                        contextClassLoader = MarketModerationProvider::class.java.classLoader
+                    }
+                },
+                ThreadPoolExecutor.AbortPolicy(),
+            )
         }
     }
 }

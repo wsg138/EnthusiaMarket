@@ -7,6 +7,7 @@ import net.badgersmc.em.application.IpLimiter
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -43,6 +44,7 @@ class StallBuyoutServiceTest {
         claimDecision: LimitResolutionService.ClaimDecision = LimitResolutionService.ClaimDecision.Allowed,
         ownedByPlayer: List<Stall> = emptyList(),
         economyWithdrawOk: Boolean = true,
+        mutationGate: MarketMutationGate = MarketMutationGate.Open,
     ): ServiceWithMocks {
         val stalls = mockk<StallRepository>(relaxUnitFun = true)
         every { stalls.findById(stallId) } returns stall
@@ -74,6 +76,7 @@ class StallBuyoutServiceTest {
             limits = limits,
             ownership = ownership,
             ipLimiter = mockk<IpLimiter>(relaxed = true).also { every { it.acquireStall(any(), any()) } returns IpLimiter.Attempt(true, null) },
+            mutationGate = mutationGate,
         )
         return ServiceWithMocks(svc, economy)
     }
@@ -109,6 +112,19 @@ class StallBuyoutServiceTest {
         val result = assertIs<StallBuyoutService.Result.Purchased>(svc.buy(stallId, player, 100L, "1.2.3.4"))
         assertNotNull(result.stall.nextRentAt)
         verify { economy.withdraw(player, 100L) }
+    }
+
+    @Test
+    fun `buy rejects a moderated stall before charging`() {
+        val gate = object : MarketMutationGate {
+            override fun isStallLocked(stallId: String): Boolean = true
+        }
+        val (service, economy) = buildService(mutationGate = gate)
+
+        val result = service.buy(stallId, player, 100L, "1.2.3.4")
+
+        assertIs<StallBuyoutService.Result.Rejected>(result)
+        verify(exactly = 0) { economy.withdraw(any(), any()) }
     }
 
     @Test

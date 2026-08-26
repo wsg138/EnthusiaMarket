@@ -11,14 +11,18 @@ Authoritative schema definitions live in versioned migration files. This doc sum
 | Version | File | Adds |
 |---|---|---|
 | V001–V024 | `src/main/resources/migrations/V001...V024` | Initial Market schema and forward-only shop, auction, rent, vault, guild-policy, search, stock, and index changes. |
-| V025 | `V025__market_moderation_provider.sql` | Moderation revisions, operation journal, stall locks, player acquisition fences, and case-linked blacklists. |
+| V025 | `V025__auction_duration.sql` | Configurable auction duration. |
+| V026 | `V026__maintenance_freeze.sql` | Durable maintenance-freeze state. |
+| V027 | `V027__unfreeze_owned_stalls.sql` | Repairs frozen shops on owned stalls. |
+| V028 | `V028__market_moderation_provider.sql` | Moderation revisions, operation journal, stall locks, player acquisition fences, and case-linked blacklists. |
 
-`Migrations.runAll(ds)` applies in numeric order and records `schema_version`; existing versions are skipped (REQ-042).
+`MigrationRunner(...).runAll()` applies files in numeric order and records them in
+`schema_migration`; existing versions are skipped (REQ-042).
 
-The migration directory is authoritative for the complete V001–V025 history. Applied
+The migration directory is authoritative for the complete V001–V028 history. Applied
 migrations are immutable; future changes use a new version.
 
-### Staff moderation tables (V025)
+### Staff moderation tables (V028)
 
 `market_moderation_operations` stores the original versioned snapshot, SHA-256 checksum,
 current checksum, case/target/stall identity, reviewer UUID, deadlines, recovery window,

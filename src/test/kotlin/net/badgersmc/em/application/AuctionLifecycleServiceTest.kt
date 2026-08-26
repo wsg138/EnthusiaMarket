@@ -12,6 +12,7 @@ import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -101,6 +102,7 @@ class AuctionLifecycleServiceTest {
         ownedByWinner: List<Stall> = emptyList(),
         claimDecision: LimitResolutionService.ClaimDecision = LimitResolutionService.ClaimDecision.Allowed,
         overriddenConfig: EnthusiaMarketConfig? = null,
+        mutationGate: MarketMutationGate = MarketMutationGate.Open,
     ): ServiceWithMocks {
         val auctionRepo = mockk<AuctionRepository>(relaxUnitFun = true)
         every { auctionRepo.findById(auctionId) } returns auction
@@ -129,7 +131,7 @@ class AuctionLifecycleServiceTest {
         every { sellOffers.findByStall(any()) } returns null
 
         return ServiceWithMocks(
-            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, limits, sellOffers, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true)),
+            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, limits, sellOffers, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true), mutationGate = mutationGate),
             auctionRepo = auctionRepo,
             stallRepo = stallRepo,
             economy = economy,
@@ -181,6 +183,19 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         val failure = assertIs<AuctionResult.Failure>(result)
         assertTrue { failure.reason.contains("owner", ignoreCase = true) }
+    }
+
+    @Test
+    fun `createAuction rejects a moderated stall`() {
+        val gate = object : MarketMutationGate {
+            override fun isStallLocked(stallId: String): Boolean = true
+        }
+        val svc = buildService(openAuctionByStall = null, auction = null, mutationGate = gate)
+
+        val result = svc.service.createAuction(stallId, playerUuid, 100L, null)
+
+        assertIs<AuctionResult.Failure>(result)
+        verify(exactly = 0) { svc.auctionRepo.create(any()) }
     }
 
     @Test

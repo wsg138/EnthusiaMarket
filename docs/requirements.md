@@ -441,6 +441,40 @@ return the stall to UNOWNED.
 
 **Notes (2026-08-02, critical exploit report):** Players stack potion effects in stalls — MC 1.21 applies splash/cloud effects additively, so repeated splashes (or a lingering cloud re-applying each tick) inside a stall stack durations without bound (observed: Resistance IV with a ~52-day duration in a stall). The WorldGuard `POTION_SPLASH: DENY` flag in `WorldGuardRegionProvisioner.applyFlags()` is insufficient on two counts: (a) it is stamped only at provision/resync time, so existing production regions never received it; (b) even when present, WG's flag cancels only the thrown `PotionSplashEvent` — it does not gate lingering clouds (`AreaEffectCloudApplyEvent`), clouds drifting in from outside, or tipped arrows (`EntityPotionEffectEvent` cause `ARROW`). This REQ enforces the invariant at runtime for **every** stall region regardless of flag state: an entity inside a market region must never receive a potion effect from any splash/cloud/arrow source.
 
+### Staff moderation provider
+
+#### REQ-306 — Versioned moderation service
+
+**Ubiquitous.** THE SYSTEM SHALL publish a supported versioned Bukkit service for bounded stall lookup, acquisition-blacklist state, durable moderation operations, and recovery without exposing infrastructure or Bukkit implementation types in its API models.
+
+#### REQ-307 — Durable compliance preparation
+
+**Event-driven.** WHEN an authorized caller prepares a case-linked stall operation with a unique operation ID THE SYSTEM SHALL atomically reserve the stall, snapshot its ownership and shop freeze state, freeze its shops, apply the requested acquisition blacklist, and return the same result for an exact retry.
+
+#### REQ-308 — Human-reviewed confiscation hold
+
+**Event-driven.** WHEN an authorized human reviewer confirms a prepared operation against its exact snapshot checksum THE SYSTEM SHALL remove ownership into a non-acquirable moderation hold while preserving stall contents and recovery state, and SHALL NOT perform that transition solely because the review deadline elapsed.
+
+#### REQ-309 — Exact moderation restoration
+
+**Event-driven.** WHEN an authorized caller restores a held operation against its exact current checksum THE SYSTEM SHALL restore the prior owner, stall state, members, timing fields, shop freeze states, and provider-owned blacklist state exactly once before releasing the reservation.
+
+#### REQ-310 — Acquisition and listing fencing
+
+**State-driven.** WHILE a player has an active acquisition blacklist or a stall has a live moderation reservation THE SYSTEM SHALL reject new buyout, offer transfer, auction award, and conflicting shop-management mutations before money, ownership, or items change.
+
+#### REQ-311 — Restart-safe conflict handling
+
+**Unwanted.** IF a process stops, a request is duplicated, provider state changes unexpectedly, or a recovery checksum does not match THEN THE SYSTEM SHALL preserve the durable reservation, return a bounded conflict or quarantine result, and SHALL NOT guess, overwrite newer state, or double-apply ownership changes.
+
+#### REQ-312 — Moderation bounds and privacy
+
+**Ubiquitous.** THE SYSTEM SHALL bound operation identifiers, case identifiers, stall identifiers, result detail, list sizes, executor queues, and recovery retention while excluding credentials, player inventory contents, and production evidence from provider results and logs.
+
+#### REQ-313 — Moderation service lifecycle
+
+**Event-driven.** WHEN the plugin enables or disables THE SYSTEM SHALL register or unregister exactly one moderation service, start or stop its bounded workers, reject new work during shutdown, and preserve every uncompleted operation durably for retry after restart.
+
 ---
 
 ## Acceptance

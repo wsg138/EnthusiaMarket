@@ -277,6 +277,23 @@ class JdbcMarketModerationStoreTest {
     }
 
     @Test
+    fun `stall lookup rejects an oversized result`() {
+        val original = stallRepository.findById(StallId("stall-1"))!!
+        repeat(100) { index ->
+            stallRepository.create(
+                original.copy(
+                    id = StallId("extra-stall-$index"),
+                    regionId = "market-extra-stall-$index",
+                ),
+            )
+        }
+
+        assertFailsWith<MarketModerationRejected> {
+            store.findStalls(ownerId)
+        }
+    }
+
+    @Test
     fun `acquisition permit and moderation preparation are mutually exclusive`() {
         val policy = JdbcMarketModerationPolicy(dataSource, Clock.fixed(now, ZoneOffset.UTC))
 
@@ -301,6 +318,9 @@ class JdbcMarketModerationStoreTest {
         }
         assertFailsWith<MarketModerationConflictException> {
             shops.upsert(staleShop.copy(stockCount = 99))
+        }
+        assertFailsWith<MarketModerationConflictException> {
+            shops.delete(staleShop.id)
         }
         assertEquals(10, shops.findById(staleShop.id)?.stockCount)
     }
@@ -359,6 +379,27 @@ class JdbcMarketModerationStoreTest {
             ).toCompletableFuture().join()
             assertEquals(MarketOperationResult.Status.REPLAYED, replayed.status())
             assertTrue(regions.restoreCount >= 2)
+        } finally {
+            provider.close()
+        }
+    }
+
+    @Test
+    fun `provider reports executor rejection through the returned stage`() {
+        val executor = Executors.newSingleThreadExecutor()
+        executor.shutdown()
+        val provider = MarketModerationProvider(
+            store,
+            DurableMarketMutationGate(dataSource),
+            RecordingRegionAccess(),
+            executor,
+        )
+        try {
+            val failure = assertFailsWith<CompletionException> {
+                provider.findStalls(ownerId).toCompletableFuture().join()
+            }
+
+            assertTrue(failure.cause is IllegalStateException)
         } finally {
             provider.close()
         }

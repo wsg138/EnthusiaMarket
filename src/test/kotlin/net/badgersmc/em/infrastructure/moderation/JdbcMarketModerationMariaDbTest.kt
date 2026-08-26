@@ -30,6 +30,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -46,7 +47,7 @@ class JdbcMarketModerationMariaDbTest {
             password = database.password
             maximumPoolSize = 4
         })
-        createUpgradeBaseline()
+        createV27UpgradeBaseline()
         val applied = MigrationRunner(dataSource, "migrations", javaClass.classLoader).runAll()
         assertEquals(listOf(28), applied.map { it.version })
         createStallAndShop()
@@ -104,6 +105,56 @@ class JdbcMarketModerationMariaDbTest {
             assertEquals(1, scalarInt("SELECT COUNT(*) FROM market_moderation_locks"))
             assertEquals(1, scalarInt("SELECT COUNT(*) FROM market_moderation_operations"))
         } finally {
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `mariadb preparation preserves an ordinary mutation already in flight`() {
+        val mutationReady = CountDownLatch(1)
+        val allowCommit = CountDownLatch(1)
+        val preparationStarted = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val mutation = pool.submit {
+                dataSource.connection.use { connection ->
+                    connection.autoCommit = false
+                    try {
+                        connection.prepareStatement(
+                            "UPDATE stalls SET winning_bid = 7777 WHERE id = 'stall-maria'",
+                        ).use { assertEquals(1, it.executeUpdate()) }
+                        connection.prepareStatement(
+                            "UPDATE shop_items SET stock_count = 37 WHERE stall_id = 'stall-maria'",
+                        ).use { assertEquals(1, it.executeUpdate()) }
+                        mutationReady.countDown()
+                        assertTrue(allowCommit.await(10, TimeUnit.SECONDS))
+                        connection.commit()
+                    } catch (failure: Exception) {
+                        connection.rollback()
+                        throw failure
+                    }
+                }
+            }
+            assertTrue(mutationReady.await(10, TimeUnit.SECONDS))
+
+            val preparation = pool.submit<MarketOperationResult> {
+                preparationStarted.countDown()
+                store().prepare(request())
+            }
+            assertTrue(preparationStarted.await(10, TimeUnit.SECONDS))
+            Thread.sleep(PREPARATION_BLOCK_CHECK_MILLIS)
+            assertFalse(preparation.isDone)
+
+            allowCommit.countDown()
+            mutation.get(10, TimeUnit.SECONDS)
+            val prepared = preparation.get(10, TimeUnit.SECONDS).operation().orElseThrow()
+            val released = store().release(prepared.operationId(), prepared.snapshotChecksum())
+
+            assertEquals(MarketOperationResult.Status.RELEASED, released.status())
+            assertEquals("7777", scalarString("SELECT winning_bid FROM stalls WHERE id = 'stall-maria'"))
+            assertEquals(37, scalarInt("SELECT stock_count FROM shop_items WHERE stall_id = 'stall-maria'"))
+        } finally {
+            allowCommit.countDown()
             pool.shutdownNow()
         }
     }
@@ -223,7 +274,7 @@ class JdbcMarketModerationMariaDbTest {
         Optional.empty(),
     )
 
-    private fun createUpgradeBaseline() {
+    private fun createV27UpgradeBaseline() {
         dataSource.connection.use { connection ->
             listOf(
                 "market_moderation_locks",
@@ -371,6 +422,7 @@ class JdbcMarketModerationMariaDbTest {
     private companion object {
         const val DAY_SECONDS = 86_400L
         const val CONCURRENCY_ROUNDS = 8
+        const val PREPARATION_BLOCK_CHECK_MILLIS = 200L
 
         @Container
         @JvmStatic
