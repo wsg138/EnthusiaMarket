@@ -13,6 +13,7 @@ import net.badgersmc.em.domain.offer.SellOffer
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
+import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -76,6 +77,16 @@ class SellOfferServiceTest {
         every { stalls.findById(stallId) } returns stall
         every { economy.withdraw(buyer, 1100L) } returns true
         every { economy.deposit(any(), any()) } returns economyDepositOk
+        if (stall.owner.type == net.badgersmc.em.domain.stall.OwnerType.GUILD) {
+            every { guildProvider.isMember(seller, stall.owner.id) } returns true
+            every {
+                guildProvider.hasShopPermission(
+                    seller,
+                    stall.owner.id,
+                    GuildProvider.GuildPermission.MANAGE_SHOPS,
+                )
+            } returns true
+        }
         val svc = SellOfferService(
             offers, stalls, mockk(relaxed = true), economy,
             config(taxPct = 0.10, taxDestination = "system"),
@@ -316,6 +327,63 @@ class SellOfferServiceTest {
         verify(exactly = 0) { offers.delete(any()) }
     }
 
+    @Test fun `purchase rejects a moderated stall before charging`() {
+        val economy = mockk<EconomyProvider>()
+        val gate = object : MarketMutationGate {
+            override fun isStallLocked(stallId: String): Boolean = true
+        }
+        val svc = SellOfferService(
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            economy,
+            config(),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mockk(relaxed = true),
+            mutationGate = gate,
+        )
+
+        val result = svc.purchase(stallId, buyer)
+
+        assertIs<Result.Rejected>(result)
+        confirmVerified(economy)
+    }
+
+    @Test fun `purchase refunds the buyer when the ownership save is fenced`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val economy = mockk<EconomyProvider>()
+        val limits = mockk<LimitResolutionService>()
+        val ownership = mockk<StallOwnershipCounter>()
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { stalls.save(any()) } throws IllegalStateException("reserved for moderation")
+        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        every { ownership.counts(buyer) } returns StallOwnershipCounter.OwnedCounts(0, emptyMap())
+        every { economy.withdraw(buyer, 1100L) } returns true
+        every { economy.deposit(buyer, 1100L) } returns true
+        val svc = SellOfferService(
+            offers,
+            stalls,
+            mockk(relaxed = true),
+            economy,
+            config(),
+            mockk(relaxed = true),
+            limits,
+            ownership,
+            mockk(relaxed = true),
+        )
+
+        val result = svc.purchase(stallId, buyer)
+
+        assertIs<Result.Rejected>(result)
+        verify(exactly = 1) { economy.deposit(buyer, 1100L) }
+        verify(exactly = 0) { offers.delete(any()) }
+        verify(exactly = 0) { economy.deposit(seller, any()) }
+    }
+
     @Test fun `purchase of a guild-owned stall pays the guild bank, not the seller`() {
         val offers = mockk<SellOfferRepository>(relaxed = true)
         val stalls = mockk<StallRepository>(relaxed = true)
@@ -341,6 +409,14 @@ class SellOfferServiceTest {
         every { economy.withdraw(buyer, 1100L) } returns true
         every { economy.deposit(any(), any()) } returns true
         every { guildProvider.bankDeposit(guildId, 1000L) } returns true
+        every { guildProvider.isMember(memberSeller, guildId) } returns true
+        every {
+            guildProvider.hasShopPermission(
+                memberSeller,
+                guildId,
+                GuildProvider.GuildPermission.MANAGE_SHOPS,
+            )
+        } returns true
 
         val svc = SellOfferService(
             offers, stalls, mockk(relaxed = true), economy,

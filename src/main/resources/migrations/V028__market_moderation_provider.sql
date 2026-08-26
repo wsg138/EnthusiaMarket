@@ -1,4 +1,4 @@
--- ES-X03 / REQ-300..307: durable Staff moderation provider.
+-- ES-X03 / REQ-306..313: durable Staff moderation provider.
 -- Existing migrations are immutable; this migration adds the revision and
 -- reservation state needed to fence ownership/listing changes across runtimes.
 

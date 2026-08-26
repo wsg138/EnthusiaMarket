@@ -54,7 +54,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ds.connection.use { conn ->
             conn.autoCommit = false
             try {
-                ShopModerationFenceQueries.rejectLockedShop(conn, id, 0)
+                ShopModerationFenceQueries.lockShopForMutation(conn, id)
                 conn.prepareStatement("DELETE FROM shop_transactions WHERE shop_id = ?").use { ps ->
                     ps.setLong(1, id)
                     ps.executeUpdate()
@@ -84,7 +84,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         ds.connection.use { conn ->
             conn.autoCommit = false
             try {
-                ShopModerationFenceQueries.rejectLockedContainer(conn, world, x, y, z)
+                ShopModerationFenceQueries.lockContainerForMutation(conn, world, x, y, z)
                 conn.prepareStatement(
                     """DELETE FROM shop_transactions WHERE shop_id IN
                        (SELECT id FROM shop_items
@@ -119,7 +119,7 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
         return ds.connection.use { conn ->
             conn.autoCommit = false
             try {
-                ShopModerationFenceQueries.rejectLockedOwner(conn, owner)
+                ShopModerationFenceQueries.lockOwnerForMutation(conn, owner)
                 conn.prepareStatement(
                     """DELETE FROM shop_transactions WHERE shop_id IN (
                            SELECT id FROM shop_items WHERE owner = ?
@@ -412,7 +412,11 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                 bind(ps, shop)
                 ps.setLong(24, shop.id)
                 ps.setString(25, shop.stallId)
-                ShopModerationFenceQueries.rejectLockedShop(conn, shop.id, ps.executeUpdate())
+                val updated = ps.executeUpdate()
+                if (updated == 0) {
+                    ShopModerationFenceQueries.rejectLockedStall(conn, shop.stallId)
+                    ShopModerationFenceQueries.rejectLockedShop(conn, shop.id, updated)
+                }
             }
         }
     }
@@ -430,7 +434,9 @@ class ShopRepositorySql(private val ds: DataSource) : ShopRepository {
                   SELECT 1 FROM market_moderation_locks l
                   WHERE l.stall_id = shop_items.stall_id
               )
-              AND stall_id = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
+              )
         """.trimIndent()
     }
 

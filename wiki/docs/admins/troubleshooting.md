@@ -86,7 +86,7 @@ or snapshot rows directly.
 
 1. Record the existing operation ID, case ID, stall ID, state, revision, and checksums.
 2. Confirm EnthusiaStaff and EnthusiaMarket are using moderation API version 1.
-3. Confirm MariaDB is available and migration V025 is applied exactly once.
+3. Confirm MariaDB is available and migration V028 is applied exactly once.
 4. For `PREPARED`, choose explicit approval or release after reviewing the case.
 5. For `MODERATION_HOLD`, restore only through the supported API with the exact current
    checksum.

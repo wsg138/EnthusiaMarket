@@ -37,17 +37,22 @@ Review deadlines create alerts; they never approve confiscation automatically.
 
 ## Safety invariants
 
-- `prepare` creates the stall lock, captures the original snapshot, advances the stall
-  moderation revision, freezes shops, and applies the prepared acquisition restriction
-  in one database transaction.
+- `prepare` locks the stall and its shop rows before the first snapshot read, creates the
+  durable stall lock, advances the moderation revision, freezes shops, and applies the
+  prepared acquisition restriction in one database transaction.
 - The same operation ID with the complete original request is replay-safe. Changing its
   target, case, stall, review deadline, recovery window, or blacklist expiry is a conflict.
 - Confiscation, release, and restoration verify the expected checksum and optimistic
   revision before changing state.
 - A live stall reservation or player acquisition fence rejects buyouts, auction awards,
   transfers, and conflicting shop mutations before money, ownership, or items change.
-- Snapshots are limited to 100 shops and 1 MiB. Oversized state is rejected before a
-  destructive transition.
+- The process-local gate rejects ordinary purchase and auction work immediately; guarded
+  repository writes remain the durable backstop and charged buyers are refunded if the
+  reservation wins the final race.
+- Stall lookup and snapshots are limited to 100 stalls or shops, and snapshots are
+  limited to 1 MiB. Oversized state is rejected before a destructive transition.
+- Provider work uses two workers and a bounded 64-request queue. Saturation fails the
+  new request instead of allowing an unbounded moderation backlog.
 - Terminal rows remain in the journal for audit. They are not deleted as part of normal
   completion.
 

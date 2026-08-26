@@ -8,6 +8,7 @@ import net.badgersmc.em.domain.ports.EconomyProvider
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
 import net.badgersmc.em.domain.ports.MarketModerationPolicy
+import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallId
@@ -46,6 +47,7 @@ class SellOfferService(
     private val ownership: StallOwnershipCounter,
     private val alerter: CompensationAlertService,
     private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
+    private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
 ) {
 
     private val log = Logger.getLogger(SellOfferService::class.java.name)
@@ -103,11 +105,17 @@ class SellOfferService(
 
     @Suppress("LongMethod", "CyclomaticComplexMethod")
     private fun purchaseWithPermit(stallId: StallId, buyer: UUID): Result {
+        if (mutationGate.isStallLocked(stallId.value)) {
+            return Result.Rejected("This stall is temporarily unavailable")
+        }
         val offer = offers.findByStall(stallId) ?: return Result.NotFound
         val stall = stalls.findById(stallId) ?: return Result.NotFound
 
         if (buyer == offer.sellerUuid) {
             return Result.Rejected("You cannot buy your own stall")
+        }
+        if (!stall.canManage(offer.sellerUuid, guildProvider)) {
+            return Result.Rejected("This sell offer is no longer valid")
         }
 
         val taxPct = config.shop.taxPct
@@ -139,11 +147,9 @@ class SellOfferService(
             return Result.Rejected("Insufficient funds: $total required")
         }
 
-        // 1. Persist ownership transfer + close offer atomically from
-        // the caller's perspective. Failure here leaves the buyer
-        // charged but no ownership change — operators can refund manually
-        // (logged below). Matches the auction settlement compensation
-        // pattern: charge → persist → pay, never the reverse.
+        // 1. Persist ownership, then close the offer. A repository fence can
+        // still win after the fast moderation check, so a failed stall save
+        // refunds the buyer before returning.
         val previousState = stall.state
         // M-18: capture the pre-transfer owner so step 2 can route
         // proceeds correctly (guild bank vs seller wallet). `stall`
@@ -152,26 +158,41 @@ class SellOfferService(
         // below — the original owner only matters for the payout.
         val sellerIsGuild = stall.owner.type == OwnerType.GUILD
         val proceedsGuildId = stall.owner.id // valid only when sellerIsGuild
+        val now = Instant.now()
+        val updated = stall.awardTo(
+            OwnerRef.solo(buyer),
+            offer.price,
+            now,
+            now.plus(RentTimingPolicy.collectionInterval(config)),
+        )
         try {
-            val now = Instant.now()
-            val updated = stall.awardTo(
-                OwnerRef.solo(buyer),
-                offer.price,
-                now,
-                now.plus(RentTimingPolicy.collectionInterval(config)),
-            )
             stalls.save(updated)
+        } catch (failure: Exception) {
+            return rejectAndRefundBuyer(stallId, buyer, total, failure)
+        }
+        try {
             offers.delete(stallId)
+        } catch (failure: Exception) {
+            log.severe(
+                "SellOfferService.purchase: stall ${stallId.value} transferred to $buyer but " +
+                    "the completed offer could not be removed. cause=${failure.message}",
+            )
+            alerter.alert(
+                context = "sell-offer:cleanup",
+                detail = "stall ${stallId.value} transferred to buyer $buyer but its completed offer remains",
+                affected = buyer,
+                amount = total,
+            )
+        }
+        try {
             Bukkit.getServer()?.pluginManager?.callEvent(
                 StallStateChangedEvent(stallId.value, previousState, updated.state)
             )
-        } catch (e: Exception) {
-            log.severe(
-                "SellOfferService.purchase: ownership transfer failed for stall " +
-                    "${stallId.value} after charging buyer $buyer total=$total. " +
-                    "Manual refund required. cause=${e.message}"
+        } catch (failure: Exception) {
+            log.warning(
+                "SellOfferService.purchase: failed to fire StallStateChangedEvent for " +
+                    "${stallId.value}: ${failure.message}",
             )
-            throw e
         }
 
         // 2. Pay seller (or guild bank) + route tax. Failures here are
@@ -207,10 +228,48 @@ class SellOfferService(
             }
         }
 
-        Bukkit.getServer()?.pluginManager?.callEvent(
-            SellOfferCompletedEvent(stallId.value, offer.sellerUuid, buyer, offer.price, tax)
-        )
+        try {
+            Bukkit.getServer()?.pluginManager?.callEvent(
+                SellOfferCompletedEvent(stallId.value, offer.sellerUuid, buyer, offer.price, tax)
+            )
+        } catch (failure: Exception) {
+            log.warning(
+                "SellOfferService.purchase: failed to fire SellOfferCompletedEvent for " +
+                    "${stallId.value}: ${failure.message}",
+            )
+        }
         return Result.Purchased(offer, tax)
+    }
+
+    private fun rejectAndRefundBuyer(
+        stallId: StallId,
+        buyer: UUID,
+        total: Long,
+        failure: Exception,
+    ): Result.Rejected {
+        val refunded = try {
+            economy.deposit(buyer, total)
+        } catch (refundFailure: Exception) {
+            log.severe(
+                "SellOfferService.purchase: refund of $total to $buyer threw after stall " +
+                    "${stallId.value} transfer failed: ${refundFailure.message}",
+            )
+            false
+        }
+        if (refunded) {
+            log.warning(
+                "SellOfferService.purchase: transfer failed for ${stallId.value}; " +
+                    "buyer $buyer was refunded $total. cause=${failure.message}",
+            )
+            return Result.Rejected("The stall changed before the purchase completed. Your payment was refunded.")
+        }
+        alerter.alert(
+            context = "sell-offer:buyer-refund",
+            detail = "stall ${stallId.value} was not transferred and buyer $buyer could not be refunded",
+            affected = buyer,
+            amount = total,
+        )
+        return Result.Rejected("The purchase could not be completed. Staff have been alerted.")
     }
 
     /**
