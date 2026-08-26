@@ -48,7 +48,7 @@ class JdbcMarketModerationMariaDbTest {
         })
         createUpgradeBaseline()
         val applied = MigrationRunner(dataSource, "migrations", javaClass.classLoader).runAll()
-        assertEquals(listOf(25), applied.map { it.version })
+        assertEquals(listOf(28), applied.map { it.version })
         createStallAndShop()
     }
 
@@ -90,90 +90,21 @@ class JdbcMarketModerationMariaDbTest {
         val start = CountDownLatch(1)
         val pool = Executors.newFixedThreadPool(2)
         try {
-            val results = listOf("CASE-A", "CASE-B").map { caseId ->
-                pool.submit<MarketOperationResult> {
-                    start.await()
-                    store().prepare(request(UUID.randomUUID(), caseId))
-                }
+            val first = pool.submit<MarketOperationResult> {
+                start.await()
+                store().prepare(request(caseId = "case-a"))
+            }
+            val second = pool.submit<MarketOperationResult> {
+                start.await()
+                store().prepare(request(caseId = "case-b"))
             }
             start.countDown()
-            val statuses = results.map { it.get(10, TimeUnit.SECONDS).status() }
 
-            assertEquals(1, statuses.count { it == MarketOperationResult.Status.PREPARED })
-            assertEquals(1, statuses.count { it == MarketOperationResult.Status.CONFLICT })
+            val results = listOf(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS))
+            assertEquals(1, results.count { it.status() == MarketOperationResult.Status.PREPARED })
+            assertEquals(1, results.count { it.status() == MarketOperationResult.Status.CONFLICT })
             assertEquals(1, scalarInt("SELECT COUNT(*) FROM market_moderation_locks"))
-            assertEquals(1, scalarInt("SELECT COUNT(*) FROM market_moderation_operations"))
-        } finally {
-            pool.shutdownNow()
-        }
-    }
-
-    @Test
-    fun `mariadb acquisition permit wins or moderation wins without overlap`() {
-        val policy = JdbcMarketModerationPolicy(dataSource, Clock.fixed(now, ZoneOffset.UTC))
-        val entered = CountDownLatch(1)
-        val release = CountDownLatch(1)
-        val pool = Executors.newFixedThreadPool(2)
-        try {
-            val acquisition = pool.submit {
-                policy.withAcquisitionPermit(ownerId) {
-                    entered.countDown()
-                    release.await()
-                }
-            }
-            assertTrue(entered.await(10, java.util.concurrent.TimeUnit.SECONDS))
-
-            val blocked = store().prepare(request())
-            release.countDown()
-            acquisition.get(10, TimeUnit.SECONDS)
-            val prepared = store().prepare(request())
-
-            assertEquals(MarketOperationResult.Status.CONFLICT, blocked.status())
-            assertEquals(MarketOperationResult.Status.PREPARED, prepared.status())
-        } finally {
-            release.countDown()
-            pool.shutdownNow()
-        }
-    }
-
-    @Test
-    fun `mariadb acquisition and blacklist claims never overlap`() {
-        val policy = JdbcMarketModerationPolicy(dataSource, Clock.fixed(now, ZoneOffset.UTC))
-        val pool = Executors.newFixedThreadPool(2)
-        try {
-            repeat(CONCURRENCY_ROUNDS) {
-                val playerId = UUID.randomUUID()
-                val start = CountDownLatch(1)
-                val releaseAcquisition = CountDownLatch(1)
-                val acquisition = pool.submit<Boolean> {
-                    start.await()
-                    try {
-                        policy.withAcquisitionPermit(playerId) {
-                            releaseAcquisition.await(10, TimeUnit.SECONDS)
-                        }
-                        true
-                    } catch (_: MarketAcquisitionBlockedException) {
-                        false
-                    }
-                }
-                val blacklist = pool.submit<MarketBlacklistResult.Status> {
-                    start.await()
-                    store().applyBlacklist(
-                        MarketBlacklistRequest(UUID.randomUUID(), playerId, "CASE-RACE", Optional.empty()),
-                    ).status()
-                }
-
-                start.countDown()
-                val blacklistStatus = blacklist.get(10, TimeUnit.SECONDS)
-                releaseAcquisition.countDown()
-                val acquired = acquisition.get(10, TimeUnit.SECONDS)
-
-                if (acquired) {
-                    assertEquals(MarketBlacklistResult.Status.CONFLICT, blacklistStatus)
-                } else {
-                    assertEquals(MarketBlacklistResult.Status.APPLIED, blacklistStatus)
-                }
-            }
+            assertEquals(1, scalarInt("SELECT COUNT(*) FROM market_moderation_operations WHERE state = 'PREPARED'"))
         } finally {
             pool.shutdownNow()
         }
@@ -181,45 +112,144 @@ class JdbcMarketModerationMariaDbTest {
 
     @Test
     fun `mariadb concurrent blacklist applications produce one winner`() {
+        val start = CountDownLatch(1)
         val pool = Executors.newFixedThreadPool(2)
         try {
-            repeat(CONCURRENCY_ROUNDS) {
-                val playerId = UUID.randomUUID()
-                val start = CountDownLatch(1)
-                val results = listOf("CASE-A", "CASE-B").map { caseId ->
-                    pool.submit<MarketBlacklistResult.Status> {
-                        start.await()
-                        store().applyBlacklist(
-                            MarketBlacklistRequest(UUID.randomUUID(), playerId, caseId, Optional.empty()),
-                        ).status()
-                    }
-                }
-                start.countDown()
-                val statuses = results.map { it.get(10, TimeUnit.SECONDS) }
-
-                assertEquals(1, statuses.count { it == MarketBlacklistResult.Status.APPLIED })
-                assertEquals(1, statuses.count { it == MarketBlacklistResult.Status.CONFLICT })
+            val first = pool.submit<MarketBlacklistResult> {
+                start.await()
+                store().blacklist(blacklistRequest("blacklist-a"))
             }
+            val second = pool.submit<MarketBlacklistResult> {
+                start.await()
+                store().blacklist(blacklistRequest("blacklist-b"))
+            }
+            start.countDown()
+
+            val results = listOf(first.get(10, TimeUnit.SECONDS), second.get(10, TimeUnit.SECONDS))
+            assertEquals(1, results.count { it.status() == MarketBlacklistResult.Status.APPLIED })
+            assertEquals(1, results.count { it.status() == MarketBlacklistResult.Status.CONFLICT })
+            assertEquals(1, scalarInt("SELECT COUNT(*) FROM market_stall_blacklists"))
         } finally {
             pool.shutdownNow()
         }
     }
 
+    @Test
+    fun `mariadb acquisition permit wins or moderation wins without overlap`() {
+        repeat(CONCURRENCY_ROUNDS) { round ->
+            resetConcurrentState()
+            val start = CountDownLatch(1)
+            val pool = Executors.newFixedThreadPool(2)
+            try {
+                val acquisition = pool.submit<Boolean> {
+                    start.await()
+                    runCatching {
+                        store().acquirePermit(ownerId, "acquire-$round", now.plusSeconds(DAY_SECONDS))
+                    }.isSuccess
+                }
+                val moderation = pool.submit<MarketOperationResult> {
+                    start.await()
+                    store().prepare(request(caseId = "case-race-$round"))
+                }
+                start.countDown()
+
+                val acquisitionWon = acquisition.get(10, TimeUnit.SECONDS)
+                val moderationResult = moderation.get(10, TimeUnit.SECONDS)
+                val moderationWon = moderationResult.status() == MarketOperationResult.Status.PREPARED
+                assertEquals(1, listOf(acquisitionWon, moderationWon).count { it })
+                assertTrue(
+                    moderationResult.status() == MarketOperationResult.Status.PREPARED ||
+                        moderationResult.status() == MarketOperationResult.Status.CONFLICT,
+                )
+                val acquisitionRows = scalarInt(
+                    "SELECT COUNT(*) FROM market_player_fences " +
+                        "WHERE player_uuid = '${ownerId}' AND active_acquisition_id IS NOT NULL",
+                )
+                val moderationRows = scalarInt("SELECT COUNT(*) FROM market_moderation_locks")
+                assertTrue(acquisitionRows == 0 || moderationRows == 0)
+                assertEquals(1, acquisitionRows + moderationRows)
+            } finally {
+                pool.shutdownNow()
+            }
+        }
+    }
+
+    @Test
+    fun `mariadb acquisition and blacklist claims never overlap`() {
+        repeat(CONCURRENCY_ROUNDS) { round ->
+            resetConcurrentState()
+            val start = CountDownLatch(1)
+            val pool = Executors.newFixedThreadPool(2)
+            try {
+                val acquisition = pool.submit<Boolean> {
+                    start.await()
+                    runCatching {
+                        store().acquirePermit(ownerId, "blacklist-acquire-$round", now.plusSeconds(DAY_SECONDS))
+                    }.isSuccess
+                }
+                val blacklist = pool.submit<MarketBlacklistResult> {
+                    start.await()
+                    store().blacklist(blacklistRequest("blacklist-race-$round"))
+                }
+                start.countDown()
+
+                val acquisitionWon = acquisition.get(10, TimeUnit.SECONDS)
+                val blacklistResult = blacklist.get(10, TimeUnit.SECONDS)
+                val blacklistWon = blacklistResult.status() == MarketBlacklistResult.Status.APPLIED
+                assertEquals(1, listOf(acquisitionWon, blacklistWon).count { it })
+                assertTrue(
+                    blacklistResult.status() == MarketBlacklistResult.Status.APPLIED ||
+                        blacklistResult.status() == MarketBlacklistResult.Status.CONFLICT,
+                )
+                val acquisitionRows = scalarInt(
+                    "SELECT COUNT(*) FROM market_player_fences " +
+                        "WHERE player_uuid = '${ownerId}' AND active_acquisition_id IS NOT NULL",
+                )
+                val blacklistRows = scalarInt(
+                    "SELECT COUNT(*) FROM market_stall_blacklists " +
+                        "WHERE player_uuid = '${ownerId}' AND status = 'ACTIVE'",
+                )
+                assertTrue(acquisitionRows == 0 || blacklistRows == 0)
+                assertEquals(1, acquisitionRows + blacklistRows)
+            } finally {
+                pool.shutdownNow()
+            }
+        }
+    }
+
     private fun store() = JdbcMarketModerationStore(
         dataSource,
+        StallRepositorySql(dataSource),
+        InMemoryRestrictionJournal(),
+        NoopMarketRegionAccessCoordinator(),
         Clock.fixed(now, ZoneOffset.UTC),
     )
 
-    private fun request(
-        operationId: UUID = UUID.fromString("d2f99854-c5dd-4a0d-b97d-642a28c04db8"),
-        caseId: String = "CASE-MARIA",
-    ) = MarketOperationRequest(
-        operationId,
-        ownerId,
+    private fun resetConcurrentState() {
+        dataSource.connection.use { connection ->
+            connection.prepareStatement("DELETE FROM market_moderation_locks").use { it.executeUpdate() }
+            connection.prepareStatement("DELETE FROM market_moderation_operations").use { it.executeUpdate() }
+            connection.prepareStatement("DELETE FROM market_stall_blacklists").use { it.executeUpdate() }
+            connection.prepareStatement("DELETE FROM market_player_fences").use { it.executeUpdate() }
+        }
+    }
+
+    private fun request(caseId: String = "case-maria") = MarketOperationRequest(
+        UUID.randomUUID(),
         caseId,
+        ownerId,
         "stall-maria",
         now.plusSeconds(7 * DAY_SECONDS),
         now.plusSeconds(30 * DAY_SECONDS),
+        Optional.empty(),
+    )
+
+    private fun blacklistRequest(operationId: String) = MarketBlacklistRequest(
+        UUID.randomUUID(),
+        operationId,
+        ownerId,
+        "case-blacklist",
+        now.plusSeconds(7 * DAY_SECONDS),
         Optional.empty(),
     )
 
@@ -309,7 +339,9 @@ class JdbcMarketModerationMariaDbTest {
         connection.prepareStatement(
             "INSERT INTO schema_migration(version, name, applied_at) VALUES (?, ?, ?)",
         ).use { statement ->
-            (1..24).forEach { version ->
+            // This fixture models a database already upgraded through the current
+            // standalone schema. Only the ES-X03 migration should execute here.
+            (1..27).forEach { version ->
                 statement.setInt(1, version)
                 statement.setString(2, "baseline_$version")
                 statement.setLong(3, now.toEpochMilli())
