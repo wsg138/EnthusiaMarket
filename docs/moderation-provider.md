@@ -53,7 +53,7 @@ Review deadlines create alerts; they never approve confiscation automatically.
 
 ## Persistence
 
-Migration `V025__market_moderation_provider.sql` adds:
+Migration `V028__market_moderation_provider.sql` adds:
 
 - `stalls.moderation_revision` for optimistic fencing;
 - `market_moderation_operations` for versioned snapshots, checksums, reviewer identity,
@@ -63,8 +63,8 @@ Migration `V025__market_moderation_provider.sql` adds:
 - `market_player_fences` for acquisition serialization; and
 - `market_stall_blacklists` for revisioned case-linked acquisition restrictions.
 
-Existing migrations are immutable. Do not edit V025 after it has been deployed; add a
-new forward migration for future schema changes.
+Existing migrations are immutable. Upstream v1.0.49 owns V025-V027; do not edit any
+applied migration. Future schema changes must use a new forward migration after V028.
 
 ## Recovery procedure
 
