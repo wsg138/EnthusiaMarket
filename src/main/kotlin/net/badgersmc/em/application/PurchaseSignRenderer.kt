@@ -68,10 +68,10 @@ class PurchaseSignRenderer(
     }
 
     private fun moderationHold(sign: PurchaseSign): List<Component> = listOf(
-        lang.msg("purchase_sign.moderation_hold.line1"),
-        lang.msg("purchase_sign.moderation_hold.line2", "stall" to sign.stallId.value),
-        lang.msg("purchase_sign.moderation_hold.line3"),
-        lang.msg("purchase_sign.moderation_hold.line4"),
+        Component.text("[Staff Review]"),
+        Component.text(sign.stallId.value),
+        Component.text("Unavailable"),
+        Component.text("Contact staff"),
     )
 
     private fun buyable(sign: PurchaseSign): List<Component> = listOf(
