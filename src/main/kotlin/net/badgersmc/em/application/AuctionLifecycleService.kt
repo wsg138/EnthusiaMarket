@@ -8,6 +8,8 @@ import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
+import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
+import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -82,6 +84,7 @@ class AuctionLifecycleService(
     private val schematics: net.badgersmc.em.domain.ports.SchematicService =
         net.badgersmc.em.domain.ports.SchematicService.Disabled,
     private val lang: LangService,
+    private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
 ) {
     private val logger = Logger.getLogger(AuctionLifecycleService::class.java.name)
 
@@ -268,6 +271,16 @@ class AuctionLifecycleService(
      *         or [AuctionResult.NotFound]
      */
     fun placeBid(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult {
+        return try {
+            moderationPolicy.withAcquisitionPermit(playerUuid) {
+                placeBidWithPermit(auctionId, playerUuid, amount, ip)
+            }
+        } catch (blocked: MarketAcquisitionBlockedException) {
+            AuctionResult.Failure(blocked.message ?: "Market acquisitions are restricted")
+        }
+    }
+
+    private fun placeBidWithPermit(auctionId: AuctionId, playerUuid: UUID, amount: Long, ip: String): AuctionResult {
         val auction = findAuction(auctionId) ?: return AuctionResult.NotFound
 
         if (auction.state != AuctionState.OPEN) {
@@ -534,8 +547,8 @@ class AuctionLifecycleService(
     }
 
     /** True when a system-auctioned stall should be reverted: it's in an
-     *  auctioning state AND either has no owner (mass auction) or is in
-     *  emergency auction (owner lost claim when emergency was triggered). */
+     * auctioning state AND either has no owner (mass auction) or is in
+     * emergency auction (owner lost claim when emergency was triggered). */
     private fun canRevertStall(stall: Stall, auctioningStates: Set<StallState>): Boolean =
         stall.state in auctioningStates &&
             (stall.owner.type == OwnerType.NONE || stall.state == StallState.EMERGENCY_AUCTIONING)
@@ -613,8 +626,23 @@ class AuctionLifecycleService(
         return SettlementReport(settled = settled, errors = errors)
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod", "ThrowsCount")
     private fun settleWithWinner(auction: Auction) {
+        val bid = auction.highBid ?: return
+        try {
+            moderationPolicy.withAcquisitionPermit(bid.bidder) {
+                settleWithWinnerWithPermit(auction)
+            }
+        } catch (blocked: MarketAcquisitionBlockedException) {
+            val stall = stallRepository.findById(auction.stallId)
+                ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
+            logger.info("Auction ${auction.id} winner is restricted; refunding without an ownership award")
+            closeWithoutAward(auction, stall)
+            refundOrLog(bid.bidder, bid.amount, "market restriction refund for auction ${auction.id}")
+        }
+    }
+
+    @Suppress("LongMethod", "CyclomaticComplexMethod", "ThrowsCount")
+    private fun settleWithWinnerWithPermit(auction: Auction) {
         val bid = auction.highBid ?: return
         val stall = stallRepository.findById(auction.stallId)
             ?: throw IllegalStateException("Stall not found for auction ${auction.id}")
@@ -703,7 +731,12 @@ class AuctionLifecycleService(
             try {
                 if (stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) &&
                     (stall.owner.type == OwnerType.NONE || stall.state == StallState.EMERGENCY_AUCTIONING)) {
-                    stallRepository.save(stall.copy(state = StallState.UNOWNED))
+                    val reverted = if (stall.state == StallState.EMERGENCY_AUCTIONING) {
+                        stall.copy(state = StallState.UNOWNED, owner = OwnerRef.unowned())
+                    } else {
+                        stall.copy(state = StallState.UNOWNED)
+                    }
+                    stallRepository.save(reverted)
                     fireStateChanged(stall.id.value, stall.state, StallState.UNOWNED)
                 }
             } catch (revert: Exception) {

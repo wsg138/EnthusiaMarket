@@ -37,8 +37,8 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                 """INSERT INTO stalls
                    (id, region_id, world, state, owner_type, owner_id, owner_since,
                     winning_bid, rent_mode, rent_pct, rent_flat, members, max_members,
-                    next_rent_at, kind, extra_entities, extra_total)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                    next_rent_at, kind, extra_entities, extra_total, moderation_revision)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
             ).use { ps ->
                 bind(ps, stall)
                 ps.executeUpdate()
@@ -54,7 +54,10 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                     owner_since = ?, winning_bid = ?, rent_mode = ?, rent_pct = ?, rent_flat = ?,
                     members = ?, max_members = ?, next_rent_at = ?, kind = ?,
                     extra_entities = ?, extra_total = ?
-                   WHERE id = ?"""
+                   WHERE id = ? AND moderation_revision = ?
+                     AND NOT EXISTS (
+                         SELECT 1 FROM market_moderation_locks WHERE stall_id = ?
+                     )"""
             ).use { ps ->
                 ps.setString(1, stall.regionId)
                 ps.setString(2, stall.world)
@@ -75,7 +78,13 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
                 ps.setString(15, encodeExtraEntities(stall.extraEntities))
                 ps.setInt(16, stall.extraTotal)
                 ps.setString(17, stall.id.value)
-                ps.executeUpdate()
+                ps.setLong(18, stall.moderationRevision)
+                ps.setString(19, stall.id.value)
+                if (ps.executeUpdate() != 1) {
+                    throw MarketModerationConflictException(
+                        "Stall ${stall.id.value} changed or is reserved for moderation"
+                    )
+                }
             }
         }
     }
@@ -100,6 +109,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
         ps.setString(15, stall.kind)
         ps.setString(16, encodeExtraEntities(stall.extraEntities))
         ps.setInt(17, stall.extraTotal)
+        ps.setLong(18, stall.moderationRevision)
     }
 
     private fun encodeMembers(members: Set<UUID>): String =
@@ -173,6 +183,7 @@ class StallRepositorySql(private val ds: DataSource) : StallRepository {
             kind = rs.getString("kind"),
             extraEntities = decodeExtraEntities(rs.getString("extra_entities")),
             extraTotal = rs.getInt("extra_total"),
+            moderationRevision = rs.getLong("moderation_revision"),
         )
     }
 }

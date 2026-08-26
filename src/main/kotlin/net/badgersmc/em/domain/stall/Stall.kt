@@ -49,7 +49,16 @@ data class Stall(
     val extraEntities: Map<String, Int> = emptyMap(),
     /** Per-stall additional total-entity allowance (REQ-222). */
     val extraTotal: Int = 0,
+    /**
+     * Provider fencing revision. Ordinary saves retain this value; a durable
+     * moderation reservation advances it so stale ownership writes fail.
+     */
+    val moderationRevision: Long = 0L,
 ) {
+    init {
+        require(moderationRevision >= 0L) { "moderationRevision must not be negative" }
+    }
+
     /**
      * Add [playerUuid] to the member roster. Idempotent — re-adding an
      * existing member is a no-op. Rejects with [IllegalStateException]

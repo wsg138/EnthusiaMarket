@@ -18,6 +18,7 @@ This project follows **SPEAR** (Spec-Proven Engineering with Architectural Requi
 6. [db-schema.md](db-schema.md) — table-by-table reference; mirrors `src/main/resources/migrations/`
 7. [permissions.md](permissions.md) — full `enthusiamarket.*` permission tree
 8. [dev-setup.md](dev-setup.md) — build, test, run-on-Paper, common workflows
+9. [moderation-provider.md](moderation-provider.md) — versioned Staff moderation API, state machine, fencing, and recovery
 
 ## What's built vs. what's next
 

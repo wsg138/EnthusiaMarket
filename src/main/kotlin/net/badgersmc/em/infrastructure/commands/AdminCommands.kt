@@ -621,9 +621,10 @@ class AdminCommands(
                 } catch (_: Exception) {
                     errors++
                 }
-                // Active auctions left alone — the winning bid will
-                // run setOwner via settleWithWinner at expiry.
+                // Active auctions and moderation holds are left alone. Auction ownership is
+                // finalized at settlement, while moderation fencing owns its held-stall ACL.
                 StallState.AUCTIONING,
+                StallState.MODERATION_HOLD,
                 StallState.RE_AUCTIONING,
                 StallState.EMERGENCY_AUCTIONING -> skipped++
             }

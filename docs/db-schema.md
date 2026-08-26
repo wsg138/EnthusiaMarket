@@ -10,11 +10,25 @@ Authoritative schema definitions live in versioned migration files. This doc sum
 
 | Version | File | Adds |
 |---|---|---|
-| V001 | `V001__init.sql` | All tables below (initial schema) |
-| V002 | (planned, TDD-11) | (no new tables — formalises shop sign columns + extra indexes) |
-| V003 | (planned, TDD-31) | Indexes for active-auction lookups |
+| V001–V024 | `src/main/resources/migrations/V001...V024` | Initial Market schema and forward-only shop, auction, rent, vault, guild-policy, search, stock, and index changes. |
+| V025 | `V025__market_moderation_provider.sql` | Moderation revisions, operation journal, stall locks, player acquisition fences, and case-linked blacklists. |
 
 `Migrations.runAll(ds)` applies in numeric order and records `schema_version`; existing versions are skipped (REQ-042).
+
+The migration directory is authoritative for the complete V001–V025 history. Applied
+migrations are immutable; future changes use a new version.
+
+### Staff moderation tables (V025)
+
+`market_moderation_operations` stores the original versioned snapshot, SHA-256 checksum,
+current checksum, case/target/stall identity, reviewer UUID, deadlines, recovery window,
+optimistic revision, and terminal audit state. `market_moderation_locks` owns the single
+active reservation for a stall. `market_player_fences` serializes acquisitions for a
+player. `market_stall_blacklists` stores revisioned, expiring, case-linked acquisition
+restrictions. `stalls.moderation_revision` fences concurrent ownership updates.
+
+See [moderation-provider.md](moderation-provider.md) for the operation lifecycle and
+operator recovery procedure.
 
 ## Tables
 

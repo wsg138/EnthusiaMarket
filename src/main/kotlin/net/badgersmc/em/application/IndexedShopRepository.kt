@@ -3,6 +3,7 @@ package net.badgersmc.em.application
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopLocationIndex
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.ports.MarketMutationGate
 import java.util.UUID
 
 /**
@@ -19,6 +20,7 @@ import java.util.UUID
 class IndexedShopRepository(
     private val delegate: ShopRepository,
     private val index: ShopLocationIndex,
+    private val moderationGate: MarketMutationGate = MarketMutationGate.Open,
 ) : ShopRepository {
 
     /** Replace any prior index entry for [shop]'s id at its container coordinate, then index it. */
@@ -64,7 +66,9 @@ class IndexedShopRepository(
     }
 
     override fun findByContainer(world: String, x: Int, y: Int, z: Int): List<Shop> =
-        index.shopsAt(world, x, y, z)
+        index.shopsAt(world, x, y, z).map { shop ->
+            if (moderationGate.isStallLocked(shop.stallId)) shop.copy(frozen = true) else shop
+        }
 
     // --- pass-through reads ---
     override fun findById(id: Long): Shop? = delegate.findById(id)
