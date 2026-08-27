@@ -172,11 +172,12 @@ class AuctionBrowserMenu(
         return pane
     }
 
-    private fun navButton(gui: ChestGui, langKey: String, delta: Int, enabled: () -> Boolean): GuiItem =
-        GuiItem(itemStack(Material.ARROW) { name(lang.msg(langKey)) }) {
+    private fun navButton(gui: ChestGui, langKey: String, delta: Int, enabled: () -> Boolean): GuiItem {
+        return GuiItem(itemStack(Material.ARROW) { name(lang.msg(langKey)) }) {
             it.isCancelled = true
             if (enabled()) { currentPage += delta; render(gui); gui.update() }
         }
+    }
 
     private fun sortButton(gui: ChestGui): GuiItem {
         val sortName = lang.msg("gui.auctions.sort_name", "mode" to lang.raw(sortMode.labelKey))
@@ -189,29 +190,33 @@ class AuctionBrowserMenu(
         }
     }
 
-    private fun pageIndicator(pageCount: Int, total: Int): GuiItem =
-        GuiItem(itemStack(Material.PAPER) {
+    private fun pageIndicator(pageCount: Int, total: Int): GuiItem {
+        return GuiItem(itemStack(Material.PAPER) {
             name(lang.msg("gui.auctions.page_indicator", "current" to (currentPage + 1), "total" to pageCount))
             lore(lang.msg("gui.auctions.page_lore_count", "count" to total))
         }) { it.isCancelled = true }
+    }
 
-    private fun closeButton(): GuiItem =
-        GuiItem(itemStack(Material.BARRIER) { name(lang.msg("gui.auctions.close")) }) {
+    private fun closeButton(): GuiItem {
+        return GuiItem(itemStack(Material.BARRIER) { name(lang.msg("gui.auctions.close")) }) {
             it.isCancelled = true
             (it.whoClicked as? Player)?.closeInventory()
         }
+    }
 
-    private fun entryComparator(mode: SortMode): Comparator<EntryView> = when (mode) {
-        SortMode.STALL_NAME ->
-            compareBy<EntryView, String>(naturalStallName) { it.auction.stallId.value }.thenBy { it.auction.endAt }
-        SortMode.HIGHEST_BID ->
-            compareByDescending { it.auction.highBid?.amount ?: it.auction.startingBid }
-        SortMode.LOWEST_BID ->
-            compareBy { it.auction.highBid?.amount ?: it.auction.startingBid }
-        SortMode.ENDING_SOON ->
-            compareBy { it.auction.endAt }
-        SortMode.ENDING_LATEST ->
-            compareByDescending { it.auction.endAt }
+    private fun entryComparator(mode: SortMode): Comparator<EntryView> {
+        return when (mode) {
+            SortMode.STALL_NAME ->
+                compareBy<EntryView, String>(naturalStallName) { it.auction.stallId.value }.thenBy { it.auction.endAt }
+            SortMode.HIGHEST_BID ->
+                compareByDescending { it.auction.highBid?.amount ?: it.auction.startingBid }
+            SortMode.LOWEST_BID ->
+                compareBy { it.auction.highBid?.amount ?: it.auction.startingBid }
+            SortMode.ENDING_SOON ->
+                compareBy { it.auction.endAt }
+            SortMode.ENDING_LATEST ->
+                compareByDescending { it.auction.endAt }
+        }
     }
 
     /**
