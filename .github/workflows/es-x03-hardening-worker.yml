@@ -9,11 +9,10 @@ permissions:
   contents: write
 
 jobs:
-  format-docs:
+  refactor:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out frozen hardening branch
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: hardening/es-x03-codacy-20260904
           fetch-depth: 0
@@ -23,71 +22,322 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected='cc19fa966dcb155fa1743f5076fb5152e74bdf8f'
-          actual="$(git -C market rev-parse HEAD)"
-          test "$actual" = "$expected" || {
-            echo "Hardening branch moved: expected $expected, got $actual" >&2
-            exit 1
-          }
+          test "$(git -C market rev-parse HEAD)" = '065be5c92264c3a13bcf6e7035437b1086e525ab'
 
-      - name: Format only Codacy-affected Markdown
+      - name: Apply low-risk complexity refactors
         working-directory: market
         shell: bash
         run: |
           set -euo pipefail
-          npx --yes prettier@3.6.2 \
-            --prose-wrap always \
-            --print-width 79 \
-            --write \
-            docs/requirements.md \
-            .github/instructions/codacy.instructions.md \
-            docs/moderation-provider.md \
-            docs/db-schema.md \
-            docs/README.md \
-            wiki/docs/admins/integration.md \
-            ENTHUSIA_DEPLOYMENT.md \
-            wiki/docs/admins/troubleshooting.md
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected one match in {path}, found {text.count(old)}")
+              p.write_text(text.replace(old, new))
+
+          path = 'src/main/kotlin/net/badgersmc/em/application/StallEvictionService.kt'
+          text = Path(path).read_text()
+          text = text.replace('import net.badgersmc.em.domain.stall.OwnerRef\n', 'import net.badgersmc.em.domain.stall.OwnerRef\nimport net.badgersmc.em.domain.stall.Stall\n')
+          old = '''    @Suppress("TooGenericExceptionCaught")
+              fun evict(stallId: StallId): Result {
+                  val stall = stalls.findById(stallId) ?: return Result.NotFound
+                  if (stall.state != StallState.OWNED && stall.state != StallState.GRACE) {
+                      return Result.NotOwned
+                  }
+                  val previous = stall.state
+                  stalls.save(
+                      stall.copy(
+                          state = StallState.UNOWNED,
+                          owner = OwnerRef.unowned(),
+                          ownerSince = null,
+                          winningBid = 0L,
+                          members = emptySet(),
+                          nextRentAt = null,
+                      )
+                  )
+                  ipLimiter.releaseStallByOwnerId(stall.owner.id)
+                  // M-4 — wipe shops bound to the stall (parity with sellback) so the
+                  // next buyer never inherits the evicted owner's live shops.
+                  for (shop in shops.findByStall(stall.id.value)) {
+                      try {
+                          shops.delete(shop.id)
+                      } catch (e: Exception) {
+                          log.warning(
+                              "Evict: failed to delete shop ${shop.id} bound to stall " +
+                                  "${stall.id.value}; continuing. cause=${e.message}"
+                          )
+                      }
+                  }
+                  try {
+                      regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+                  } catch (e: Exception) {
+                      // DB is authoritative; WG can be resynced via /em rg resync.
+                      log.warning("Evict: WG owner/member clear failed for ${stall.id.value}: ${e.message}")
+                  }
+                  fireStateChanged(stall.id.value, previous, StallState.UNOWNED)
+                  if (config.schematics.enabled) {
+                      val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+                      if (restore is SchematicService.Result.Failure) {
+                          log.warning(
+                              "Evict: schematic restore failed for ${stall.id.value}; " +
+                                  "geometry left as-is. cause=${restore.cause.message}"
+                          )
+                      }
+                  }
+                  return Result.Evicted
+              }
+          '''
+          new = '''    fun evict(stallId: StallId): Result {
+                  val stall = stalls.findById(stallId) ?: return Result.NotFound
+                  if (!isOwned(stall.state)) return Result.NotOwned
+                  val previous = stall.state
+                  resetOwnership(stall)
+                  ipLimiter.releaseStallByOwnerId(stall.owner.id)
+                  deleteBoundShops(stall)
+                  clearRegionMembership(stall)
+                  fireStateChanged(stall.id.value, previous, StallState.UNOWNED)
+                  restoreGeometry(stall)
+                  return Result.Evicted
+              }
+
+              private fun isOwned(state: StallState): Boolean =
+                  state == StallState.OWNED || state == StallState.GRACE
+
+              private fun resetOwnership(stall: Stall) {
+                  stalls.save(
+                      stall.copy(
+                          state = StallState.UNOWNED,
+                          owner = OwnerRef.unowned(),
+                          ownerSince = null,
+                          winningBid = 0L,
+                          members = emptySet(),
+                          nextRentAt = null,
+                      )
+                  )
+              }
+
+              @Suppress("TooGenericExceptionCaught")
+              private fun deleteBoundShops(stall: Stall) {
+                  for (shop in shops.findByStall(stall.id.value)) {
+                      try {
+                          shops.delete(shop.id)
+                      } catch (e: Exception) {
+                          log.warning(
+                              "Evict: failed to delete shop ${shop.id} bound to stall " +
+                                  "${stall.id.value}; continuing. cause=${e.message}"
+                          )
+                      }
+                  }
+              }
+
+              @Suppress("TooGenericExceptionCaught")
+              private fun clearRegionMembership(stall: Stall) {
+                  try {
+                      regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+                  } catch (e: Exception) {
+                      log.warning("Evict: WG owner/member clear failed for ${stall.id.value}: ${e.message}")
+                  }
+              }
+
+              private fun restoreGeometry(stall: Stall) {
+                  if (!config.schematics.enabled) return
+                  val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+                  if (restore is SchematicService.Result.Failure) {
+                      log.warning(
+                          "Evict: schematic restore failed for ${stall.id.value}; " +
+                              "geometry left as-is. cause=${restore.cause.message}"
+                      )
+                  }
+              }
+          '''
+          replace(path, old, new)
+
+          replace(
+              'src/main/kotlin/net/badgersmc/em/infrastructure/scheduler/ShopAuditScheduler.kt',
+              '''    private fun tick() {
+                  val all = shops.all()
+                  if (all.isEmpty()) return
+                  var processed = 0
+                  var removed = 0
+                  val skips = mutableListOf<String>()
+                  // Cap at the list size so a tick never re-audits the same shop when
+                  // there are fewer shops than maxPerTick. The cursor still advances
+                  // across ticks, so over time every shop is swept.
+                  val max = minOf(config.shopAudit.maxPerTick, all.size)
+                  while (processed < max) {
+                      if (cursor >= all.size) cursor = 0
+                      val shop = all[cursor]
+                      cursor++
+                      processed++
+                      val decision = auditOne(shop)
+                      if (decision == Decision.REMOVED) removed++ else if (decision == Decision.SKIPPED) {
+                          skips.add(shop.id.toString())
+                      }
+                  }
+                  if (removed > 0 || skips.isNotEmpty()) {
+                      plugin.logger.info(
+                          "[audit] sweep: $processed checked, $removed removed" +
+                              if (skips.isNotEmpty()) ", ${skips.size} skipped (unloaded chunks: ${skips.take(3).joinToString()})" else ""
+                      )
+                  }
+              }
+          ''',
+              '''    private fun tick() {
+                  val all = shops.all()
+                  if (all.isEmpty()) return
+                  val result = auditBatch(all, minOf(config.shopAudit.maxPerTick, all.size))
+                  logSweep(result)
+              }
+
+              private data class SweepResult(val processed: Int, val removed: Int, val skips: List<String>)
+
+              private fun auditBatch(all: List<net.badgersmc.em.domain.shop.Shop>, max: Int): SweepResult {
+                  var removed = 0
+                  val skips = mutableListOf<String>()
+                  repeat(max) {
+                      if (cursor >= all.size) cursor = 0
+                      val shop = all[cursor++]
+                      when (auditOne(shop)) {
+                          Decision.REMOVED -> removed++
+                          Decision.SKIPPED -> skips.add(shop.id.toString())
+                          Decision.KEPT -> Unit
+                      }
+                  }
+                  return SweepResult(max, removed, skips)
+              }
+
+              private fun logSweep(result: SweepResult) {
+                  if (result.removed == 0 && result.skips.isEmpty()) return
+                  val skipped = if (result.skips.isEmpty()) "" else
+                      ", ${result.skips.size} skipped (unloaded chunks: ${result.skips.take(3).joinToString()})"
+                  plugin.logger.info(
+                      "[audit] sweep: ${result.processed} checked, ${result.removed} removed$skipped"
+                  )
+              }
+          ''')
+
+          replace(
+              'src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ContainerStockListener.kt',
+              '''    fun refreshBatch(batchSize: Int = 50) {
+                  // Only re-query the full shop list at cycle start — not every tick.
+                  // With 200-300 shops, this cuts DB queries from 20/s to ~0.25/s.
+                  if (cachedShops.isEmpty() || cursor == 0) {
+                      cachedShops = shopRepository.all().toList()
+                  }
+                  val shops = cachedShops
+                  if (shops.isEmpty()) return
+                  val end = (cursor + batchSize).coerceAtMost(shops.size)
+                  for (i in cursor until end) {
+                      try {
+                          val shop = shops[i]
+                          val inventory = liveContainerInventory(shop) ?: continue
+                          refreshOne(shop, inventory)
+                      } catch (e: Exception) {
+                          log.warning("Stock refresh failed for shop ${shops[i].id}: ${e.message}")
+                      }
+                  }
+                  cursor = if (end >= shops.size) 0 else end
+                  if (cursor == 0) flushDirtyStock()  // full cycle complete → persist
+              }
+          ''',
+              '''    fun refreshBatch(batchSize: Int = 50) {
+                  refreshCachedShops()
+                  val shops = cachedShops
+                  if (shops.isEmpty()) return
+                  val end = (cursor + batchSize).coerceAtMost(shops.size)
+                  refreshRange(shops, end)
+                  cursor = if (end >= shops.size) 0 else end
+                  if (cursor == 0) flushDirtyStock()
+              }
+
+              private fun refreshCachedShops() {
+                  if (cachedShops.isEmpty() || cursor == 0) {
+                      cachedShops = shopRepository.all().toList()
+                  }
+              }
+
+              @Suppress("TooGenericExceptionCaught")
+              private fun refreshRange(shops: List<Shop>, end: Int) {
+                  for (i in cursor until end) {
+                      try {
+                          val shop = shops[i]
+                          val inventory = liveContainerInventory(shop) ?: continue
+                          refreshOne(shop, inventory)
+                      } catch (e: Exception) {
+                          log.warning("Stock refresh failed for shop ${shops[i].id}: ${e.message}")
+                      }
+                  }
+              }
+          ''')
+
+          replace(
+              'src/main/kotlin/net/badgersmc/em/websync/CanonicalMarketMap.kt',
+              '''    fun validate(): List<String> {
+                  val expected = (1..stallCount).map { "stall$it" }.toSet()
+                  val errors = mutableListOf<String>()
+                  if (stalls.keys != expected) errors += "canonical_ids"
+                  if (stalls.size != stallCount || provenance.recordCount != stallCount) errors += "canonical_count"
+                  if (provenance.mapperCommit != MAPPER_COMMIT || provenance.sourceSha256 != SOURCE_SHA256 ||
+                      provenance.approvedPolygonFingerprint != POLYGON_FINGERPRINT
+                  ) errors += "canonical_provenance"
+                  if (stalls.values.any { !it.buildingId.matches(Regex("building-[1-9][0-9]*")) || it.floor !in -64..1024 }) {
+                      errors += "canonical_values"
+                  }
+                  if (!stalls.containsKey("stall60") || !stalls.containsKey("stall62")) errors += "canonical_duplicate_keys"
+                  return errors
+              }
+          ''',
+              '''    fun validate(): List<String> {
+                  val errors = mutableListOf<String>()
+                  if (!hasExpectedIds()) errors += "canonical_ids"
+                  if (!hasExpectedCount()) errors += "canonical_count"
+                  if (!hasExpectedProvenance()) errors += "canonical_provenance"
+                  if (!hasValidValues()) errors += "canonical_values"
+                  if (!hasDuplicateSourceKeys()) errors += "canonical_duplicate_keys"
+                  return errors
+              }
+
+              private fun hasExpectedIds(): Boolean =
+                  stalls.keys == (1..stallCount).map { "stall$it" }.toSet()
+
+              private fun hasExpectedCount(): Boolean = provenance.recordCount == stallCount
+
+              private fun hasExpectedProvenance(): Boolean =
+                  provenance.mapperCommit == MAPPER_COMMIT &&
+                      provenance.sourceSha256 == SOURCE_SHA256 &&
+                      provenance.approvedPolygonFingerprint == POLYGON_FINGERPRINT
+
+              private fun hasValidValues(): Boolean = stalls.values.all {
+                  it.buildingId.matches(Regex("building-[1-9][0-9]*")) && it.floor in -64..1024
+              }
+
+              private fun hasDuplicateSourceKeys(): Boolean =
+                  stalls.containsKey("stall60") && stalls.containsKey("stall62")
+          ''')
+          PY
           git diff --check
 
-      - name: Verify bounded documentation-only diff
+      - name: Run exact Java 21 tests and analyzers
         working-directory: market
         shell: bash
         run: |
           set -euo pipefail
-          git diff --name-only | sort > /tmp/actual
-          cat > /tmp/allowed <<'EOF'
-          .github/instructions/codacy.instructions.md
-          ENTHUSIA_DEPLOYMENT.md
-          docs/README.md
-          docs/db-schema.md
-          docs/moderation-provider.md
-          docs/requirements.md
-          wiki/docs/admins/integration.md
-          wiki/docs/admins/troubleshooting.md
-          EOF
-          sort -o /tmp/allowed /tmp/allowed
-          comm -23 /tmp/actual /tmp/allowed | tee /tmp/unexpected
-          test ! -s /tmp/unexpected
+          ./gradlew test detekt --no-daemon
 
-      - name: Commit and fast-forward hardening branch
+      - name: Commit coherent refactor batch
         working-directory: market
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- \
-            docs/requirements.md \
-            .github/instructions/codacy.instructions.md \
-            docs/moderation-provider.md \
-            docs/db-schema.md \
-            docs/README.md \
-            wiki/docs/admins/integration.md \
-            ENTHUSIA_DEPLOYMENT.md \
-            wiki/docs/admins/troubleshooting.md
-          if git diff --cached --quiet; then
-            echo 'No formatting changes needed.'
-            exit 0
-          fi
-          git commit -m 'ES-X03: normalize Market Markdown style'
+          git add src/main/kotlin/net/badgersmc/em/application/StallEvictionService.kt \
+            src/main/kotlin/net/badgersmc/em/infrastructure/scheduler/ShopAuditScheduler.kt \
+            src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ContainerStockListener.kt \
+            src/main/kotlin/net/badgersmc/em/websync/CanonicalMarketMap.kt
+          git commit -m 'ES-X03: split low-risk Market orchestration paths'
           git push origin HEAD:refs/heads/hardening/es-x03-codacy-20260904
