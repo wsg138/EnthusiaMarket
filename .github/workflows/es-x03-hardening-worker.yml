@@ -1,0 +1,93 @@
+name: ES-X03 temporary hardening worker
+
+on:
+  push:
+    branches:
+      - diagnostic/es-x03-hardening-worker-20260904
+
+permissions:
+  contents: write
+
+jobs:
+  format-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out frozen hardening branch
+        uses: actions/checkout@v4
+        with:
+          ref: hardening/es-x03-codacy-20260904
+          fetch-depth: 0
+          path: market
+
+      - name: Verify frozen product head
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='cc19fa966dcb155fa1743f5076fb5152e74bdf8f'
+          actual="$(git -C market rev-parse HEAD)"
+          test "$actual" = "$expected" || {
+            echo "Hardening branch moved: expected $expected, got $actual" >&2
+            exit 1
+          }
+
+      - name: Format only Codacy-affected Markdown
+        working-directory: market
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes prettier@3.6.2 \
+            --prose-wrap always \
+            --print-width 79 \
+            --write \
+            docs/requirements.md \
+            .github/instructions/codacy.instructions.md \
+            docs/moderation-provider.md \
+            docs/db-schema.md \
+            docs/README.md \
+            wiki/docs/admins/integration.md \
+            ENTHUSIA_DEPLOYMENT.md \
+            wiki/docs/admins/troubleshooting.md
+          git diff --check
+
+      - name: Verify bounded documentation-only diff
+        working-directory: market
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only | sort > /tmp/actual
+          cat > /tmp/allowed <<'EOF'
+          .github/instructions/codacy.instructions.md
+          ENTHUSIA_DEPLOYMENT.md
+          docs/README.md
+          docs/db-schema.md
+          docs/moderation-provider.md
+          docs/requirements.md
+          wiki/docs/admins/integration.md
+          wiki/docs/admins/troubleshooting.md
+          EOF
+          sort -o /tmp/allowed /tmp/allowed
+          comm -23 /tmp/actual /tmp/allowed | tee /tmp/unexpected
+          test ! -s /tmp/unexpected
+
+      - name: Commit and fast-forward hardening branch
+        working-directory: market
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            docs/requirements.md \
+            .github/instructions/codacy.instructions.md \
+            docs/moderation-provider.md \
+            docs/db-schema.md \
+            docs/README.md \
+            wiki/docs/admins/integration.md \
+            ENTHUSIA_DEPLOYMENT.md \
+            wiki/docs/admins/troubleshooting.md
+          if git diff --cached --quiet; then
+            echo 'No formatting changes needed.'
+            exit 0
+          fi
+          git commit -m 'ES-X03: normalize Market Markdown style'
+          git push origin HEAD:refs/heads/hardening/es-x03-codacy-20260904
