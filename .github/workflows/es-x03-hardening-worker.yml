@@ -29,6 +29,22 @@ jobs:
           set -euo pipefail
           test "$(git -C market rev-parse HEAD)" = '065be5c92264c3a13bcf6e7035437b1086e525ab'
 
+      - name: Fetch pinned LumaGuilds API
+        id: lg
+        shell: bash
+        env:
+          LUMAGUILDS_VERSION: '2.1.24'
+          LUMAGUILDS_SHA256: '54ad645587f2ce895738eff3ee05123eb19e5687d80fa6d657aa3092031004c2'
+        run: |
+          set -euo pipefail
+          jar="$RUNNER_TEMP/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
+          curl --fail --location --retry 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 300 \
+            --output "$jar" \
+            "https://github.com/BadgersMC/LumaGuilds/releases/download/v${LUMAGUILDS_VERSION}/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
+          echo "${LUMAGUILDS_SHA256}  ${jar}" | sha256sum --check --strict
+          echo "jar=$jar" >> "$GITHUB_OUTPUT"
+
       - name: Apply low-risk complexity refactors
         working-directory: market
         shell: bash
@@ -241,6 +257,8 @@ jobs:
       - name: Run exact Java 21 tests and analyzer
         working-directory: market
         shell: bash
+        env:
+          LUMAGUILDS_JAR: ${{ steps.lg.outputs.jar }}
         run: |
           set -euo pipefail
           chmod +x gradlew
