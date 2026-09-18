@@ -59,8 +59,11 @@ class ShopSearchService {
         return (meta as? BundleMeta)?.items?.filterNot { it.type.isAir }.orEmpty()
     }
 
-    private fun matchesQuery(material: Material, query: String): Boolean =
-        material.name == query || material.name.startsWith(query) || CATEGORY_MATCHERS[query]?.invoke(material) == true
+    private fun matchesQuery(material: Material, query: String): Boolean {
+        return material.name == query ||
+            material.name.startsWith(query) ||
+            CATEGORY_MATCHERS[query]?.invoke(material) == true
+    }
 
     companion object {
         private const val MIN_QUERY_LENGTH = 2
