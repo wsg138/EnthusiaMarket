@@ -162,8 +162,14 @@ class EnthusiaMarketConfig {
         var antiSnipeSec: Int = 30
         @Comment("Anti-snipe extension in seconds — how much time to add when a bid triggers the window")
         var antiSnipeExtendSec: Int = 30
-        val antiSnipeWindowDuration: java.time.Duration get() = java.time.Duration.ofSeconds(antiSnipeSec.toLong())
-        val antiSnipeExtensionDuration: java.time.Duration get() = java.time.Duration.ofSeconds(antiSnipeExtendSec.toLong())
+        val antiSnipeWindowDuration: java.time.Duration
+            get() {
+                return java.time.Duration.ofSeconds(antiSnipeSec.toLong())
+            }
+        val antiSnipeExtensionDuration: java.time.Duration
+            get() {
+                return java.time.Duration.ofSeconds(antiSnipeExtendSec.toLong())
+            }
         @Comment("Fee percentage deducted from seller (decimal)")
         var feePct: Double = 0.05
         @Comment("Minimum starting bid amount")
