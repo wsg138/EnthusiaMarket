@@ -41,6 +41,17 @@ class ShopEditMenu(
     private var frozen: Boolean = shop.frozen
     private var searchEnabled: Boolean = shop.searchEnabled
 
+    data class EditDraft(
+        val sellItemBase64: String,
+        val sellAmount: Int,
+        val costItemBase64: String,
+        val costAmount: Int,
+        val hopperIn: Boolean,
+        val hopperOut: Boolean,
+        val frozen: Boolean,
+        val searchEnabled: Boolean,
+    )
+
     override fun open(player: Player) {
         if (player.uniqueId != shop.owner &&
             !player.hasPermission("enthusiamarket.admin") &&
@@ -141,7 +152,7 @@ class ShopEditMenu(
         // Save + delete.
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.edit.save"))) {
             it.isCancelled = true
-            shopRepository.upsert(applyEdits(shop, sellItemB64, sellAmount, costAmount, hopperIn, hopperOut, frozen, searchEnabled, costItemB64))
+            shopRepository.upsert(applyEdits(shop, editDraft()))
             player.closeInventory()
             player.sendMessage(lang.msg("shop.edit.saved"))
         }, 8, 0)
@@ -157,6 +168,17 @@ class ShopEditMenu(
         gui.show(player)
     }
 
+    private fun editDraft() = EditDraft(
+        sellItemBase64 = sellItemB64,
+        sellAmount = sellAmount,
+        costItemBase64 = costItemB64,
+        costAmount = costAmount,
+        hopperIn = hopperIn,
+        hopperOut = hopperOut,
+        frozen = frozen,
+        searchEnabled = searchEnabled,
+    )
+
     private fun decorated(material: Material, name: Component, lore: List<Component> = emptyList()): ItemStack {
         val item = ItemStack(material)
         val meta = item.itemMeta ?: return item
@@ -166,22 +188,17 @@ class ShopEditMenu(
         return item
     }
 
-    @Suppress("LongParameterList")
     companion object {
         /** Pure: produce the edited Shop copy. Amounts clamp to >= 1 (Shop.init requires it). */
-        fun applyEdits(
-            shop: Shop, sellItemB64: String, sellAmount: Int, costAmount: Int,
-            hopperIn: Boolean, hopperOut: Boolean, frozen: Boolean,
-            searchEnabled: Boolean, costItemB64: String = shop.costItem,
-        ): Shop = shop.copy(
-            sellItem = sellItemB64,
-            sellAmount = sellAmount.coerceAtLeast(1),
-            costItem = costItemB64,
-            costAmount = costAmount.coerceAtLeast(1),
-            hopperAllowIn = hopperIn,
-            hopperAllowOut = hopperOut,
-            frozen = frozen,
-            searchEnabled = searchEnabled,
+        fun applyEdits(shop: Shop, draft: EditDraft): Shop = shop.copy(
+            sellItem = draft.sellItemBase64,
+            sellAmount = draft.sellAmount.coerceAtLeast(1),
+            costItem = draft.costItemBase64,
+            costAmount = draft.costAmount.coerceAtLeast(1),
+            hopperAllowIn = draft.hopperIn,
+            hopperAllowOut = draft.hopperOut,
+            frozen = draft.frozen,
+            searchEnabled = draft.searchEnabled,
         )
     }
 }
