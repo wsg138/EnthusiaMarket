@@ -10,11 +10,13 @@ updated: 2026-06-25
 
 # Bedrock differences
 
-EnthusiaMarket supports Bedrock players through Geyser and Floodgate. Most features work the same, with a few differences.
+EnthusiaMarket supports Bedrock players through Geyser and Floodgate. Most
+features work the same, with a few differences.
 
 ## Menus
 
-Java players see **inventory GUIs** (chest menus). Bedrock players see **Cumulus forms** — chat-based windows with buttons.
+Java players see **inventory GUIs** (chest menus). Bedrock players see **Cumulus
+forms** — chat-based windows with buttons.
 
 The same actions are available; the presentation differs:
 
@@ -24,23 +26,26 @@ The same actions are available; the presentation differs:
 
 ## Sign interactions
 
-Right-clicking and sneak+click work the same on Bedrock. The shop signs update identically.
+Right-clicking and sneak+click work the same on Bedrock. The shop signs update
+identically.
 
 ## Config
 
 Admins can control Bedrock behaviour:
 
-| Key | Default | Meaning |
-|-----|---------|---------|
-| `bedrock.forceForms` | `false` | Use Cumulus forms even without Floodgate (for testing). |
-| `bedrock.formTimeoutSec` | `60` | Seconds before a form auto-closes. |
-| `shop.allowBedrockEdit` | `true` | Allow Bedrock players to edit sign content via form. |
+| Key                      | Default | Meaning                                                 |
+| ------------------------ | ------- | ------------------------------------------------------- |
+| `bedrock.forceForms`     | `false` | Use Cumulus forms even without Floodgate (for testing). |
+| `bedrock.formTimeoutSec` | `60`    | Seconds before a form auto-closes.                      |
+| `shop.allowBedrockEdit`  | `true`  | Allow Bedrock players to edit sign content via form.    |
 
 ## Placeholders
 
-PlaceholderAPI expansions (`%enthusiamarket_*%`) work the same across both editions.
+PlaceholderAPI expansions (`%enthusiamarket_*%`) work the same across both
+editions.
 
 ## Known limitations
 
 - Some GUIs with complex layouts may render differently as forms.
-- If a form times out, reopen it by repeating the command or clicking the sign again.
+- If a form times out, reopen it by repeating the command or clicking the sign
+  again.

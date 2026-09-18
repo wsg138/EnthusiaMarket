@@ -10,7 +10,8 @@ updated: 2026-06-25
 
 # Domain model
 
-The domain layer (`domain/`) holds the rules of the game. Zero framework imports.
+The domain layer (`domain/`) holds the rules of the game. Zero framework
+imports.
 
 ## Core aggregates
 
@@ -78,31 +79,31 @@ data class Auction(
 
 ## Key enums
 
-| Enum | Values | Meaning |
-|------|--------|---------|
-| `StallState` | UNOWNED, AUCTIONING, OWNED, GRACE, RE_AUCTIONING, EMERGENCY_AUCTIONING | Stall lifecycle states |
-| `SignDirection` | BUY, SELL, TRADE | Shop economic direction |
-| `AuctionState` | OPEN, CLOSED, CANCELLED | Auction lifecycle |
-| `OwnerType` | NONE, SOLO, GUILD | Stall ownership model |
-| `PolicyKind` | TARIFF, EMBARGO | Guild trade policy type |
-| `GuildPermission` | MANAGE_SHOPS, ACCESS_SHOP_CHESTS, EDIT_SHOP_STOCK, MODIFY_SHOP_PRICES | Guild rank permissions |
-| `RentTerms.Mode` | FORMULA, FLAT | Rent calculation mode |
+| Enum              | Values                                                                 | Meaning                 |
+| ----------------- | ---------------------------------------------------------------------- | ----------------------- |
+| `StallState`      | UNOWNED, AUCTIONING, OWNED, GRACE, RE_AUCTIONING, EMERGENCY_AUCTIONING | Stall lifecycle states  |
+| `SignDirection`   | BUY, SELL, TRADE                                                       | Shop economic direction |
+| `AuctionState`    | OPEN, CLOSED, CANCELLED                                                | Auction lifecycle       |
+| `OwnerType`       | NONE, SOLO, GUILD                                                      | Stall ownership model   |
+| `PolicyKind`      | TARIFF, EMBARGO                                                        | Guild trade policy type |
+| `GuildPermission` | MANAGE_SHOPS, ACCESS_SHOP_CHESTS, EDIT_SHOP_STOCK, MODIFY_SHOP_PRICES  | Guild rank permissions  |
+| `RentTerms.Mode`  | FORMULA, FLAT                                                          | Rent calculation mode   |
 
 ## Repository ports (domain interfaces)
 
-| Port | Implementation | Purpose |
-|------|---------------|---------|
-| `StallRepository` | `StallRepositorySql` | Stall CRUD, lookup by region |
-| `ShopRepository` | `ShopRepositorySql` | Shop CRUD, lookup by container |
-| `AuctionRepository` | `AuctionRepositorySql` | Auction CRUD, bid tracking |
-| `ShopVaultRepository` | `ShopVaultRepositorySql` | Barter payment item storage |
+| Port                  | Implementation           | Purpose                        |
+| --------------------- | ------------------------ | ------------------------------ |
+| `StallRepository`     | `StallRepositorySql`     | Stall CRUD, lookup by region   |
+| `ShopRepository`      | `ShopRepositorySql`      | Shop CRUD, lookup by container |
+| `AuctionRepository`   | `AuctionRepositorySql`   | Auction CRUD, bid tracking     |
+| `ShopVaultRepository` | `ShopVaultRepositorySql` | Barter payment item storage    |
 
 ## Provider ports (domain interfaces)
 
-| Port | Implementation | Purpose |
-|------|---------------|---------|
-| `RegionProvider` | `WorldGuardRegionProvider` | Region membership queries |
-| `RegionProvisioner` | `WorldGuardRegionProvisioner` | Region flag provisioning on import |
-| `EconomyProvider` | `VaultEconomyProvider` | Economy operations (withdraw/deposit/balance) |
-| `GuildProvider` | `LumaGuildsGuildProvider` | Guild membership, permissions, bank |
-| `SchematicService` | `WorldEditSchematicAdapter` | Stall schematic snapshot/restore |
+| Port                | Implementation                | Purpose                                       |
+| ------------------- | ----------------------------- | --------------------------------------------- |
+| `RegionProvider`    | `WorldGuardRegionProvider`    | Region membership queries                     |
+| `RegionProvisioner` | `WorldGuardRegionProvisioner` | Region flag provisioning on import            |
+| `EconomyProvider`   | `VaultEconomyProvider`        | Economy operations (withdraw/deposit/balance) |
+| `GuildProvider`     | `LumaGuildsGuildProvider`     | Guild membership, permissions, bank           |
+| `SchematicService`  | `WorldEditSchematicAdapter`   | Stall schematic snapshot/restore              |

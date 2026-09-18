@@ -1,22 +1,43 @@
 # Shop Management Commands Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development or superpowers:executing-plans to
+> implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for
+> tracking.
 
-**Goal:** Add a player-facing `/shop` command (ItemShops parity) with `list`, `edit`, `trust`/`untrust`, `delete`, and `breakdelete` verbs over EM's existing money-model shops.
+**Goal:** Add a player-facing `/shop` command (ItemShops parity) with `list`,
+`edit`, `trust`/`untrust`, `delete`, and `breakdelete` verbs over EM's existing
+money-model shops.
 
-**Architecture:** Hexagonal/SPEAR. Pure application services (`ShopManagementService`, `BreakDeleteMode`) hold the logic and are unit-tested with mockk; a thin `@Command` class and IFramework GUIs (mirroring the existing `TrustManageMenu`) form the infrastructure layer. No DB migration — `Shop.trusted` is already persisted and `ShopRepository` already has `findByOwner`/`delete`/`upsert`.
+**Architecture:** Hexagonal/SPEAR. Pure application services
+(`ShopManagementService`, `BreakDeleteMode`) hold the logic and are unit-tested
+with mockk; a thin `@Command` class and IFramework GUIs (mirroring the existing
+`TrustManageMenu`) form the infrastructure layer. No DB migration —
+`Shop.trusted` is already persisted and `ShopRepository` already has
+`findByOwner`/`delete`/`upsert`.
 
-**Tech Stack:** Kotlin 2.0.0, Nexus DI + commands, IFramework (`com.github.stefvanschie.inventoryframework`), JUnit 5 + MockK + MockBukkit, detekt 1.23.8.
+**Tech Stack:** Kotlin 2.0.0, Nexus DI + commands, IFramework
+(`com.github.stefvanschie.inventoryframework`), JUnit 5 + MockK + MockBukkit,
+detekt 1.23.8.
 
-**Reference spec:** `docs/superpowers/specs/2026-06-03-itemshops-parity-shop-management-design.md`
+**Reference spec:**
+`docs/superpowers/specs/2026-06-03-itemshops-parity-shop-management-design.md`
 
 **Standing rules (every task):**
-- Bash cwd resets — prefix every command with `cd /d/BadgersMC-Dev/EnthusiaMarket &&` (on Hermes' box substitute `/opt/data/EnthusiaMarket`).
-- Every gradle command includes `-Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain` (substitute `/opt/data/...` on Hermes' box).
+
+- Bash cwd resets — prefix every command with
+  `cd /d/BadgersMC-Dev/EnthusiaMarket &&` (on Hermes' box substitute
+  `/opt/data/EnthusiaMarket`).
+- Every gradle command includes
+  `-Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+  (substitute `/opt/data/...` on Hermes' box).
 - LF→CRLF git warnings are expected — ignore.
-- Branch: `feat/shop-management-commands`. Do not push unless told. Commit after every task with the given message.
-- TDD: write the failing test, run it RED first, then implement GREEN. Never weaken a test to pass.
-- Gate rule: after each `Run:` step compare to `Expected:`. Mismatch → STOP, fix the one thing, re-run; HALT after 3 failed attempts.
+- Branch: `feat/shop-management-commands`. Do not push unless told. Commit after
+  every task with the given message.
+- TDD: write the failing test, run it RED first, then implement GREEN. Never
+  weaken a test to pass.
+- Gate rule: after each `Run:` step compare to `Expected:`. Mismatch → STOP, fix
+  the one thing, re-run; HALT after 3 failed attempts.
 
 ---
 
@@ -25,51 +46,76 @@
 **`Shop` data class** (`net.badgersmc.em.domain.shop.Shop`) — fields used here:
 `id: Long`, `stallId: String`, `owner: UUID`, `signWorld/signX/signY/signZ`,
 `containerWorld/containerX/containerY/containerZ`, `sellItem: String` (base64),
-`sellAmount: Int`, `costItem: String` (base64), `costAmount: Int`, `trusted: Set<UUID>`,
-`hopperAllowIn: Boolean`, `hopperAllowOut: Boolean`, `frozen: Boolean`,
-`direction: SignDirection`. `init` requires `sellAmount > 0`, `costAmount > 0`, `stallId` non-blank.
-Mutate with `.copy(...)`.
+`sellAmount: Int`, `costItem: String` (base64), `costAmount: Int`,
+`trusted: Set<UUID>`, `hopperAllowIn: Boolean`, `hopperAllowOut: Boolean`,
+`frozen: Boolean`, `direction: SignDirection`. `init` requires `sellAmount > 0`,
+`costAmount > 0`, `stallId` non-blank. Mutate with `.copy(...)`.
 
 **`ShopRepository`** (`net.badgersmc.em.domain.shop.ShopRepository`):
-`findByOwner(owner: UUID): List<Shop>`, `findById(id: Long): Shop?`, `upsert(shop: Shop): Shop`,
-`delete(id: Long)`, `findBySign(world, x, y, z): Shop?`.
+`findByOwner(owner: UUID): List<Shop>`, `findById(id: Long): Shop?`,
+`upsert(shop: Shop): Shop`, `delete(id: Long)`,
+`findBySign(world, x, y, z): Shop?`.
 
 **`ItemStackSerializer`** (`net.badgersmc.em.application.ItemStackSerializer`):
 `serialize(item: ItemStack): String`, `deserialize(base64: String): ItemStack?`.
 
 **Nexus command annotations** (exact imports):
-- `net.badgersmc.nexus.commands.annotations.Command` — `@Command(name = "shop", description = "...", aliases = ["shops"])` on the class.
-- `net.badgersmc.nexus.commands.annotations.Subcommand` is `net.badgersmc.nexus.paper.commands.annotations.Subcommand` — `@Subcommand("list")` on methods.
-- `net.badgersmc.nexus.paper.commands.annotations.Permission` — `@Permission("enthusiamarket.shop.use")`.
-- `net.badgersmc.nexus.commands.annotations.Context` — `fun x(@Context sender: CommandSender)`.
-- `net.badgersmc.nexus.commands.annotations.Arg` — `@Arg("player") name: String`. Optional args use Kotlin defaults (`@Arg("mode") mode: String = "menu"`).
-- A `@Command` class with constructor-injected `@Service`/`@Component` deps is auto-discovered by `ctx.registerPaperCommands` — NO manual registration needed.
 
-**IFramework GUI** (mirror `interaction/gui/TrustManageMenu.kt` + `PurchaseMenu.kt`):
+- `net.badgersmc.nexus.commands.annotations.Command` —
+  `@Command(name = "shop", description = "...", aliases = ["shops"])` on the
+  class.
+- `net.badgersmc.nexus.commands.annotations.Subcommand` is
+  `net.badgersmc.nexus.paper.commands.annotations.Subcommand` —
+  `@Subcommand("list")` on methods.
+- `net.badgersmc.nexus.paper.commands.annotations.Permission` —
+  `@Permission("enthusiamarket.shop.use")`.
+- `net.badgersmc.nexus.commands.annotations.Context` —
+  `fun x(@Context sender: CommandSender)`.
+- `net.badgersmc.nexus.commands.annotations.Arg` —
+  `@Arg("player") name: String`. Optional args use Kotlin defaults
+  (`@Arg("mode") mode: String = "menu"`).
+- A `@Command` class with constructor-injected `@Service`/`@Component` deps is
+  auto-discovered by `ctx.registerPaperCommands` — NO manual registration
+  needed.
+
+**IFramework GUI** (mirror `interaction/gui/TrustManageMenu.kt` +
+`PurchaseMenu.kt`):
+
 - `com.github.stefvanschie.inventoryframework.gui.type.ChestGui(rows: Int, ComponentHolder.of(component))`
-- `com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder` — `ComponentHolder.of(lang.msg("key"))`
-- `com.github.stefvanschie.inventoryframework.pane.StaticPane(length, height)` — `StaticPane(9, rows)`
-- `com.github.stefvanschie.inventoryframework.gui.GuiItem(itemStack) { event -> ... }` — click consumer; call `event.isCancelled = true` inside.
+- `com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHolder`
+  — `ComponentHolder.of(lang.msg("key"))`
+- `com.github.stefvanschie.inventoryframework.pane.StaticPane(length, height)` —
+  `StaticPane(9, rows)`
+- `com.github.stefvanschie.inventoryframework.gui.GuiItem(itemStack) { event -> ... }`
+  — click consumer; call `event.isCancelled = true` inside.
 - `pane.addItem(guiItem, x, y)`; `gui.addPane(pane)`; `gui.show(player)`.
 
-**`Menu`** (`net.badgersmc.em.interaction.Menu`): `interface Menu { fun open(player: Player) }`.
+**`Menu`** (`net.badgersmc.em.interaction.Menu`):
+`interface Menu { fun open(player: Player) }`.
 
-**`LangService`** (`net.badgersmc.nexus.i18n.LangService`): `lang.msg("key", "tok" to value, ...)` returns
-an Adventure `Component`; placeholder syntax in lang files is `<token>` (NEVER `{token}`).
+**`LangService`** (`net.badgersmc.nexus.i18n.LangService`):
+`lang.msg("key", "tok" to value, ...)` returns an Adventure `Component`;
+placeholder syntax in lang files is `<token>` (NEVER `{token}`).
 `lang.legacy("key", ...)` returns a legacy String when needed.
 
-**Existing `ShopEditMenu`** ctor today: `ShopEditMenu(shop: Shop, shopRepository: ShopRepository, lang: LangService)`.
+**Existing `ShopEditMenu`** ctor today:
+`ShopEditMenu(shop: Shop, shopRepository: ShopRepository, lang: LangService)`.
 
-**`BlockProtectionListener`** (`infrastructure/listeners/BlockProtectionListener.kt`): already resolves a
-shop at a broken block via `shopRepository.findBySign(...)` and checks `shop.trusted.contains(player.uniqueId)`.
+**`BlockProtectionListener`**
+(`infrastructure/listeners/BlockProtectionListener.kt`): already resolves a shop
+at a broken block via `shopRepository.findBySign(...)` and checks
+`shop.trusted.contains(player.uniqueId)`.
 
 ---
 
 ## Task 1: ShopManagementService (pure logic)
 
 **Files:**
-- Create: `src/main/kotlin/net/badgersmc/em/application/ShopManagementService.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/application/ShopManagementServiceTest.kt`
+
+- Create:
+  `src/main/kotlin/net/badgersmc/em/application/ShopManagementService.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/application/ShopManagementServiceTest.kt`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -175,7 +221,8 @@ class ShopManagementServiceTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopManagementServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopManagementServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `ShopManagementService` not defined.
 
 - [ ] **Step 3: Implement ShopManagementService**
@@ -246,7 +293,8 @@ class ShopManagementService(
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopManagementServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopManagementServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -263,6 +311,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 2: BreakDeleteMode (timed per-player toggle)
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/application/BreakDeleteMode.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/application/BreakDeleteModeTest.kt`
 
@@ -322,7 +371,8 @@ class BreakDeleteModeTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.BreakDeleteModeTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.BreakDeleteModeTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `BreakDeleteMode` not defined.
 
 - [ ] **Step 3: Implement BreakDeleteMode**
@@ -381,7 +431,8 @@ class BreakDeleteMode {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.BreakDeleteModeTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.BreakDeleteModeTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -398,8 +449,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 3: ShopEditMenu restructure (pure applyEdits helper + menu)
 
 **Files:**
+
 - Modify: `src/main/kotlin/net/badgersmc/em/interaction/gui/ShopEditMenu.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/interaction/gui/ShopEditMenuApplyTest.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/interaction/gui/ShopEditMenuApplyTest.kt`
 
 - [ ] **Step 1: Write the failing test for the pure edit helper**
 
@@ -449,16 +502,19 @@ class ShopEditMenuApplyTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.interaction.gui.ShopEditMenuApplyTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.interaction.gui.ShopEditMenuApplyTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `applyEdits` not defined.
 
 - [ ] **Step 3: Restructure ShopEditMenu**
 
-Replace the contents of `ShopEditMenu.kt` with the version below. It keeps the `Menu` interface,
-adds the pure `applyEdits` companion helper, and rebuilds the GUI to ItemShops' layout: a sell-item
-slot, sell-amount +/- controls, cost (money) +/- controls, hopper in/out toggles, a freeze toggle,
-and a delete button. Trust is removed (now `/shop trust`). The menu re-renders on each control
-click (same pattern as `CreateShopMenu`). The constructor gains `ShopManagementService` for delete.
+Replace the contents of `ShopEditMenu.kt` with the version below. It keeps the
+`Menu` interface, adds the pure `applyEdits` companion helper, and rebuilds the
+GUI to ItemShops' layout: a sell-item slot, sell-amount +/- controls, cost
+(money) +/- controls, hopper in/out toggles, a freeze toggle, and a delete
+button. Trust is removed (now `/shop trust`). The menu re-renders on each
+control click (same pattern as `CreateShopMenu`). The constructor gains
+`ShopManagementService` for delete.
 
 ```kotlin
 package net.badgersmc.em.interaction.gui
@@ -597,16 +653,21 @@ class ShopEditMenu(
 
 - [ ] **Step 4: Find and update existing ShopEditMenu constructor call sites**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && grep -rn "ShopEditMenu(" src/main/kotlin src/test/kotlin`
-For each call site, add the `management: ShopManagementService` argument (3rd position). The known
-site is `OwnedShopsMenu` (created in Task 6) — if any OTHER site exists (e.g. a listener), inject
-`ShopManagementService` there and pass it. If a test constructs `ShopEditMenu`, pass a
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && grep -rn "ShopEditMenu(" src/main/kotlin src/test/kotlin`
+For each call site, add the `management: ShopManagementService` argument (3rd
+position). The known site is `OwnedShopsMenu` (created in Task 6) — if any OTHER
+site exists (e.g. a listener), inject `ShopManagementService` there and pass it.
+If a test constructs `ShopEditMenu`, pass a
 `mockk<ShopManagementService>(relaxed = true)`.
 
 - [ ] **Step 5: Run the test + compile**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.interaction.gui.ShopEditMenuApplyTest" compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: PASS + BUILD SUCCESSFUL. If old `gui.edit.*` lang keys are now unused, that is fine. If detekt later flags the old keys, ignore (lang keys aren't detekt-scanned).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.interaction.gui.ShopEditMenuApplyTest" compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: PASS + BUILD SUCCESSFUL. If old `gui.edit.*` lang keys are now unused,
+that is fine. If detekt later flags the old keys, ignore (lang keys aren't
+detekt-scanned).
 
 - [ ] **Step 6: Commit**
 
@@ -622,27 +683,33 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 4: ShopCommands skeleton + `/shop list`
 
 **Files:**
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
+
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
 - Modify: `src/main/resources/lang/en_US.yml`
 
 - [ ] **Step 1: Add lang keys**
 
-In `en_US.yml`, under the top-level `shop:` block (it already exists), add a `cmd:` sub-block.
-Use `<token>` placeholders (NEVER `{token}`):
+In `en_US.yml`, under the top-level `shop:` block (it already exists), add a
+`cmd:` sub-block. Use `<token>` placeholders (NEVER `{token}`):
 
 ```yaml
-  cmd:
-    players_only: "<red>Players only."
-    none_owned: "<gray>You own no shops."
-    list_header: "<gold>Your shops (<count>)"
-    list_line: "<gray>- <white><world> <x>,<y>,<z> <dark_gray>| <green><sell_amt>x <sell> <gray>for <gold><cost>"
-    unknown_player: "<red>Unknown player: <name>"
-    trusted_all: "<green>Trusted <white><name> <green>on all your shops (<count>)."
-    untrusted_all: "<yellow>Untrusted <white><name> <yellow>on all your shops (<count>)."
-    deleted_all: "<yellow>Deleted <count> shop(s)."
-    breakdelete_on: "<green>Break-delete mode enabled for <minutes> minute(s)."
-    breakdelete_off: "<yellow>Break-delete mode disabled."
-    no_permission: "<red>You don't have permission for that."
+cmd:
+  players_only: "<red>Players only."
+  none_owned: "<gray>You own no shops."
+  list_header: "<gold>Your shops (<count>)"
+  list_line:
+    "<gray>- <white><world> <x>,<y>,<z> <dark_gray>| <green><sell_amt>x <sell>
+    <gray>for <gold><cost>"
+  unknown_player: "<red>Unknown player: <name>"
+  trusted_all:
+    "<green>Trusted <white><name> <green>on all your shops (<count>)."
+  untrusted_all:
+    "<yellow>Untrusted <white><name> <yellow>on all your shops (<count>)."
+  deleted_all: "<yellow>Deleted <count> shop(s)."
+  breakdelete_on: "<green>Break-delete mode enabled for <minutes> minute(s)."
+  breakdelete_off: "<yellow>Break-delete mode disabled."
+  no_permission: "<red>You don't have permission for that."
 ```
 
 - [ ] **Step 2: Implement ShopCommands with `list` only**
@@ -695,8 +762,10 @@ class ShopCommands(
 
 - [ ] **Step 3: Build to confirm the command class compiles + is discoverable**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. (Nexus auto-discovers `@Command` classes via `registerPaperCommands`; no manual wiring.)
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. (Nexus auto-discovers `@Command` classes via
+`registerPaperCommands`; no manual wiring.)
 
 - [ ] **Step 4: Commit**
 
@@ -712,8 +781,10 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 5: `/shop trust` + `/shop untrust` + BulkTrustMenu
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/interaction/gui/BulkTrustMenu.kt`
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
 
 - [ ] **Step 1: Implement BulkTrustMenu (mirror TrustManageMenu pattern)**
 
@@ -792,7 +863,8 @@ class BulkTrustMenu(
 
 - [ ] **Step 2: Add `trust`/`untrust` subcommands to ShopCommands**
 
-Add to `ShopCommands` (inject nothing new — `management` + `lang` already present):
+Add to `ShopCommands` (inject nothing new — `management` + `lang` already
+present):
 
 ```kotlin
     @Subcommand("trust")
@@ -835,15 +907,16 @@ Add to `ShopCommands` (inject nothing new — `management` + `lang` already pres
 Add the GUI lang keys to `en_US.yml` under `gui.shop`:
 
 ```yaml
-    trust:
-      title: "<dark_gray>Trust <name> on…"
-      icon: "<white><world> <x>,<y>,<z> <gray>(<sel>)"
-      confirm: "<green>Confirm"
+trust:
+  title: "<dark_gray>Trust <name> on…"
+  icon: "<white><world> <x>,<y>,<z> <gray>(<sel>)"
+  confirm: "<green>Confirm"
 ```
 
 - [ ] **Step 3: Build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL.
 
 - [ ] **Step 4: Commit**
@@ -860,9 +933,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 6: `/shop delete` + DeleteShopsMenu, and `/shop edit` + OwnedShopsMenu
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/interaction/gui/DeleteShopsMenu.kt`
 - Create: `src/main/kotlin/net/badgersmc/em/interaction/gui/OwnedShopsMenu.kt`
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
 
 - [ ] **Step 1: Implement OwnedShopsMenu (list → click → ShopEditMenu)**
 
@@ -969,7 +1044,9 @@ class DeleteShopsMenu(
 
 - [ ] **Step 3: Add `edit` + `delete` subcommands to ShopCommands**
 
-Inject `ShopRepository` into `ShopCommands` (add `private val shopRepository: net.badgersmc.em.domain.shop.ShopRepository,` to the constructor). Add:
+Inject `ShopRepository` into `ShopCommands` (add
+`private val shopRepository: net.badgersmc.em.domain.shop.ShopRepository,` to
+the constructor). Add:
 
 ```kotlin
     @Subcommand("edit")
@@ -1007,20 +1084,27 @@ Inject `ShopRepository` into `ShopCommands` (add `private val shopRepository: ne
 Add lang keys to `en_US.yml` under `gui.shop`:
 
 ```yaml
-    owned:
-      title: "<dark_gray>Your shops (click to edit)"
-      icon: "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <white><world> <x>,<y>,<z>"
-    delete:
-      title: "<dark_red>Delete shops"
-      icon: "<white><world> <x>,<y>,<z> <gray>(click to arm)"
-      icon_armed: "<red>Click again to DELETE <white><world> <x>,<y>,<z>"
+owned:
+  title: "<dark_gray>Your shops (click to edit)"
+  icon:
+    "<green><sell_amt>x <gray>for <gold><cost> <dark_gray>| <white><world>
+    <x>,<y>,<z>"
+delete:
+  title: "<dark_red>Delete shops"
+  icon: "<white><world> <x>,<y>,<z> <gray>(click to arm)"
+  icon_armed: "<red>Click again to DELETE <white><world> <x>,<y>,<z>"
 ```
 
-And under `shop` (top level), add: `delete: { done: "<yellow>Shop deleted." }` and `edit: { saved: "<green>Shop updated.", not_owner: "<red>You don't own this shop." }` if not already present (the `shop.edit.not_owner` key already exists — do not duplicate).
+And under `shop` (top level), add: `delete: { done: "<yellow>Shop deleted." }`
+and
+`edit: { saved: "<green>Shop updated.", not_owner: "<red>You don't own this shop." }`
+if not already present (the `shop.edit.not_owner` key already exists — do not
+duplicate).
 
 - [ ] **Step 4: Build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL.
 
 - [ ] **Step 5: Commit**
@@ -1037,12 +1121,17 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 7: `/shop breakdelete` + BlockProtectionListener wiring
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/BlockProtectionListener.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/BlockProtectionListener.kt`
 
 - [ ] **Step 1: Add `breakdelete` subcommand to ShopCommands**
 
-Inject `BreakDeleteMode` (add `private val breakDelete: net.badgersmc.em.application.BreakDeleteMode,` to the constructor). Add:
+Inject `BreakDeleteMode` (add
+`private val breakDelete: net.badgersmc.em.application.BreakDeleteMode,` to the
+constructor). Add:
 
 ```kotlin
     @Subcommand("breakdelete")
@@ -1065,17 +1154,21 @@ Inject `BreakDeleteMode` (add `private val breakDelete: net.badgersmc.em.applica
 
 - [ ] **Step 2: Read BlockProtectionListener to find the sign-break deny path**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && sed -n '40,100p' src/main/kotlin/net/badgersmc/em/infrastructure/listeners/BlockProtectionListener.kt`
-Note the constructor (for adding `BreakDeleteMode`), the event handler that resolves a shop via
-`shopRepository.findBySign(...)`, and where it cancels the break for a non-owner/non-trusted player.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && sed -n '40,100p' src/main/kotlin/net/badgersmc/em/infrastructure/listeners/BlockProtectionListener.kt`
+Note the constructor (for adding `BreakDeleteMode`), the event handler that
+resolves a shop via `shopRepository.findBySign(...)`, and where it cancels the
+break for a non-owner/non-trusted player.
 
 - [ ] **Step 3: Wire BreakDeleteMode into BlockProtectionListener**
 
-Add `BreakDeleteMode` to the listener's constructor (Nexus injects the `@Component`). In the
-sign-break handler, BEFORE the existing protection logic cancels the event: if the broken block
-resolves to a shop whose `owner == player.uniqueId` AND `breakDelete.isActive(player.uniqueId)`,
-then allow the break (do NOT cancel) and call `management.delete(player.uniqueId, shop.id)` (inject
-`ShopManagementService` too), and send `shop.delete.done`. Otherwise fall through to the existing
+Add `BreakDeleteMode` to the listener's constructor (Nexus injects the
+`@Component`). In the sign-break handler, BEFORE the existing protection logic
+cancels the event: if the broken block resolves to a shop whose
+`owner == player.uniqueId` AND `breakDelete.isActive(player.uniqueId)`, then
+allow the break (do NOT cancel) and call
+`management.delete(player.uniqueId, shop.id)` (inject `ShopManagementService`
+too), and send `shop.delete.done`. Otherwise fall through to the existing
 protection behaviour unchanged.
 
 Exact shape (adapt variable names to the file from Step 2):
@@ -1092,10 +1185,11 @@ Exact shape (adapt variable names to the file from Step 2):
 
 - [ ] **Step 4: Build + fix any listener-test constructor breakage**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. If a `BlockProtectionListener` test constructs it directly, add the
-new `BreakDeleteMode` + `ShopManagementService` + `lang` args (use `mockk(relaxed = true)` /
-real instances as the test needs).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. If a `BlockProtectionListener` test constructs it
+directly, add the new `BreakDeleteMode` + `ShopManagementService` + `lang` args
+(use `mockk(relaxed = true)` / real instances as the test needs).
 
 - [ ] **Step 5: Commit**
 
@@ -1111,37 +1205,48 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 8: Permission DSL nodes + final verification
 
 **Files:**
+
 - Modify: `build.gradle.kts` (nexus-permissions tree)
 - Modify: `docs/tasks.md`
 
 - [ ] **Step 1: Add the new permission nodes to the DSL**
 
-In `build.gradle.kts`, inside the `configure<...NexusPermissionsExtension> { tree { ... } }` block,
-add `child("shop.use")` under the `enthusiamarket.player` node, and add a standalone node for the
-admin-gated `delete all`:
+In `build.gradle.kts`, inside the
+`configure<...NexusPermissionsExtension> { tree { ... } }` block, add
+`child("shop.use")` under the `enthusiamarket.player` node, and add a standalone
+node for the admin-gated `delete all`:
 
 Under the `node("enthusiamarket.player", ...)` block, add:
+
 ```kotlin
             child("shop.use")
 ```
+
 And after the player node, add:
+
 ```kotlin
         node("enthusiamarket.shop.delete.all", default = Default.OP, description = "Delete all of a player's shops")
 ```
 
-- [ ] **Step 2: Regenerate + verify the nodes land in the staged paper-plugin.yml**
+- [ ] **Step 2: Regenerate + verify the nodes land in the staged
+      paper-plugin.yml**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew processResources -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain && grep -E "shop.use|shop.delete.all" build/resources/main/paper-plugin.yml`
-Expected: both `enthusiamarket.shop.use` and `enthusiamarket.shop.delete.all` present.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew processResources -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain && grep -E "shop.use|shop.delete.all" build/resources/main/paper-plugin.yml`
+Expected: both `enthusiamarket.shop.use` and `enthusiamarket.shop.delete.all`
+present.
 
 - [ ] **Step 3: Full verification gate**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL, detekt 0 issues, all tests pass.
 
 - [ ] **Step 4: Mark progress + commit**
 
-Add a `[x]` note to `docs/tasks.md` (append a line: `- [x] ItemShops parity SP1 — /shop management commands (list/edit/trust/untrust/delete/breakdelete)`). Then:
+Add a `[x]` note to `docs/tasks.md` (append a line:
+`- [x] ItemShops parity SP1 — /shop management commands (list/edit/trust/untrust/delete/breakdelete)`).
+Then:
 
 ```bash
 cd /d/BadgersMC-Dev/EnthusiaMarket && git add build.gradle.kts docs/tasks.md
@@ -1153,20 +1258,37 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - [ ] **Step 5: Manual QA checklist (for the PR description — non-op player)**
 
 1. `/shop list` with no shops → "You own no shops"; with shops → chat list.
-2. Create a shop, `/shop edit` → menu → click shop → change sell amount + cost → save → re-open confirms persisted.
-3. `/shop trust <player>` → menu → select shops → confirm; `/shop trust <player> all` → trusts all.
+2. Create a shop, `/shop edit` → menu → click shop → change sell amount + cost →
+   save → re-open confirms persisted.
+3. `/shop trust <player>` → menu → select shops → confirm;
+   `/shop trust <player> all` → trusts all.
 4. `/shop untrust <player>` → untrusts all.
-5. `/shop delete` → menu → click twice to delete; `/shop delete all` → blocked without `enthusiamarket.shop.delete.all`, works with it.
-6. `/shop breakdelete 1m` → break your own shop sign within 1 min → shop deleted + sign breaks; after expiry → break is blocked again.
+5. `/shop delete` → menu → click twice to delete; `/shop delete all` → blocked
+   without `enthusiamarket.shop.delete.all`, works with it.
+6. `/shop breakdelete 1m` → break your own shop sign within 1 min → shop
+   deleted + sign breaks; after expiry → break is blocked again.
 
 ---
 
 ## Self-Review Notes (for the implementer)
 
-Confirm these by reading the file BEFORE writing (each is a single-symbol check):
+Confirm these by reading the file BEFORE writing (each is a single-symbol
+check):
 
-1. **`BlockProtectionListener` constructor + break handler** (Task 7) — read the file; adapt the wiring snippet to its actual variable names and the exact point where it cancels the break. It already has `shopRepository` + `lang`; you add `BreakDeleteMode` + `ShopManagementService`.
-2. **Existing `ShopEditMenu` call sites** (Task 3 Step 4) — grep first; the only main-code caller after this plan is `OwnedShopsMenu` (Task 6). If a listener opens `ShopEditMenu`, inject `ShopManagementService` there.
-3. **`SignDirection` import** — `net.badgersmc.em.domain.shop.SignDirection` (used in test shop builders).
-4. **Nexus `@Arg` optional-arg support** — defaults are via Kotlin default params (`mode: String = "menu"`). If the Nexus version rejects defaulted `@Arg`, split into two `@Subcommand` overloads (e.g. `trust` and `trust all`) — check an existing AdminCommands subcommand with an optional arg (`auctionStart` uses `duration: String? = null`).
-5. **`Default` import in build.gradle.kts** — `import net.badgersmc.nexus.permissions.Default` is already at the top of the file (used by the existing tree). Reuse it.
+1. **`BlockProtectionListener` constructor + break handler** (Task 7) — read the
+   file; adapt the wiring snippet to its actual variable names and the exact
+   point where it cancels the break. It already has `shopRepository` + `lang`;
+   you add `BreakDeleteMode` + `ShopManagementService`.
+2. **Existing `ShopEditMenu` call sites** (Task 3 Step 4) — grep first; the only
+   main-code caller after this plan is `OwnedShopsMenu` (Task 6). If a listener
+   opens `ShopEditMenu`, inject `ShopManagementService` there.
+3. **`SignDirection` import** — `net.badgersmc.em.domain.shop.SignDirection`
+   (used in test shop builders).
+4. **Nexus `@Arg` optional-arg support** — defaults are via Kotlin default
+   params (`mode: String = "menu"`). If the Nexus version rejects defaulted
+   `@Arg`, split into two `@Subcommand` overloads (e.g. `trust` and `trust all`)
+   — check an existing AdminCommands subcommand with an optional arg
+   (`auctionStart` uses `duration: String? = null`).
+5. **`Default` import in build.gradle.kts** —
+   `import net.badgersmc.nexus.permissions.Default` is already at the top of the
+   file (used by the existing tree). Reuse it.

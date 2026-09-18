@@ -6,7 +6,8 @@
 
 ## Expected Types (from EnthusiaMarket's GuildProvider port)
 
-EnthusiaMarket defines the following port in `net.badgersmc.em.domain.ports.GuildProvider`:
+EnthusiaMarket defines the following port in
+`net.badgersmc.em.domain.ports.GuildProvider`:
 
 ```kotlin
 interface GuildProvider {
@@ -44,22 +45,24 @@ class LumaGuildsGuildProvider : GuildProvider {
 
 ## Configuration Dependencies (from config.yml)
 
-| Key | Default | Relevance |
-|---|---|---|
-| `lumaguilds.enabled` | `true` | Disable → skip guild DI wiring |
-| `lumaguilds.manage-rank` | `officer` | Rank ID for `Stall.canManage()` |
-| `lumaguilds.pay-from` | `bank` | `bank` = guild bank; `leader` = leader's personal balance |
+| Key                      | Default   | Relevance                                                 |
+| ------------------------ | --------- | --------------------------------------------------------- |
+| `lumaguilds.enabled`     | `true`    | Disable → skip guild DI wiring                            |
+| `lumaguilds.manage-rank` | `officer` | Rank ID for `Stall.canManage()`                           |
+| `lumaguilds.pay-from`    | `bank`    | `bank` = guild bank; `leader` = leader's personal balance |
 
 ## Integration Plan (M4, TDD-40/TDD-41)
 
 1. Obtain LumaGuilds plugin JAR and inspect actual API surface.
 2. Replace `TODO()` stubs with real `net.lumaguilds.api.*` calls.
-3. Add TDD-40 test: guild member with required rank passes `Stall.canManage()`; lower rank fails.
+3. Add TDD-40 test: guild member with required rank passes `Stall.canManage()`;
+   lower rank fails.
 4. Wire `guildProvider` in `di/Modules.kt` when `lumaguilds.enabled == true`.
 
 ## Evidence
 
-- src/main/kotlin/.../infrastructure/lumaguilds/LumaGuildsGuildProvider.kt (stub)
+- src/main/kotlin/.../infrastructure/lumaguilds/LumaGuildsGuildProvider.kt
+  (stub)
 - src/main/kotlin/.../domain/ports/GuildProvider.kt (port interface)
 - src/main/resources/config.yml (lumaguilds section)
 - Integration deferred to M4 (TDD-40, TDD-41)
@@ -67,7 +70,9 @@ class LumaGuildsGuildProvider : GuildProvider {
 ## Open Questions
 
 - What is the exact LumaGuilds API class/method for player→guild lookup?
-- Does LumaGuilds expose a permission node system compatible with `hasPermission(uuid, guildId, node)`?
+- Does LumaGuilds expose a permission node system compatible with
+  `hasPermission(uuid, guildId, node)`?
 - Is the guild bank API synchronous or asynchronous?
 
-These must be answered by inspecting the LumaGuilds plugin Javadocs or source before M4.
+These must be answered by inspecting the LumaGuilds plugin Javadocs or source
+before M4.

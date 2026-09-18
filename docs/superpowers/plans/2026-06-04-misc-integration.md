@@ -1,56 +1,126 @@
 # Misc / Integration Implementation Plan (ItemShops Parity SP6)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development or superpowers:executing-plans. Steps
+> use checkbox (`- [ ]`) syntax.
 
-**Goal:** Four ItemShops integration features on EM's money model — a shop **transaction log** (history), **owner sale notifications** (online + offline), **PAPI placeholders**, and a **sign-click info card**. The transaction table is the spine: history, both notification paths, and one placeholder read it.
+**Goal:** Four ItemShops integration features on EM's money model — a shop
+**transaction log** (history), **owner sale notifications** (online + offline),
+**PAPI placeholders**, and a **sign-click info card**. The transaction table is
+the spine: history, both notification paths, and one placeholder read it.
 
-**Architecture:** Hexagonal/SPEAR. New persistence aggregate (`ShopTransaction` + repository, migration V015) fed by an event listener; three thin read paths (history command, PAPI expansion, info card).
+**Architecture:** Hexagonal/SPEAR. New persistence aggregate
+(`ShopTransaction` + repository, migration V015) fed by an event listener; three
+thin read paths (history command, PAPI expansion, info card).
 
-**Tech Stack:** Kotlin 2.0.0, Nexus DI + commands + listeners + persistence + papi, IFramework, JUnit 5 + MockK + MockBukkit, detekt 1.23.8.
+**Tech Stack:** Kotlin 2.0.0, Nexus DI + commands + listeners + persistence +
+papi, IFramework, JUnit 5 + MockK + MockBukkit, detekt 1.23.8.
 
-**Reference spec:** `docs/superpowers/specs/2026-06-04-itemshops-parity-misc-integration-design.md`
+**Reference spec:**
+`docs/superpowers/specs/2026-06-04-itemshops-parity-misc-integration-design.md`
 
 **Standing rules (every task):**
-- Prefix bash with `cd <REPO> &&` (`/d/BadgersMC-Dev/EnthusiaMarket`, or `/opt/data/EnthusiaMarket`). On Hermes' box also prefix gradle with `export JAVA_HOME=/opt/data/jdk-21.0.11+10 &&`.
-- Every gradle command includes `-Plumaguilds.jar=<JAR> --no-daemon --console=plain` (`/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar` or `/opt/data/...`).
-- LF→CRLF git warnings expected. Branch `feat/misc-integration`. Do not push (coordinator opens the PR).
-- TDD: write failing test, run RED, then GREEN. Commit after every task with the given message.
-- Gate rule: compare each `Run:` to `Expected:`; mismatch → STOP, fix, re-run; HALT after 3 tries. Final gate runs on the EXACT committed HEAD.
+
+- Prefix bash with `cd <REPO> &&` (`/d/BadgersMC-Dev/EnthusiaMarket`, or
+  `/opt/data/EnthusiaMarket`). On Hermes' box also prefix gradle with
+  `export JAVA_HOME=/opt/data/jdk-21.0.11+10 &&`.
+- Every gradle command includes
+  `-Plumaguilds.jar=<JAR> --no-daemon --console=plain`
+  (`/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar` or
+  `/opt/data/...`).
+- LF→CRLF git warnings expected. Branch `feat/misc-integration`. Do not push
+  (coordinator opens the PR).
+- TDD: write failing test, run RED, then GREEN. Commit after every task with the
+  given message.
+- Gate rule: compare each `Run:` to `Expected:`; mismatch → STOP, fix, re-run;
+  HALT after 3 tries. Final gate runs on the EXACT committed HEAD.
 
 ---
 
 ## CONFIRMED API SYMBOLS (verified against the repo — use exactly)
 
-- **Migrations:** dir `src/main/resources/migrations/`; next number **V015**. SQLite-primary; ids are `id INTEGER PRIMARY KEY AUTOINCREMENT` (see `shop_items`). `MigrationRunner(ds, resourcePrefix = "migrations", classLoader).runAll()` already runs in `onEnable`, so V015 auto-applies.
-- **`@Repository`** (`net.badgersmc.nexus.annotations.Repository`): a repository is `@Repository class XSql(private val ds: DataSource) : XRepository`. Nexus auto-discovers it and injects the `DataSource` bean (registered in `onEnable`). Mirror `ShopRepositorySql` for `Connection`/`PreparedStatement` usage (`ds.connection.use { ... }`, `ps.setString/​setLong/​setInt/​setBoolean`, `getGeneratedKeys`).
-- **`ShopRepository`**: `findByOwner(owner: UUID): List<Shop>`, `all(): List<Shop>`.
-- **`Shop`** fields used: `id: Long`, `owner: UUID`, `direction: SignDirection`, `sellItem: String`, `sellAmount: Int`, `costAmount: Int`, `signWorld/signX/signY/signZ`, `containerWorld/containerX/containerY/containerZ`.
+- **Migrations:** dir `src/main/resources/migrations/`; next number **V015**.
+  SQLite-primary; ids are `id INTEGER PRIMARY KEY AUTOINCREMENT` (see
+  `shop_items`).
+  `MigrationRunner(ds, resourcePrefix = "migrations", classLoader).runAll()`
+  already runs in `onEnable`, so V015 auto-applies.
+- **`@Repository`** (`net.badgersmc.nexus.annotations.Repository`): a repository
+  is `@Repository class XSql(private val ds: DataSource) : XRepository`. Nexus
+  auto-discovers it and injects the `DataSource` bean (registered in
+  `onEnable`). Mirror `ShopRepositorySql` for `Connection`/`PreparedStatement`
+  usage (`ds.connection.use { ... }`,
+  `ps.setString/​setLong/​setInt/​setBoolean`, `getGeneratedKeys`).
+- **`ShopRepository`**: `findByOwner(owner: UUID): List<Shop>`,
+  `all(): List<Shop>`.
+- **`Shop`** fields used: `id: Long`, `owner: UUID`, `direction: SignDirection`,
+  `sellItem: String`, `sellAmount: Int`, `costAmount: Int`,
+  `signWorld/signX/signY/signZ`,
+  `containerWorld/containerX/containerY/containerZ`.
 - **`SignDirection`**: `enum { BUY, SELL }` (`net.badgersmc.em.domain.shop`).
 - **`ItemStackSerializer`** (`application/`): `deserialize(base64): ItemStack?`.
-- **`PostShopTransactionEvent`** (`net.badgersmc.em.events`): current ctor `(buyer: Player, landlordId: UUID, item: ItemStack, quantity: Int, pricePaid: Double)`; `companion val handlerList`. **Add** `shopId: Long = 0` and `direction: SignDirection = SignDirection.SELL` as trailing defaulted params (back-compat).
-- **`ContainerTradeService`** (`application/`): private `fireTransactionEvent(player, ownerUuid, item, quantity, cost)` at ~L197; called from `executeBuyTransaction` (~L99) and `executeSellTransaction` (~L155), both of which have the `shop` param in scope. **Add** `shopId` + `direction` params to `fireTransactionEvent` and pass `shop.id`, `shop.direction` from both call sites. (Also record the transaction here — see Task 2.)
-- **Nexus listeners:** `@net.badgersmc.nexus.paper.listeners.Listener` + `@Component` on an `open class X(...) : org.bukkit.event.Listener` with `@EventHandler fun ...`; auto-registered by `NexusListenerRegistry` (no manual `registerEvents`). See `SignPlaceListener`.
-- **`LangService`**: `lang.msg("key", "tok" to v)`; placeholders `<token>` (NEVER `{token}`).
-- **`ShopCommands`** (`infrastructure/commands/ShopCommands.kt`): `@Command(name="shop", aliases=["shops"])`; inject `ShopTransactionRepository` for `/shop history`. Subcommand pattern: `@Subcommand("history") @Permission("enthusiamarket.shop.use") fun history(@Context sender, @...Arg("page") page: Int = 1)`.
-- **nexus-papi:** NOT yet a dependency (Task 5 adds it). API: annotate `@net.badgersmc.nexus.papi.PapiExpansion(identifier = "enthusiamarket")` + `@Component` on a class implementing `net.badgersmc.nexus.papi.PlaceholderResolver { fun resolve(player: org.bukkit.OfflinePlayer?, params: String): String? }`. Register in `onEnable` via `net.badgersmc.nexus.papi.registerNexusExpansions("net.badgersmc.em", this::class.java.classLoader, ctx)` (no-ops if PAPI absent). `params` is everything after the identifier, e.g. `"shops_owned"`.
-- **`ShopInteractListener`** (`infrastructure/listeners/`): `onSignRightClick(event: PlayerInteractEvent)` resolves the shop, sets `event.isCancelled = true`, then opens the menu. Inject nothing new; add a `if (event.player.isSneaking) { <send info card>; return }` branch after the shop is resolved and the event cancelled, before the menu opens. `event.player.isSneaking: Boolean`.
-- **`EnthusiaMarketConfig.Shop`** (`config/`): a `class Shop { @Comment(...) var x = ... }` accessed as `config.shop.<field>`. Add `notifyEnabled` and `historyRetentionDays`.
-- **`onEnable`** (`EnthusiaMarket.kt`): `ctx` (NexusContext) created ~L48; `MigrationRunner...runAll()` ~L90; listeners registered in Phase 6. Add the PAPI registration + the retention prune after the DI context + dataSource exist.
+- **`PostShopTransactionEvent`** (`net.badgersmc.em.events`): current ctor
+  `(buyer: Player, landlordId: UUID, item: ItemStack, quantity: Int, pricePaid: Double)`;
+  `companion val handlerList`. **Add** `shopId: Long = 0` and
+  `direction: SignDirection = SignDirection.SELL` as trailing defaulted params
+  (back-compat).
+- **`ContainerTradeService`** (`application/`): private
+  `fireTransactionEvent(player, ownerUuid, item, quantity, cost)` at ~L197;
+  called from `executeBuyTransaction` (~L99) and `executeSellTransaction`
+  (~L155), both of which have the `shop` param in scope. **Add** `shopId` +
+  `direction` params to `fireTransactionEvent` and pass `shop.id`,
+  `shop.direction` from both call sites. (Also record the transaction here — see
+  Task 2.)
+- **Nexus listeners:** `@net.badgersmc.nexus.paper.listeners.Listener` +
+  `@Component` on an `open class X(...) : org.bukkit.event.Listener` with
+  `@EventHandler fun ...`; auto-registered by `NexusListenerRegistry` (no manual
+  `registerEvents`). See `SignPlaceListener`.
+- **`LangService`**: `lang.msg("key", "tok" to v)`; placeholders `<token>`
+  (NEVER `{token}`).
+- **`ShopCommands`** (`infrastructure/commands/ShopCommands.kt`):
+  `@Command(name="shop", aliases=["shops"])`; inject `ShopTransactionRepository`
+  for `/shop history`. Subcommand pattern:
+  `@Subcommand("history") @Permission("enthusiamarket.shop.use") fun history(@Context sender, @...Arg("page") page: Int = 1)`.
+- **nexus-papi:** NOT yet a dependency (Task 5 adds it). API: annotate
+  `@net.badgersmc.nexus.papi.PapiExpansion(identifier = "enthusiamarket")` +
+  `@Component` on a class implementing
+  `net.badgersmc.nexus.papi.PlaceholderResolver { fun resolve(player: org.bukkit.OfflinePlayer?, params: String): String? }`.
+  Register in `onEnable` via
+  `net.badgersmc.nexus.papi.registerNexusExpansions("net.badgersmc.em", this::class.java.classLoader, ctx)`
+  (no-ops if PAPI absent). `params` is everything after the identifier, e.g.
+  `"shops_owned"`.
+- **`ShopInteractListener`** (`infrastructure/listeners/`):
+  `onSignRightClick(event: PlayerInteractEvent)` resolves the shop, sets
+  `event.isCancelled = true`, then opens the menu. Inject nothing new; add a
+  `if (event.player.isSneaking) { <send info card>; return }` branch after the
+  shop is resolved and the event cancelled, before the menu opens.
+  `event.player.isSneaking: Boolean`.
+- **`EnthusiaMarketConfig.Shop`** (`config/`): a
+  `class Shop { @Comment(...) var x = ... }` accessed as `config.shop.<field>`.
+  Add `notifyEnabled` and `historyRetentionDays`.
+- **`onEnable`** (`EnthusiaMarket.kt`): `ctx` (NexusContext) created ~L48;
+  `MigrationRunner...runAll()` ~L90; listeners registered in Phase 6. Add the
+  PAPI registration + the retention prune after the DI context + dataSource
+  exist.
 
 ---
 
 ## Task 1: ShopTransaction + V015 + repository
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/domain/shop/ShopTransaction.kt`
-- Create: `src/main/kotlin/net/badgersmc/em/domain/shop/ShopTransactionRepository.kt`
+- Create:
+  `src/main/kotlin/net/badgersmc/em/domain/shop/ShopTransactionRepository.kt`
 - Create: `src/main/resources/migrations/V015__shop_transactions.sql`
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopTransactionRepositorySql.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/infrastructure/persistence/ShopTransactionRepositorySqlTest.kt`
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/ShopTransactionRepositorySql.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/infrastructure/persistence/ShopTransactionRepositorySqlTest.kt`
 
 - [ ] **Step 1: Domain types**
 
 `ShopTransaction.kt`:
+
 ```kotlin
 package net.badgersmc.em.domain.shop
 
@@ -72,6 +142,7 @@ data class ShopTransaction(
 ```
 
 `ShopTransactionRepository.kt`:
+
 ```kotlin
 package net.badgersmc.em.domain.shop
 
@@ -91,6 +162,7 @@ interface ShopTransactionRepository {
 - [ ] **Step 2: Migration V015**
 
 `src/main/resources/migrations/V015__shop_transactions.sql`:
+
 ```sql
 -- ItemShops parity SP6 — shop trade log. Powers /shop history, owner sale
 -- notifications (notified flag = the unseen queue), and the sales_unseen placeholder.
@@ -113,6 +185,7 @@ CREATE INDEX IF NOT EXISTS idx_shop_tx_created ON shop_transactions(created_at);
 - [ ] **Step 3: Failing persistence test**
 
 `ShopTransactionRepositorySqlTest.kt`:
+
 ```kotlin
 package net.badgersmc.em.infrastructure.persistence
 
@@ -182,12 +255,14 @@ class ShopTransactionRepositorySqlTest {
 
 - [ ] **Step 4: Run the test — verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.ShopTransactionRepositorySqlTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.ShopTransactionRepositorySqlTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `ShopTransactionRepositorySql` not defined.
 
 - [ ] **Step 5: Implement the repository**
 
 `ShopTransactionRepositorySql.kt`:
+
 ```kotlin
 package net.badgersmc.em.infrastructure.persistence
 
@@ -288,7 +363,8 @@ class ShopTransactionRepositorySql(private val ds: DataSource) : ShopTransaction
 
 - [ ] **Step 6: Run the test — verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.ShopTransactionRepositorySqlTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.ShopTransactionRepositorySqlTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -305,13 +381,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 2: Enrich PostShopTransactionEvent + record on trade
 
 **Files:**
+
 - Modify: `src/main/kotlin/net/badgersmc/em/events/PostShopTransactionEvent.kt`
-- Modify: `src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt`
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopTransactionRecorder.kt`
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/application/ContainerTradeService.kt`
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopTransactionRecorder.kt`
 
 - [ ] **Step 1: Add shopId + direction to the event**
 
-In `PostShopTransactionEvent.kt`, add two trailing constructor params with defaults (back-compat):
+In `PostShopTransactionEvent.kt`, add two trailing constructor params with
+defaults (back-compat):
+
 ```kotlin
     val pricePaid: Double,
     val shopId: Long = 0,
@@ -320,10 +401,15 @@ In `PostShopTransactionEvent.kt`, add two trailing constructor params with defau
 
 - [ ] **Step 2: Pass shop context from ContainerTradeService**
 
-Read `ContainerTradeService.kt`. Change `fireTransactionEvent(...)` to accept `shopId: Long` and `direction: net.badgersmc.em.domain.shop.SignDirection`, set them on the event, and update both call sites (in `executeBuyTransaction` and `executeSellTransaction`) to pass `shop.id` and `shop.direction`:
+Read `ContainerTradeService.kt`. Change `fireTransactionEvent(...)` to accept
+`shopId: Long` and `direction: net.badgersmc.em.domain.shop.SignDirection`, set
+them on the event, and update both call sites (in `executeBuyTransaction` and
+`executeSellTransaction`) to pass `shop.id` and `shop.direction`:
+
 ```kotlin
         fireTransactionEvent(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction)
 ```
+
 ```kotlin
     private fun fireTransactionEvent(
         player: Player, ownerUuid: UUID, item: ItemStack, quantity: Int, cost: Long,
@@ -342,6 +428,7 @@ Read `ContainerTradeService.kt`. Change `fireTransactionEvent(...)` to accept `s
 - [ ] **Step 3: Recorder listener**
 
 `ShopTransactionRecorder.kt`:
+
 ```kotlin
 package net.badgersmc.em.infrastructure.listeners
 
@@ -386,8 +473,10 @@ open class ShopTransactionRecorder(
 
 - [ ] **Step 4: Build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. (If a `ContainerTradeService` test constructs the event or calls the private fire helper, adapt to the new params.)
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. (If a `ContainerTradeService` test constructs the
+event or calls the private fire helper, adapt to the new params.)
 
 - [ ] **Step 5: Commit**
 
@@ -403,22 +492,31 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 3: `/shop history` command
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
 - Modify: `src/main/resources/lang/en_US.yml`
 
 - [ ] **Step 1: Lang keys**
 
-In `en_US.yml`, under `shop:` add a `history` block (two-space indent, `<token>`):
+In `en_US.yml`, under `shop:` add a `history` block (two-space indent,
+`<token>`):
+
 ```yaml
-  history:
-    header: "<gold>Your shop sales <gray>(page <page>)"
-    line: "<gray>- <white><when></white> <dark_gray>| <green><qty>x <item></green> <dark_gray>| <gold><price></gold> <dark_gray>| <yellow><buyer>"
-    empty: "<gray>No recorded sales yet."
+history:
+  header: "<gold>Your shop sales <gray>(page <page>)"
+  line:
+    "<gray>- <white><when></white> <dark_gray>| <green><qty>x <item></green>
+    <dark_gray>| <gold><price></gold> <dark_gray>| <yellow><buyer>"
+  empty: "<gray>No recorded sales yet."
 ```
 
 - [ ] **Step 2: Inject the repo + add the subcommand**
 
-In `ShopCommands.kt`, add `private val transactions: net.badgersmc.em.domain.shop.ShopTransactionRepository,` to the constructor. Add:
+In `ShopCommands.kt`, add
+`private val transactions: net.badgersmc.em.domain.shop.ShopTransactionRepository,`
+to the constructor. Add:
+
 ```kotlin
     @Subcommand("history")
     @Permission("enthusiamarket.shop.use")
@@ -443,12 +541,17 @@ In `ShopCommands.kt`, add `private val transactions: net.badgersmc.em.domain.sho
         }
     }
 ```
-Add a companion (or top-level const) `private const val PAGE_SIZE = 10` inside `ShopCommands` (if no companion exists, add `private companion object { const val PAGE_SIZE = 10 }`).
+
+Add a companion (or top-level const) `private const val PAGE_SIZE = 10` inside
+`ShopCommands` (if no companion exists, add
+`private companion object { const val PAGE_SIZE = 10 }`).
 
 - [ ] **Step 3: Build (+ fix ShopCommands test ctor if present)**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. If a `ShopCommands` test constructs it directly, add `mockk<ShopTransactionRepository>(relaxed = true)`.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. If a `ShopCommands` test constructs it directly, add
+`mockk<ShopTransactionRepository>(relaxed = true)`.
 
 - [ ] **Step 4: Commit**
 
@@ -464,14 +567,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 4: Owner sale notifications
 
 **Files:**
+
 - Modify: `src/main/kotlin/net/badgersmc/em/config/EnthusiaMarketConfig.kt`
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopSaleNotifier.kt`
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopSaleJoinNotifier.kt`
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopSaleNotifier.kt`
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopSaleJoinNotifier.kt`
 - Modify: `src/main/resources/lang/en_US.yml`
 
 - [ ] **Step 1: Config flag**
 
 In `EnthusiaMarketConfig.kt` `class Shop`, add:
+
 ```kotlin
         @Comment("Notify shop owners when someone trades at their shop (live if online, summarised on next join).")
         var notifyEnabled: Boolean = true
@@ -480,15 +587,21 @@ In `EnthusiaMarketConfig.kt` `class Shop`, add:
 - [ ] **Step 2: Lang keys**
 
 Under `shop:` add a `notify` block:
+
 ```yaml
-  notify:
-    sold: "<green>Sale: <white><qty>x <item></white> for <gold><price></gold> <gray>to</gray> <yellow><buyer>"
-    away_summary: "<gold>While you were away, your shops made <white><count></white> sale(s). <gray>Use /shop history."
+notify:
+  sold:
+    "<green>Sale: <white><qty>x <item></white> for <gold><price></gold>
+    <gray>to</gray> <yellow><buyer>"
+  away_summary:
+    "<gold>While you were away, your shops made <white><count></white> sale(s).
+    <gray>Use /shop history."
 ```
 
 - [ ] **Step 3: Online notifier**
 
 `ShopSaleNotifier.kt`:
+
 ```kotlin
 package net.badgersmc.em.infrastructure.listeners
 
@@ -527,6 +640,7 @@ open class ShopSaleNotifier(
 - [ ] **Step 4: Offline (join) notifier**
 
 `ShopSaleJoinNotifier.kt`:
+
 ```kotlin
 package net.badgersmc.em.infrastructure.listeners
 
@@ -561,7 +675,8 @@ open class ShopSaleJoinNotifier(
 
 - [ ] **Step 5: Build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL.
 
 - [ ] **Step 6: Commit**
@@ -578,14 +693,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 5: PAPI placeholders
 
 **Files:**
+
 - Modify: `build.gradle.kts`
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/papi/ShopPlaceholders.kt`
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/papi/ShopPlaceholders.kt`
 - Modify: `src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/infrastructure/papi/ShopPlaceholdersTest.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/infrastructure/papi/ShopPlaceholdersTest.kt`
 
 - [ ] **Step 1: Add the nexus-papi dependency**
 
 In `build.gradle.kts`, next to the other `nexus-*` lines, add:
+
 ```kotlin
     implementation("com.github.BadgersMC.Nexus:nexus-papi:v2.2.1")
 ```
@@ -593,6 +712,7 @@ In `build.gradle.kts`, next to the other `nexus-*` lines, add:
 - [ ] **Step 2: Failing resolver test**
 
 `ShopPlaceholdersTest.kt`:
+
 ```kotlin
 package net.badgersmc.em.infrastructure.papi
 
@@ -638,12 +758,14 @@ class ShopPlaceholdersTest {
 
 - [ ] **Step 3: Run the test — verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.papi.ShopPlaceholdersTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.papi.ShopPlaceholdersTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `ShopPlaceholders` not defined.
 
 - [ ] **Step 4: Implement the expansion**
 
 `ShopPlaceholders.kt`:
+
 ```kotlin
 package net.badgersmc.em.infrastructure.papi
 
@@ -673,7 +795,9 @@ class ShopPlaceholders(
 
 - [ ] **Step 5: Register in onEnable**
 
-In `EnthusiaMarket.kt` `onEnable`, after the Nexus context `ctx` is created (and after listeners are registered is fine), add:
+In `EnthusiaMarket.kt` `onEnable`, after the Nexus context `ctx` is created (and
+after listeners are registered is fine), add:
+
 ```kotlin
         // PlaceholderAPI expansions (no-ops if PAPI absent).
         net.badgersmc.nexus.papi.registerNexusExpansions(
@@ -685,7 +809,8 @@ In `EnthusiaMarket.kt` `onEnable`, after the Nexus context `ctx` is created (and
 
 - [ ] **Step 6: Run the test — verify it passes + build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.papi.ShopPlaceholdersTest" compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.papi.ShopPlaceholdersTest" compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS + BUILD SUCCESSFUL.
 
 - [ ] **Step 7: Commit**
@@ -702,25 +827,31 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 6: Sign-click info card
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/interaction/ShopInfoCard.kt`
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopInteractListener.kt`
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopInteractListener.kt`
 - Modify: `src/main/resources/lang/en_US.yml`
 - Test: `src/test/kotlin/net/badgersmc/em/interaction/ShopInfoCardTest.kt`
 
 - [ ] **Step 1: Lang keys**
 
 Under `shop:` add an `info` block:
+
 ```yaml
-  info:
-    line1: "<gold>━━ Shop <gray>(<dir>) ━━"
-    line2: "<gray>Item: <white><qty>x <item>"
-    line3: "<gray>Price: <gold><price>"
-    line4: "<gray>Owner: <yellow><owner></yellow>  <dark_gray>|  <gray>Stock: <aqua><stock>"
+info:
+  line1: "<gold>━━ Shop <gray>(<dir>) ━━"
+  line2: "<gray>Item: <white><qty>x <item>"
+  line3: "<gray>Price: <gold><price>"
+  line4:
+    "<gray>Owner: <yellow><owner></yellow>  <dark_gray>|  <gray>Stock:
+    <aqua><stock>"
 ```
 
 - [ ] **Step 2: Failing test for the pure card builder**
 
 `ShopInfoCardTest.kt`:
+
 ```kotlin
 package net.badgersmc.em.interaction
 
@@ -743,16 +874,20 @@ class ShopInfoCardTest {
     }
 }
 ```
-(If `any()`/`anyVararg()` import friction arises, assert on a single concrete `lang.msg` stub instead — the point is that `lines` returns 4 components.)
+
+(If `any()`/`anyVararg()` import friction arises, assert on a single concrete
+`lang.msg` stub instead — the point is that `lines` returns 4 components.)
 
 - [ ] **Step 3: Run — verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.interaction.ShopInfoCardTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.interaction.ShopInfoCardTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `ShopInfoCard` not defined.
 
 - [ ] **Step 4: Implement the builder**
 
 `ShopInfoCard.kt`:
+
 ```kotlin
 package net.badgersmc.em.interaction
 
@@ -774,7 +909,9 @@ object ShopInfoCard {
 
 - [ ] **Step 5: Branch in ShopInteractListener**
 
-Read `ShopInteractListener.kt`. After the shop is resolved and `event.isCancelled = true` is set, before the menu opens, add:
+Read `ShopInteractListener.kt`. After the shop is resolved and
+`event.isCancelled = true` is set, before the menu opens, add:
+
 ```kotlin
         if (player.isSneaking) {
             val owner = org.bukkit.Bukkit.getOfflinePlayer(shop.owner).name ?: "Unknown"
@@ -785,7 +922,10 @@ Read `ShopInteractListener.kt`. After the shop is resolved and `event.isCancelle
             return
         }
 ```
-Add a private helper mirroring `SearchResultsMenu.tradesAvailable` (live container stock / sellAmount):
+
+Add a private helper mirroring `SearchResultsMenu.tradesAvailable` (live
+container stock / sellAmount):
+
 ```kotlin
     private fun stockOf(shop: net.badgersmc.em.domain.shop.Shop): Int {
         val world = org.bukkit.Bukkit.getWorld(shop.containerWorld) ?: return 0
@@ -796,11 +936,13 @@ Add a private helper mirroring `SearchResultsMenu.tradesAvailable` (live contain
         return total / shop.sellAmount.coerceAtLeast(1)
     }
 ```
+
 (`player` and `lang` are already in scope / injected in this listener.)
 
 - [ ] **Step 6: Run the test + build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.interaction.ShopInfoCardTest" compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.interaction.ShopInfoCardTest" compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS + BUILD SUCCESSFUL.
 
 - [ ] **Step 7: Commit**
@@ -817,12 +959,14 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 7: Retention pruning
 
 **Files:**
+
 - Modify: `src/main/kotlin/net/badgersmc/em/config/EnthusiaMarketConfig.kt`
 - Modify: `src/main/kotlin/net/badgersmc/em/EnthusiaMarket.kt`
 
 - [ ] **Step 1: Config**
 
 In `EnthusiaMarketConfig.kt` `class Shop`, add:
+
 ```kotlin
         @Comment("Days of shop transaction history to keep; 0 disables pruning.")
         var historyRetentionDays: Int = 30
@@ -830,7 +974,9 @@ In `EnthusiaMarketConfig.kt` `class Shop`, add:
 
 - [ ] **Step 2: Prune on enable**
 
-In `EnthusiaMarket.kt` `onEnable`, after the DI context + dataSource exist (after Phase 6 listener registration is fine), add:
+In `EnthusiaMarket.kt` `onEnable`, after the DI context + dataSource exist
+(after Phase 6 listener registration is fine), add:
+
 ```kotlin
         // Prune old shop transaction history per config (0 = keep everything).
         if (cfg.shop.historyRetentionDays > 0) {
@@ -840,11 +986,14 @@ In `EnthusiaMarket.kt` `onEnable`, after the DI context + dataSource exist (afte
             if (pruned > 0) logger.info("Pruned $pruned old shop transaction(s)")
         }
 ```
-(`cfg` is the `EnthusiaMarketConfig` already fetched in `onEnable`; `ctx.getBean<T>()` is the existing accessor.)
+
+(`cfg` is the `EnthusiaMarketConfig` already fetched in `onEnable`;
+`ctx.getBean<T>()` is the existing accessor.)
 
 - [ ] **Step 3: Build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL.
 
 - [ ] **Step 4: Commit**
@@ -862,12 +1011,16 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Full verification on the committed HEAD**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL, detekt 0, all tests pass.
 
 - [ ] **Step 2: Mark progress + commit**
 
-Append to `docs/tasks.md`: `- [x] ItemShops parity SP6 — misc/integration (transaction log + /shop history, owner notifications, PAPI placeholders, sign-click info card)`. Then:
+Append to `docs/tasks.md`:
+`- [x] ItemShops parity SP6 — misc/integration (transaction log + /shop history, owner notifications, PAPI placeholders, sign-click info card)`.
+Then:
+
 ```bash
 cd /d/BadgersMC-Dev/EnthusiaMarket && git add docs/tasks.md
 git commit -m "docs: mark ItemShops parity SP6 (misc/integration) complete
@@ -883,12 +1036,29 @@ Report the final gate output + commit list. Do NOT push.
 
 ## Self-Review Notes (for the implementer)
 
-1. **Transaction table is SQLite syntax** (Task 1) — `INTEGER PRIMARY KEY AUTOINCREMENT`, matching `shop_items`. The persistence test (MockBukkit + real migration) is the gate.
-2. **Event back-compat** (Task 2) — the two new `PostShopTransactionEvent` params are defaulted, so any existing construction still compiles; only `ContainerTradeService` passes the real values.
-3. **History is best-effort** (Task 2) — the recorder swallows DB errors; a logging failure must never roll back a completed trade.
-4. **The `notified` flag is the single unseen-queue** (Task 4) — the online notifier marks-notified after sending, so the join notifier won't repeat it. Both early-return when `notifyEnabled = false`.
-5. **`event.buyer.name`** (Task 4 online notifier) — `buyer` is an online `Player` (the clicker), so `.name` is safe there; the join/history paths use `OfflinePlayer` name with an "Unknown" fallback.
-6. **PAPI is provide-side only** (Task 5) — `registerNexusExpansions` no-ops without PlaceholderAPI; never assume the placeholder is installed. New dep `nexus-papi:v2.2.1` must match the other Nexus modules' version.
-7. **Info card reuses the stock read** (Task 6) — same container-inventory logic as `SearchResultsMenu.tradesAvailable`; keep it a private helper in the listener (don't over-abstract for SP6).
-8. **Prune needs the repo bean** (Task 7) — `ctx.getBean<ShopTransactionRepository>()` only works after the Nexus context + `dataSource` bean exist; place the call late in `onEnable`.
-9. **Constructor churn** (Tasks 2–7) — `ContainerTradeService`, `ShopCommands`, `ShopInteractListener` gain deps/params. Update any direct-construction test with the new args; Nexus injects them in production.
+1. **Transaction table is SQLite syntax** (Task 1) —
+   `INTEGER PRIMARY KEY AUTOINCREMENT`, matching `shop_items`. The persistence
+   test (MockBukkit + real migration) is the gate.
+2. **Event back-compat** (Task 2) — the two new `PostShopTransactionEvent`
+   params are defaulted, so any existing construction still compiles; only
+   `ContainerTradeService` passes the real values.
+3. **History is best-effort** (Task 2) — the recorder swallows DB errors; a
+   logging failure must never roll back a completed trade.
+4. **The `notified` flag is the single unseen-queue** (Task 4) — the online
+   notifier marks-notified after sending, so the join notifier won't repeat it.
+   Both early-return when `notifyEnabled = false`.
+5. **`event.buyer.name`** (Task 4 online notifier) — `buyer` is an online
+   `Player` (the clicker), so `.name` is safe there; the join/history paths use
+   `OfflinePlayer` name with an "Unknown" fallback.
+6. **PAPI is provide-side only** (Task 5) — `registerNexusExpansions` no-ops
+   without PlaceholderAPI; never assume the placeholder is installed. New dep
+   `nexus-papi:v2.2.1` must match the other Nexus modules' version.
+7. **Info card reuses the stock read** (Task 6) — same container-inventory logic
+   as `SearchResultsMenu.tradesAvailable`; keep it a private helper in the
+   listener (don't over-abstract for SP6).
+8. **Prune needs the repo bean** (Task 7) —
+   `ctx.getBean<ShopTransactionRepository>()` only works after the Nexus
+   context + `dataSource` bean exist; place the call late in `onEnable`.
+9. **Constructor churn** (Tasks 2–7) — `ContainerTradeService`, `ShopCommands`,
+   `ShopInteractListener` gain deps/params. Update any direct-construction test
+   with the new args; Nexus injects them in production.

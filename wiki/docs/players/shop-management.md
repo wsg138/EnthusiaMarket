@@ -79,7 +79,8 @@ Deletes **all** your shops. Requires `enthusiamarket.shop.delete.all`.
 /shop breakdelete
 ```
 
-Toggles break-delete: while active, breaking a shop's sign also deletes the shop record.
+Toggles break-delete: while active, breaking a shop's sign also deletes the shop
+record.
 
 ```text
 /shop breakdelete 5m
@@ -108,12 +109,12 @@ Displays a multi-line tutorial from the language files. Good for new players.
 
 These require `enthusiamarket.admin.shop`:
 
-| Command | Description |
-|---------|-------------|
-| `/shop admin view` | Open shop edit GUI for the shop you're looking at |
-| `/shop admin info` | Show detailed info for the shop you're looking at |
-| `/shop admin remove` | Admin-delete the shop you're looking at |
-| `/shop admin fix` | Re-render sign and check container for the shop you're looking at |
-| `/shop admin breakothers [mode]` | Toggle bypass for sign break protection |
-| `/shop admin vault <player>` | Open another player's shop vault |
-| `/shop admin contents` | View container contents of the shop you're looking at |
+| Command                          | Description                                                       |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `/shop admin view`               | Open shop edit GUI for the shop you're looking at                 |
+| `/shop admin info`               | Show detailed info for the shop you're looking at                 |
+| `/shop admin remove`             | Admin-delete the shop you're looking at                           |
+| `/shop admin fix`                | Re-render sign and check container for the shop you're looking at |
+| `/shop admin breakothers [mode]` | Toggle bypass for sign break protection                           |
+| `/shop admin vault <player>`     | Open another player's shop vault                                  |
+| `/shop admin contents`           | View container contents of the shop you're looking at             |

@@ -37,7 +37,7 @@ class GeyserSessionSkinListenerTest {
         val bus = mockk<EventBus<EventRegistrar>>(relaxed = true)
         val listener = GeyserSessionSkinListener(BedrockSkinCapture { _, _ -> captures.incrementAndGet() }, bus)
         val malformed = mockk<SessionSkinApplyEvent>()
-        every { malformed.bedrock() } throws IllegalArgumentException()
+        every { malformed.bedrock() } throws IllegalArgumentException("malformed Bedrock session")
 
         dispatch(listener, malformed)
         dispatch(listener, compatibleEvent())

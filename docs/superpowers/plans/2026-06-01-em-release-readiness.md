@@ -1,74 +1,121 @@
 # EM Release Readiness Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship EnthusiaMarket for next-week release by fixing the WorldGuard region-provisioning gap (27/71 stalls unbuildable), the permission-declaration drift bug, the Bedrock shop-creation item-serialization corruption bug, and wiring the shipped-but-dead features (entity limits, region info card, particle outline, shop creation/edit menus).
+**Goal:** Ship EnthusiaMarket for next-week release by fixing the WorldGuard
+region-provisioning gap (27/71 stalls unbuildable), the permission-declaration
+drift bug, the Bedrock shop-creation item-serialization corruption bug, and
+wiring the shipped-but-dead features (entity limits, region info card, particle
+outline, shop creation/edit menus).
 
-**Architecture:** Hexagonal/SPEAR — domain ports, application services, infrastructure adapters. New outbound port `RegionProvisioner` (WG flag/priority writer) mirrors the existing `RegionMemberSync` pattern. Permission tree moves from hand-maintained `paper-plugin.yml` to a build-time Kotlin DSL. Entity-limit kind is a stored column on `Stall` resolved in the spawn hot-path.
+**Architecture:** Hexagonal/SPEAR — domain ports, application services,
+infrastructure adapters. New outbound port `RegionProvisioner` (WG flag/priority
+writer) mirrors the existing `RegionMemberSync` pattern. Permission tree moves
+from hand-maintained `paper-plugin.yml` to a build-time Kotlin DSL. Entity-limit
+kind is a stored column on `Stall` resolved in the spawn hot-path.
 
-**Tech Stack:** Kotlin 2.0.0, Gradle Kotlin DSL + Shadow, Nexus DI (@Service/@Component/@Repository), WorldGuard 7.0.9 API, WorldEdit 7.3.0, JUnit 5 + MockK + MockBukkit, JDBC migrations via nexus-persistence, detekt 1.23.8.
+**Tech Stack:** Kotlin 2.0.0, Gradle Kotlin DSL + Shadow, Nexus DI
+(@Service/@Component/@Repository), WorldGuard 7.0.9 API, WorldEdit 7.3.0, JUnit
+5 + MockK + MockBukkit, JDBC migrations via nexus-persistence, detekt 1.23.8.
 
-**Reference spec:** `docs/superpowers/specs/2026-06-01-em-release-readiness-design.md`
+**Reference spec:**
+`docs/superpowers/specs/2026-06-01-em-release-readiness-design.md`
 
 **Standing rules for every task:**
-- Bash cwd resets between calls — prefix commands with `cd /d/BadgersMC-Dev/EnthusiaMarket &&`.
-- LumaGuilds jar must be passed: `-Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar`.
-- Full verify command: `./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-- SPEAR cycle per task: write failing test (red) → minimal impl (green) → check layer boundaries → refine → commit.
-- Op-bypass warning: WG `op-permissions: true`. Any manual in-game test of build rights MUST use a non-op account or the bug is masked. Automated tests use mocks/MockBukkit so this only affects manual QA.
+
+- Bash cwd resets between calls — prefix commands with
+  `cd /d/BadgersMC-Dev/EnthusiaMarket &&`.
+- LumaGuilds jar must be passed:
+  `-Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar`.
+- Full verify command:
+  `./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+- SPEAR cycle per task: write failing test (red) → minimal impl (green) → check
+  layer boundaries → refine → commit.
+- Op-bypass warning: WG `op-permissions: true`. Any manual in-game test of build
+  rights MUST use a non-op account or the bug is masked. Automated tests use
+  mocks/MockBukkit so this only affects manual QA.
 
 ---
 
 ## CONFIRMED API SYMBOLS (verified against the real jars on disk, 2026-06-01)
 
-These resolve the high-risk signature-confirmation points (Self-Review items 4, 5, 6). They
-were checked with `javap` against the actual WorldGuard 7.0.9 and WorldEdit 7.3.0 jars in the
-gradle cache, and cross-checked against existing repo usage. **Use these exact symbols; do NOT
-re-derive or guess.** Existing repo precedent: `WorldEditSchematicAdapter.kt:132-137`
-(region bounds) and `ShopCreateListener.kt:104-108` (applicable regions).
+These resolve the high-risk signature-confirmation points (Self-Review items 4,
+5, 6). They were checked with `javap` against the actual WorldGuard 7.0.9 and
+WorldEdit 7.3.0 jars in the gradle cache, and cross-checked against existing
+repo usage. **Use these exact symbols; do NOT re-derive or guess.** Existing
+repo precedent: `WorldEditSchematicAdapter.kt:132-137` (region bounds) and
+`ShopCreateListener.kt:104-108` (applicable regions).
 
-**WorldGuard flag constants** — `com.sk89q.worldguard.protection.flags.Flags` (all `public static final StateFlag`):
-- `Flags.BUILD`, `Flags.BLOCK_PLACE`, `Flags.BLOCK_BREAK`, `Flags.USE`, `Flags.INTERACT`,
-  `Flags.CHEST_ACCESS`, `Flags.RIDE`, `Flags.ITEM_FRAME_ROTATE` ← **note: `ITEM_FRAME_ROTATE`, NOT `ITEM_FRAME_ROTATION`.**
+**WorldGuard flag constants** — `com.sk89q.worldguard.protection.flags.Flags`
+(all `public static final StateFlag`):
+
+- `Flags.BUILD`, `Flags.BLOCK_PLACE`, `Flags.BLOCK_BREAK`, `Flags.USE`,
+  `Flags.INTERACT`, `Flags.CHEST_ACCESS`, `Flags.RIDE`,
+  `Flags.ITEM_FRAME_ROTATE` ← **note: `ITEM_FRAME_ROTATE`, NOT
+  `ITEM_FRAME_ROTATION`.**
 
 **Flag state + groups:**
-- State enum: `com.sk89q.worldguard.protection.flags.StateFlag.State.ALLOW` / `.DENY`.
-- Region group enum: `com.sk89q.worldguard.protection.flags.RegionGroup.MEMBERS` / `.ALL` (also OWNERS, NON_MEMBERS, NON_OWNERS).
-- Group flag accessor (Kotlin property form): `flag.regionGroupFlag` (Java `Flag.getRegionGroupFlag(): RegionGroupFlag`).
+
+- State enum: `com.sk89q.worldguard.protection.flags.StateFlag.State.ALLOW` /
+  `.DENY`.
+- Region group enum: `com.sk89q.worldguard.protection.flags.RegionGroup.MEMBERS`
+  / `.ALL` (also OWNERS, NON_MEMBERS, NON_OWNERS).
+- Group flag accessor (Kotlin property form): `flag.regionGroupFlag` (Java
+  `Flag.getRegionGroupFlag(): RegionGroupFlag`).
 - Set a flag: `region.setFlag(Flags.BUILD, StateFlag.State.ALLOW)` and
-  `region.setFlag(Flags.BUILD.regionGroupFlag, RegionGroup.MEMBERS)`. Signature is
-  `<T extends Flag<V>, V> void setFlag(T, V)` — type-safe; the State/RegionGroup value must match the flag.
+  `region.setFlag(Flags.BUILD.regionGroupFlag, RegionGroup.MEMBERS)`. Signature
+  is `<T extends Flag<V>, V> void setFlag(T, V)` — type-safe; the
+  State/RegionGroup value must match the flag.
 
 **ProtectedRegion** — `com.sk89q.worldguard.protection.regions.ProtectedRegion`:
+
 - `region.priority = 20` (Kotlin) ↔ `setPriority(int)` / `getPriority()`.
 - `region.id` ↔ `getId(): String`.
-- `region.minimumPoint` / `region.maximumPoint` ↔ `getMinimumPoint()/getMaximumPoint(): BlockVector3`.
+- `region.minimumPoint` / `region.maximumPoint` ↔
+  `getMinimumPoint()/getMaximumPoint(): BlockVector3`.
 
 **RegionManager** — `com.sk89q.worldguard.protection.managers.RegionManager`:
+
 - `getRegion(String): ProtectedRegion?`
 - `getApplicableRegions(BlockVector3): ApplicableRegionSet`
-- `getApplicableRegionsIDs(BlockVector3): List<String>` ← **simplest for `regionAt`** (no iteration needed).
+- `getApplicableRegionsIDs(BlockVector3): List<String>` ← **simplest for
+  `regionAt`** (no iteration needed).
 - `getRegions(): Map<String, ProtectedRegion>`
 
 **ApplicableRegionSet** — `com.sk89q.worldguard.protection.ApplicableRegionSet`:
-- Is `Iterable<ProtectedRegion>` (so `for (region in applicable)` works) and has `getRegions(): Set<ProtectedRegion>`.
+
+- Is `Iterable<ProtectedRegion>` (so `for (region in applicable)` works) and has
+  `getRegions(): Set<ProtectedRegion>`.
 
 **BlockVector3** — `com.sk89q.worldedit.math.BlockVector3`:
-- Accessors `x()`, `y()`, `z()` ALL exist (also `getX()/getY()/getZ()/getBlockX()`). **The plan's `.x()/.y()/.z()` form is correct — use it.**
-- Static factory: `BlockVector3.at(int, int, int)` and `at(double, double, double)`.
+
+- Accessors `x()`, `y()`, `z()` ALL exist (also
+  `getX()/getY()/getZ()/getBlockX()`). **The plan's `.x()/.y()/.z()` form is
+  correct — use it.**
+- Static factory: `BlockVector3.at(int, int, int)` and
+  `at(double, double, double)`.
 
 **BukkitAdapter** (worldedit-bukkit) — proven in repo:
+
 - `BukkitAdapter.adapt(bukkitWorld)` → WE world for `regionContainer.get(...)`.
-- `BukkitAdapter.asBlockVector(location): BlockVector3` ← use for location→vector instead of manual `BlockVector3.at`.
+- `BukkitAdapter.asBlockVector(location): BlockVector3` ← use for
+  location→vector instead of manual `BlockVector3.at`.
 
 **Plan-code adjustments implied by the above (apply when you reach the task):**
-- **Task B.6 `regionAt`:** prefer `regionManager.getApplicableRegionsIDs(BlockVector3.at(x, y, z))`
-  and pick the highest-priority stall id. Since IDs alone don't carry priority, either iterate
-  `getApplicableRegions(...)` (Iterable<ProtectedRegion>) and `maxByOrNull { it.priority }?.id`
-  (the plan's approach — valid), OR filter `getApplicableRegionsIDs` to the stall prefix and
-  take the first. The plan's `getApplicableRegions(...).regions.maxByOrNull { it.priority }?.id`
-  is confirmed valid (`.regions` = `getRegions()` Set). Keep it.
-- **Task F.2:** the plan already uses `ITEM_FRAME_ROTATE` — confirmed correct, no change.
+
+- **Task B.6 `regionAt`:** prefer
+  `regionManager.getApplicableRegionsIDs(BlockVector3.at(x, y, z))` and pick the
+  highest-priority stall id. Since IDs alone don't carry priority, either
+  iterate `getApplicableRegions(...)` (Iterable<ProtectedRegion>) and
+  `maxByOrNull { it.priority }?.id` (the plan's approach — valid), OR filter
+  `getApplicableRegionsIDs` to the stall prefix and take the first. The plan's
+  `getApplicableRegions(...).regions.maxByOrNull { it.priority }?.id` is
+  confirmed valid (`.regions` = `getRegions()` Set). Keep it.
+- **Task F.2:** the plan already uses `ITEM_FRAME_ROTATE` — confirmed correct,
+  no change.
 - **Task C.1 `bounds`:** `min.x()/min.y()/min.z()` confirmed valid, no change.
 
 ---
@@ -78,7 +125,9 @@ re-derive or guess.** Existing repo precedent: `WorldEditSchematicAdapter.kt:132
 ### Task 0.1: Fix regionPrefix and add stallPriority
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/config/EnthusiaMarketConfig.kt` (Market class, ~line 91-96)
+
+- Modify: `src/main/kotlin/net/badgersmc/em/config/EnthusiaMarketConfig.kt`
+  (Market class, ~line 91-96)
 
 - [ ] **Step 1: Change regionPrefix default and add stallPriority**
 
@@ -99,13 +148,17 @@ In `EnthusiaMarketConfig.kt`, replace the `Market` class body:
     }
 ```
 
-- [ ] **Step 2: Update ImportStallsServiceTest mock prefix to match new default**
+- [ ] **Step 2: Update ImportStallsServiceTest mock prefix to match new
+      default**
 
-The existing test mocks `listByPrefix("world", "stall_")`. This still works (it passes the prefix explicitly), so no change required yet — leave it. Verify compile only.
+The existing test mocks `listByPrefix("world", "stall_")`. This still works (it
+passes the prefix explicitly), so no change required yet — leave it. Verify
+compile only.
 
 - [ ] **Step 3: Build to confirm config compiles**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 4: Commit**
@@ -127,16 +180,27 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 New SPEAR tasks TDD-280 (port + adapter), TDD-281 (import wiring).
 
 **File structure:**
-- Create: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvisioner.kt` — outbound port.
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt` — WG adapter writing priority + flags.
-- Modify: `src/main/kotlin/net/badgersmc/em/application/ImportStallsService.kt` — call provisioner per region.
-- Modify: `src/main/resources/lang/en_US.yml` — provision count in import result message.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` — surface provisioned count.
-- Test: `src/test/kotlin/net/badgersmc/em/application/ImportStallsServiceTest.kt` — provisioner called per created region.
+
+- Create: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvisioner.kt` —
+  outbound port.
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt`
+  — WG adapter writing priority + flags.
+- Modify: `src/main/kotlin/net/badgersmc/em/application/ImportStallsService.kt`
+  — call provisioner per region.
+- Modify: `src/main/resources/lang/en_US.yml` — provision count in import result
+  message.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` —
+  surface provisioned count.
+- Test:
+  `src/test/kotlin/net/badgersmc/em/application/ImportStallsServiceTest.kt` —
+  provisioner called per created region.
 
 ### Task F.1: RegionProvisioner port (TDD-280)
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvisioner.kt`
 
 - [ ] **Step 1: Write the port interface**
@@ -174,7 +238,8 @@ interface RegionProvisioner {
 
 - [ ] **Step 2: Build to confirm the port compiles**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 3: Commit**
@@ -188,17 +253,27 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task F.2: WorldGuard adapter for RegionProvisioner (TDD-280)
 
-WorldGuard 7.0.9 flag API reference (verified against existing WG usage in repo):
-- Flags live in `com.sk89q.worldguard.protection.flags.Flags` (static fields: `BUILD`, `USE`, `CHEST_ACCESS`, `BLOCK_PLACE`, `BLOCK_BREAK`, `RIDE`, `INTERACT`, `ITEM_FRAME_ROTATE`).
-- `StateFlag` values: `com.sk89q.worldguard.protection.flags.StateFlag.State.ALLOW`.
-- Region-group flags: `flag.regionGroupFlag` returns a `RegionGroupFlag`; values from `com.sk89q.worldguard.protection.flags.RegionGroup` (`MEMBERS`, `ALL`).
-- Set: `region.setFlag(Flags.BUILD, StateFlag.State.ALLOW)` and `region.setFlag(Flags.BUILD.regionGroupFlag, RegionGroup.MEMBERS)`.
+WorldGuard 7.0.9 flag API reference (verified against existing WG usage in
+repo):
+
+- Flags live in `com.sk89q.worldguard.protection.flags.Flags` (static fields:
+  `BUILD`, `USE`, `CHEST_ACCESS`, `BLOCK_PLACE`, `BLOCK_BREAK`, `RIDE`,
+  `INTERACT`, `ITEM_FRAME_ROTATE`).
+- `StateFlag` values:
+  `com.sk89q.worldguard.protection.flags.StateFlag.State.ALLOW`.
+- Region-group flags: `flag.regionGroupFlag` returns a `RegionGroupFlag`; values
+  from `com.sk89q.worldguard.protection.flags.RegionGroup` (`MEMBERS`, `ALL`).
+- Set: `region.setFlag(Flags.BUILD, StateFlag.State.ALLOW)` and
+  `region.setFlag(Flags.BUILD.regionGroupFlag, RegionGroup.MEMBERS)`.
 - Priority: `region.priority = 20`.
 
 **Files:**
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt`
 
-- [ ] **Step 1: Write the adapter (mirrors WorldGuardRegionMemberSync withRegion pattern)**
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvisioner.kt`
+
+- [ ] **Step 1: Write the adapter (mirrors WorldGuardRegionMemberSync withRegion
+      pattern)**
 
 ```kotlin
 package net.badgersmc.em.infrastructure.worldguard
@@ -275,8 +350,13 @@ class WorldGuardRegionProvisioner : RegionProvisioner {
 
 - [ ] **Step 2: Build to confirm WG flag API references resolve**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. The flag constants (`BUILD`, `BLOCK_PLACE`, `BLOCK_BREAK`, `USE`, `INTERACT`, `CHEST_ACCESS`, `RIDE`, `ITEM_FRAME_ROTATE`), `StateFlag.State.ALLOW`, `RegionGroup.MEMBERS/.ALL`, and `flag.regionGroupFlag` are all PRE-CONFIRMED against the real jar (see "CONFIRMED API SYMBOLS"). The code as pasted compiles — if it does not, you mistyped, not the plan.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. The flag constants (`BUILD`, `BLOCK_PLACE`,
+`BLOCK_BREAK`, `USE`, `INTERACT`, `CHEST_ACCESS`, `RIDE`, `ITEM_FRAME_ROTATE`),
+`StateFlag.State.ALLOW`, `RegionGroup.MEMBERS/.ALL`, and `flag.regionGroupFlag`
+are all PRE-CONFIRMED against the real jar (see "CONFIRMED API SYMBOLS"). The
+code as pasted compiles — if it does not, you mistyped, not the plan.
 
 - [ ] **Step 3: Commit**
 
@@ -292,15 +372,22 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task F.3: Wire provisioning into import (TDD-281)
 
-`ImportStallsService` gains a `RegionProvisioner` dependency and a `stallPriority` parameter, provisions every region it processes (both newly-created and pre-existing — idempotent ensures already-imported stalls get their flags fixed too), and reports the count.
+`ImportStallsService` gains a `RegionProvisioner` dependency and a
+`stallPriority` parameter, provisions every region it processes (both
+newly-created and pre-existing — idempotent ensures already-imported stalls get
+their flags fixed too), and reports the count.
 
 **Files:**
+
 - Modify: `src/main/kotlin/net/badgersmc/em/application/ImportStallsService.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/application/ImportStallsServiceTest.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/application/ImportStallsServiceTest.kt`
 
 - [ ] **Step 1: Write the failing test for provisioning**
 
-Add these tests to `ImportStallsServiceTest.kt`. First update the `service(...)` helper to inject a mock provisioner and the priority, then add two tests. Replace the existing `service` helper with:
+Add these tests to `ImportStallsServiceTest.kt`. First update the `service(...)`
+helper to inject a mock provisioner and the priority, then add two tests.
+Replace the existing `service` helper with:
 
 ```kotlin
     private fun service(
@@ -324,7 +411,8 @@ Add these tests to `ImportStallsServiceTest.kt`. First update the `service(...)`
     }
 ```
 
-Then update the two existing tests to use the new prefix `"stall"` and destructure a `Triple` (the third value can be ignored with `_`), and add:
+Then update the two existing tests to use the new prefix `"stall"` and
+destructure a `Triple` (the third value can be ignored with `_`), and add:
 
 ```kotlin
     @Test fun `provisions every matched region on import`() {
@@ -361,12 +449,17 @@ Then update the two existing tests to use the new prefix `"stall"` and destructu
     }
 ```
 
-Also update the two pre-existing tests: change `listByPrefix("world", "stall_")` expectations to `"stall"`, `svc.import("world", "stall_")` to `"stall"`, and destructure `val (svc, repo) = ...` to `val (svc, repo, _) = ...`. Add `import io.mockk.verify` if not already present (it is).
+Also update the two pre-existing tests: change `listByPrefix("world", "stall_")`
+expectations to `"stall"`, `svc.import("world", "stall_")` to `"stall"`, and
+destructure `val (svc, repo) = ...` to `val (svc, repo, _) = ...`. Add
+`import io.mockk.verify` if not already present (it is).
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ImportStallsServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: FAIL — `ImportStallsService` constructor has no `provisioner`/`stallPriority` params (compile error).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ImportStallsServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: FAIL — `ImportStallsService` constructor has no
+`provisioner`/`stallPriority` params (compile error).
 
 - [ ] **Step 3: Implement provisioning in ImportStallsService**
 
@@ -423,16 +516,21 @@ class ImportStallsService(
 }
 ```
 
-Note: `stallPriority: Int` is a non-bean constructor param. Nexus DI must supply it — register it as a bean in `onEnable` (Step 5) the same way `defaultRent` is registered.
+Note: `stallPriority: Int` is a non-bean constructor param. Nexus DI must supply
+it — register it as a bean in `onEnable` (Step 5) the same way `defaultRent` is
+registered.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ImportStallsServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ImportStallsServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS (all ImportStallsServiceTest tests).
 
 - [ ] **Step 5: Register stallPriority bean in onEnable**
 
-In `EnthusiaMarket.kt`, after the `defaultRent` bean registration block (around line 94, after `ctx.registerBean("defaultRent", RentTerms::class, defaultRent)`), add:
+In `EnthusiaMarket.kt`, after the `defaultRent` bean registration block (around
+line 94, after
+`ctx.registerBean("defaultRent", RentTerms::class, defaultRent)`), add:
 
 ```kotlin
         // Provisioning priority for stall regions (REQ Workstream F) — a
@@ -442,7 +540,8 @@ In `EnthusiaMarket.kt`, after the `defaultRent` bean registration block (around 
 
 - [ ] **Step 6: Build to confirm DI wiring compiles**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 7: Commit**
@@ -461,17 +560,23 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task F.4: Surface provisioned count in import message
 
 **Files:**
+
 - Modify: `src/main/resources/lang/en_US.yml` (admin.import.result key)
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` (import subcommand, ~line 55-66)
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt`
+  (import subcommand, ~line 55-66)
 
 - [ ] **Step 1: Read the current import message key**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && sed -n '13,30p' src/main/resources/lang/en_US.yml`
-Expected: shows `admin:` → `import:` → `result:` line with `{created}`/`{skipped}` placeholders.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && sed -n '13,30p' src/main/resources/lang/en_US.yml`
+Expected: shows `admin:` → `import:` → `result:` line with
+`{created}`/`{skipped}` placeholders.
 
 - [ ] **Step 2: Add {provisioned} to the result message**
 
-In `en_US.yml`, edit the `admin.import.result` value to append the provisioned count. For example if it reads:
+In `en_US.yml`, edit the `admin.import.result` value to append the provisioned
+count. For example if it reads:
 `result: "<green>Imported {created} stalls ({skipped} skipped) from {world}:{region_prefix}*"`
 change to:
 `result: "<green>Imported {created} stalls ({skipped} skipped, {provisioned} regions provisioned) from {world}:{region_prefix}*"`
@@ -500,12 +605,14 @@ In `AdminCommands.kt` `import(...)`, add the `provisioned` pair:
 
 - [ ] **Step 4: Full verify**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 5: Mark tasks done + commit**
 
-Update `docs/tasks.md`: mark TDD-280 and TDD-281 `[x]` with evidence (file paths above). Then:
+Update `docs/tasks.md`: mark TDD-280 and TDD-281 `[x]` with evidence (file paths
+above). Then:
 
 ```bash
 cd /d/BadgersMC-Dev/EnthusiaMarket && git add src/main/resources/lang/en_US.yml src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt docs/tasks.md
@@ -518,16 +625,22 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ## Workstream E2 — Permissions DSL
 
-Replace the hand-maintained `permissions:` block in `paper-plugin.yml` with the `nexus-permissions-gradle` build-time DSL. This also declares the four missing nodes (`stall.buy/offer/sellback/members`) fixing the drift bug.
+Replace the hand-maintained `permissions:` block in `paper-plugin.yml` with the
+`nexus-permissions-gradle` build-time DSL. This also declares the four missing
+nodes (`stall.buy/offer/sellback/members`) fixing the drift bug.
 
 **File structure:**
-- Modify: `settings.gradle.kts` — plugin resolution mapping for the JitPack-published gradle plugin.
+
+- Modify: `settings.gradle.kts` — plugin resolution mapping for the
+  JitPack-published gradle plugin.
 - Modify: `build.gradle.kts` — apply plugin, declare permission tree.
-- Modify: `src/main/resources/paper-plugin.yml` — remove the `permissions:` block.
+- Modify: `src/main/resources/paper-plugin.yml` — remove the `permissions:`
+  block.
 
 ### Task E2.1: Wire the nexus-permissions-gradle plugin
 
 **Files:**
+
 - Modify: `settings.gradle.kts`
 - Modify: `build.gradle.kts` (buildscript block, top)
 
@@ -556,7 +669,9 @@ rootProject.name = "EnthusiaMarket"
 
 - [ ] **Step 2: Add the gradle plugin to buildscript classpath**
 
-In `build.gradle.kts`, the existing `buildscript` block (top of file, lines 1-9) currently declares the detekt plugin. Add the permissions plugin classpath alongside it. Replace the buildscript block with:
+In `build.gradle.kts`, the existing `buildscript` block (top of file, lines 1-9)
+currently declares the detekt plugin. Add the permissions plugin classpath
+alongside it. Replace the buildscript block with:
 
 ```kotlin
 buildscript {
@@ -574,7 +689,8 @@ buildscript {
 
 - [ ] **Step 3: Apply the plugin (after the existing detekt apply line ~18)**
 
-In `build.gradle.kts`, after `apply(plugin = "io.gitlab.arturbosch.detekt")`, add:
+In `build.gradle.kts`, after `apply(plugin = "io.gitlab.arturbosch.detekt")`,
+add:
 
 ```kotlin
 apply(plugin = "net.badgersmc.nexus.permissions")
@@ -582,7 +698,8 @@ apply(plugin = "net.badgersmc.nexus.permissions")
 
 - [ ] **Step 4: Build to confirm the plugin resolves**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew help -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew help -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL (plugin downloaded from JitPack, no apply error).
 
 - [ ] **Step 5: Commit**
@@ -596,16 +713,24 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task E2.2: Declare the permission tree (incl. drift-fix nodes)
 
-The full tree must reproduce every node currently in `paper-plugin.yml` PLUS the four undeclared nodes used in code (`stall.buy`, `stall.offer`, `stall.sellback`, `stall.members`) and new feature nodes (`stall.setkind`, `stall.entitylimit`, `stall.recount`, `stall.info`, `stall.outline`).
+The full tree must reproduce every node currently in `paper-plugin.yml` PLUS the
+four undeclared nodes used in code (`stall.buy`, `stall.offer`,
+`stall.sellback`, `stall.members`) and new feature nodes (`stall.setkind`,
+`stall.entitylimit`, `stall.recount`, `stall.info`, `stall.outline`).
 
 **Files:**
+
 - Modify: `build.gradle.kts` (add permissions extension config block)
 
 - [ ] **Step 1: Add the tree DSL config block**
 
-In `build.gradle.kts`, before the `tasks {` block (around line 133), add the extension configuration. Import `Default` at the top of the file (after the existing imports / before `buildscript` is not valid — place the import at the very top, line 1, Kotlin allows file-level imports before buildscript):
+In `build.gradle.kts`, before the `tasks {` block (around line 133), add the
+extension configuration. Import `Default` at the top of the file (after the
+existing imports / before `buildscript` is not valid — place the import at the
+very top, line 1, Kotlin allows file-level imports before buildscript):
 
-Actually Kotlin DSL requires imports at the very top. Add to the very first lines of `build.gradle.kts` (before `buildscript`):
+Actually Kotlin DSL requires imports at the very top. Add to the very first
+lines of `build.gradle.kts` (before `buildscript`):
 
 ```kotlin
 import net.badgersmc.nexus.permissions.Default
@@ -659,12 +784,21 @@ configure<net.badgersmc.nexus.permissions.gradle.NexusPermissionsExtension> {
 }
 ```
 
-Note: confirm the exact child-node naming semantics by checking the staged output in Step 2 — the merger may emit children as `enthusiamarket.admin.import` (dotted concatenation) or as literal child names. Adjust child strings to match the production node names in §2 of the spec (`enthusiamarket.admin.import`, `enthusiamarket.stall.buy`, etc.) if the merger does not auto-prefix.
+Note: confirm the exact child-node naming semantics by checking the staged
+output in Step 2 — the merger may emit children as `enthusiamarket.admin.import`
+(dotted concatenation) or as literal child names. Adjust child strings to match
+the production node names in §2 of the spec (`enthusiamarket.admin.import`,
+`enthusiamarket.stall.buy`, etc.) if the merger does not auto-prefix.
 
 - [ ] **Step 2: Generate and inspect the staged paper-plugin.yml**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew processResources -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain && sed -n '/^permissions:/,$p' build/resources/main/paper-plugin.yml`
-Expected: BUILD SUCCESSFUL; the printed `permissions:` block contains `enthusiamarket.stall.buy`, `enthusiamarket.stall.offer`, `enthusiamarket.stall.sellback`, `enthusiamarket.stall.members` with `default: true`, plus all admin nodes. If node names are wrong (missing prefix), fix the DSL child strings and re-run.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew processResources -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain && sed -n '/^permissions:/,$p' build/resources/main/paper-plugin.yml`
+Expected: BUILD SUCCESSFUL; the printed `permissions:` block contains
+`enthusiamarket.stall.buy`, `enthusiamarket.stall.offer`,
+`enthusiamarket.stall.sellback`, `enthusiamarket.stall.members` with
+`default: true`, plus all admin nodes. If node names are wrong (missing prefix),
+fix the DSL child strings and re-run.
 
 - [ ] **Step 3: Commit**
 
@@ -681,21 +815,30 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task E2.3: Strip the hand-maintained permissions block
 
 **Files:**
-- Modify: `src/main/resources/paper-plugin.yml` (remove lines 49-82, the `permissions:` block)
+
+- Modify: `src/main/resources/paper-plugin.yml` (remove lines 49-82, the
+  `permissions:` block)
 
 - [ ] **Step 1: Remove the permissions block from the source resource**
 
-Delete the entire `permissions:` block (everything from `permissions:` to the end of file, lines ~49-82) from `src/main/resources/paper-plugin.yml`. Leave `name`, `main`, `loader`, `api-version`, `dependencies`, `commands` intact.
+Delete the entire `permissions:` block (everything from `permissions:` to the
+end of file, lines ~49-82) from `src/main/resources/paper-plugin.yml`. Leave
+`name`, `main`, `loader`, `api-version`, `dependencies`, `commands` intact.
 
 - [ ] **Step 2: Regenerate and verify the merger refills permissions**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean processResources -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain && sed -n '/^permissions:/,$p' build/resources/main/paper-plugin.yml`
-Expected: the staged file STILL contains a full `permissions:` block (regenerated by the merger), including the four drift-fix nodes. Source no longer has it; build output does.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean processResources -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain && sed -n '/^permissions:/,$p' build/resources/main/paper-plugin.yml`
+Expected: the staged file STILL contains a full `permissions:` block
+(regenerated by the merger), including the four drift-fix nodes. Source no
+longer has it; build output does.
 
 - [ ] **Step 3: Full verify**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL; verify the shaded jar's `paper-plugin.yml` has permissions (the merger runs before shadowJar).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL; verify the shaded jar's `paper-plugin.yml` has
+permissions (the merger runs before shadowJar).
 
 - [ ] **Step 4: Commit**
 
@@ -714,19 +857,32 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Workstream B — Entity limits (TDD-220 + TDD-221)
 
 **File structure:**
-- Create: `src/main/kotlin/net/badgersmc/em/domain/stall/EntityLimitGroup.kt` — value object + merge.
-- Create: `src/main/kotlin/net/badgersmc/em/application/EntityLimitConfig.kt` — loads entitylimits.yml.
-- Create: `src/main/kotlin/net/badgersmc/em/application/StallEntityCounter.kt` — hybrid cache + rescan.
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/EntityLimitListener.kt` — spawn/place enforcement.
-- Create: `src/main/resources/migrations/V013__stall_kind_entity_limits.sql` — new columns.
-- Modify: `src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt` — add kind/extraEntities/extraTotal.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/StallRepositorySql.kt` — persist new columns.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` — setkind/entitylimit/recount.
+
+- Create: `src/main/kotlin/net/badgersmc/em/domain/stall/EntityLimitGroup.kt` —
+  value object + merge.
+- Create: `src/main/kotlin/net/badgersmc/em/application/EntityLimitConfig.kt` —
+  loads entitylimits.yml.
+- Create: `src/main/kotlin/net/badgersmc/em/application/StallEntityCounter.kt` —
+  hybrid cache + rescan.
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/EntityLimitListener.kt`
+  — spawn/place enforcement.
+- Create: `src/main/resources/migrations/V013__stall_kind_entity_limits.sql` —
+  new columns.
+- Modify: `src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt` — add
+  kind/extraEntities/extraTotal.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/StallRepositorySql.kt`
+  — persist new columns.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` —
+  setkind/entitylimit/recount.
 - Tests: matching test files per component.
 
 ### Task B.1: EntityLimitGroup domain value object (TDD-220)
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/domain/stall/EntityLimitGroup.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/domain/stall/EntityLimitGroupTest.kt`
 
@@ -784,7 +940,8 @@ class EntityLimitGroupTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.stall.EntityLimitGroupTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.stall.EntityLimitGroupTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `EntityLimitGroup` not defined.
 
 - [ ] **Step 3: Implement EntityLimitGroup**
@@ -837,7 +994,8 @@ data class EntityLimitGroup(
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.stall.EntityLimitGroupTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.stall.EntityLimitGroupTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -852,6 +1010,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task B.2: Stall kind + extra-entity fields (TDD-220)
 
 **Files:**
+
 - Modify: `src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/domain/stall/StallKindTest.kt`
 
@@ -889,12 +1048,14 @@ class StallKindTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.stall.StallKindTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.stall.StallKindTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `kind`/`extraEntities`/`extraTotal` unresolved.
 
 - [ ] **Step 3: Add fields to Stall**
 
-In `Stall.kt`, add three fields to the data class constructor after `nextRentAt` (before the closing `)` of the constructor, line ~35):
+In `Stall.kt`, add three fields to the data class constructor after `nextRentAt`
+(before the closing `)` of the constructor, line ~35):
 
 ```kotlin
     /**
@@ -913,7 +1074,8 @@ In `Stall.kt`, add three fields to the data class constructor after `nextRentAt`
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.stall.StallKindTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.stall.StallKindTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -928,9 +1090,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task B.3: Migration V013 + persistence of new columns
 
 **Files:**
+
 - Create: `src/main/resources/migrations/V013__stall_kind_entity_limits.sql`
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/StallRepositorySql.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/infrastructure/persistence/StallRepositorySqlKindTest.kt`
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/persistence/StallRepositorySql.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/infrastructure/persistence/StallRepositorySqlKindTest.kt`
 
 - [ ] **Step 1: Write the migration**
 
@@ -1002,14 +1167,17 @@ class StallRepositorySqlKindTest {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.StallRepositorySqlKindTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: FAIL — INSERT/SELECT don't yet handle the new columns (the loaded kind is missing / SQL error on unknown column in mapRow).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.StallRepositorySqlKindTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: FAIL — INSERT/SELECT don't yet handle the new columns (the loaded kind
+is missing / SQL error on unknown column in mapRow).
 
 - [ ] **Step 4: Update StallRepositorySql for the new columns**
 
 In `StallRepositorySql.kt`:
 
-(a) `create` INSERT column list + placeholders — add `kind, extra_entities, extra_total` and three `?`:
+(a) `create` INSERT column list + placeholders — add
+`kind, extra_entities, extra_total` and three `?`:
 
 ```kotlin
             conn.prepareStatement(
@@ -1029,7 +1197,8 @@ In `StallRepositorySql.kt`:
         ps.setInt(17, stall.extraTotal)
 ```
 
-(c) `save` UPDATE — add the three columns before `WHERE id = ?` and renumber the `WHERE` param. Change the SQL and binds:
+(c) `save` UPDATE — add the three columns before `WHERE id = ?` and renumber the
+`WHERE` param. Change the SQL and binds:
 
 ```kotlin
             conn.prepareStatement(
@@ -1091,13 +1260,17 @@ In `StallRepositorySql.kt`:
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.StallRepositorySqlKindTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.StallRepositorySqlKindTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
-- [ ] **Step 6: Run the full suite to confirm no regression in other persistence tests**
+- [ ] **Step 6: Run the full suite to confirm no regression in other persistence
+      tests**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.*" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: PASS (existing StallRepositorySql tests still green — the new columns have defaults).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.persistence.*" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: PASS (existing StallRepositorySql tests still green — the new columns
+have defaults).
 
 - [ ] **Step 7: Commit**
 
@@ -1110,9 +1283,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task B.4: EntityLimitConfig loader
 
-Loads `entitylimits.yml` (already shipped) into `Map<String, EntityLimitGroup>`. The file is plain YAML keyed by kind; uses SnakeYAML via Bukkit's `YamlConfiguration` (available on the Bukkit API classpath).
+Loads `entitylimits.yml` (already shipped) into `Map<String, EntityLimitGroup>`.
+The file is plain YAML keyed by kind; uses SnakeYAML via Bukkit's
+`YamlConfiguration` (available on the Bukkit API classpath).
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/application/EntityLimitConfig.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/application/EntityLimitConfigTest.kt`
 
@@ -1162,10 +1338,12 @@ class EntityLimitConfigTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.EntityLimitConfigTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.EntityLimitConfigTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `EntityLimitConfig` not defined.
 
-- [ ] **Step 3: Implement EntityLimitConfig (parse via Bukkit YamlConfiguration)**
+- [ ] **Step 3: Implement EntityLimitConfig (parse via Bukkit
+      YamlConfiguration)**
 
 ```kotlin
 package net.badgersmc.em.application
@@ -1216,7 +1394,8 @@ object EntityLimitConfig {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.EntityLimitConfigTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.EntityLimitConfigTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1230,9 +1409,13 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task B.5: StallEntityCounter (hybrid cache + boundary rescan)
 
-The counter holds an in-memory per-stall, per-type count. The authoritative rescan is delegated to an injectable lambda so the listener can supply a real `world.getNearbyEntities` scan while tests supply a stub. This keeps the counter unit-testable without MockBukkit.
+The counter holds an in-memory per-stall, per-type count. The authoritative
+rescan is delegated to an injectable lambda so the listener can supply a real
+`world.getNearbyEntities` scan while tests supply a stub. This keeps the counter
+unit-testable without MockBukkit.
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/application/StallEntityCounter.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/application/StallEntityCounterTest.kt`
 
@@ -1308,7 +1491,8 @@ class StallEntityCounterTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.StallEntityCounterTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.StallEntityCounterTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `StallEntityCounter` not defined.
 
 - [ ] **Step 3: Implement StallEntityCounter**
@@ -1390,7 +1574,8 @@ class StallEntityCounter {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.StallEntityCounterTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.StallEntityCounterTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1404,13 +1589,23 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task B.6: EntityLimitListener (spawn/place enforcement)
 
-The listener resolves the enclosing stall via `RegionProvider`, loads the Stall + its kind group, and cancels over-cap spawns. It filters `CreatureSpawnEvent` to player-attributable reasons. The enclosing-stall lookup needs a region-at-location query — add `regionAt(world, x, y, z): String?` to `RegionProvider`.
+The listener resolves the enclosing stall via `RegionProvider`, loads the
+Stall + its kind group, and cancels over-cap spawns. It filters
+`CreatureSpawnEvent` to player-attributable reasons. The enclosing-stall lookup
+needs a region-at-location query — add `regionAt(world, x, y, z): String?` to
+`RegionProvider`.
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvider.kt` — add `regionAt`.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvider.kt` — implement `regionAt` + `entityCountsIn`.
-- Create: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/EntityLimitListener.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/EntityLimitListenerTest.kt`
+
+- Modify: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvider.kt` —
+  add `regionAt`.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvider.kt`
+  — implement `regionAt` + `entityCountsIn`.
+- Create:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/EntityLimitListener.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/EntityLimitListenerTest.kt`
 
 - [ ] **Step 1: Add regionAt to RegionProvider port**
 
@@ -1446,9 +1641,12 @@ Add to `WorldGuardRegionProvider.kt` (uses `ApplicableRegionSet`):
     }
 ```
 
-- [ ] **Step 3: Write the failing listener test (MockBukkit-free, mocks the port)**
+- [ ] **Step 3: Write the failing listener test (MockBukkit-free, mocks the
+      port)**
 
-The listener's pure decision logic is extracted into a testable method `decide(stallId, type, group, counter, rescan)` returning a Boolean (cancel?). Test that logic directly:
+The listener's pure decision logic is extracted into a testable method
+`decide(stallId, type, group, counter, rescan)` returning a Boolean (cancel?).
+Test that logic directly:
 
 ```kotlin
 package net.badgersmc.em.infrastructure.listeners
@@ -1506,7 +1704,8 @@ class EntityLimitListenerTest {
 
 - [ ] **Step 4: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.EntityLimitListenerTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.EntityLimitListenerTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `EntityLimitListener` not defined.
 
 - [ ] **Step 5: Implement EntityLimitListener**
@@ -1637,19 +1836,28 @@ class EntityLimitListener(
 
 - [ ] **Step 6: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.EntityLimitListenerTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.EntityLimitListenerTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 7: Build to confirm WG regionAt API resolves**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. PRE-CONFIRMED: `RegionManager.getApplicableRegions(BlockVector3): ApplicableRegionSet` (Iterable<ProtectedRegion>; `.regions` = `getRegions()` Set), `BlockVector3.at(int,int,int)`, `region.priority`/`region.id`. Code as pasted compiles.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. PRE-CONFIRMED:
+`RegionManager.getApplicableRegions(BlockVector3): ApplicableRegionSet`
+(Iterable<ProtectedRegion>; `.regions` = `getRegions()` Set),
+`BlockVector3.at(int,int,int)`, `region.priority`/`region.id`. Code as pasted
+compiles.
 
 - [ ] **Step 8: Update other RegionProvider mocks if compile breaks tests**
 
-Adding `regionAt` to the interface may break existing mocks that don't relax it. Run:
+Adding `regionAt` to the interface may break existing mocks that don't relax it.
+Run:
 `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL (mockk relaxed mocks auto-stub new methods). If any non-relaxed `mockk<RegionProvider>()` fails, add `every { it.regionAt(any(), any(), any(), any()) } returns null`.
+Expected: BUILD SUCCESSFUL (mockk relaxed mocks auto-stub new methods). If any
+non-relaxed `mockk<RegionProvider>()` fails, add
+`every { it.regionAt(any(), any(), any(), any()) } returns null`.
 
 - [ ] **Step 9: Commit**
 
@@ -1667,9 +1875,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task B.7: Admin commands setkind / entitylimit / recount
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt`
 - Modify: `src/main/resources/lang/en_US.yml` (new stall.* admin messages)
-- Test: `src/test/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommandsEntityLimitTest.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommandsEntityLimitTest.kt`
 
 - [ ] **Step 1: Write the failing test for setkind persistence**
 
@@ -1726,12 +1937,16 @@ class AdminCommandsEntityLimitTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.commands.AdminCommandsEntityLimitTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.commands.AdminCommandsEntityLimitTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `applySetKind`/`applyEntityLimit` not defined.
 
 - [ ] **Step 3: Add the companion helpers + subcommands to AdminCommands**
 
-In `AdminCommands.kt`, add a `companion object` with the pure helpers and inject `StallEntityCounter` into the constructor (add `private val entityCounter: net.badgersmc.em.application.StallEntityCounter,` to the constructor params). Add the companion:
+In `AdminCommands.kt`, add a `companion object` with the pure helpers and inject
+`StallEntityCounter` into the constructor (add
+`private val entityCounter: net.badgersmc.em.application.StallEntityCounter,` to
+the constructor params). Add the companion:
 
 ```kotlin
     companion object {
@@ -1756,7 +1971,9 @@ In `AdminCommands.kt`, add a `companion object` with the pure helpers and inject
     }
 ```
 
-Note: if `KEY_WORLD`/`KEY_REGION_PREFIX` already exist as top-level or companion consts elsewhere in the file, do not duplicate — reuse the existing declaration and only add the two functions.
+Note: if `KEY_WORLD`/`KEY_REGION_PREFIX` already exist as top-level or companion
+consts elsewhere in the file, do not duplicate — reuse the existing declaration
+and only add the two functions.
 
 Then add the three subcommands (methods on the class):
 
@@ -1808,37 +2025,45 @@ Then add the three subcommands (methods on the class):
     }
 ```
 
-This requires `RegionProvider` injected too — add `private val regionProvider: net.badgersmc.em.domain.ports.RegionProvider,` to the constructor.
+This requires `RegionProvider` injected too — add
+`private val regionProvider: net.badgersmc.em.domain.ports.RegionProvider,` to
+the constructor.
 
 - [ ] **Step 4: Add the lang keys**
 
 In `en_US.yml`, under the `stall:` section, add:
 
 ```yaml
-  setkind:
-    ok: "<green>Stall {stall} kind set to {kind}"
-    missing: "<red>No stall named {stall}"
-  entitylimit:
-    ok: "<green>Stall {stall}: {type} extra allowance set to {extra}"
-    missing: "<red>No stall named {stall}"
-  recount:
-    ok: "<green>Stall {stall} entity count rescanned ({total} entities)"
-    missing: "<red>No stall named {stall}"
+setkind:
+  ok: "<green>Stall {stall} kind set to {kind}"
+  missing: "<red>No stall named {stall}"
+entitylimit:
+  ok: "<green>Stall {stall}: {type} extra allowance set to {extra}"
+  missing: "<red>No stall named {stall}"
+recount:
+  ok: "<green>Stall {stall} entity count rescanned ({total} entities)"
+  missing: "<red>No stall named {stall}"
 ```
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.commands.AdminCommandsEntityLimitTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.commands.AdminCommandsEntityLimitTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 6: Build to confirm AdminCommands DI compiles**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. Existing `AdminCommandsTest` may need the two new constructor args — fix by passing `mockk(relaxed = true)` for `entityCounter` and `regionProvider`.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. Existing `AdminCommandsTest` may need the two new
+constructor args — fix by passing `mockk(relaxed = true)` for `entityCounter`
+and `regionProvider`.
 
-- [ ] **Step 7: Fix AdminCommandsTest constructor if broken, then full entity-limit verify**
+- [ ] **Step 7: Fix AdminCommandsTest constructor if broken, then full
+      entity-limit verify**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.commands.*" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.commands.*" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 8: Mark TDD-220/221 done + commit**
@@ -1857,20 +2082,33 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Workstream C — Region info card (TDD-230)
 
 **File structure:**
-- Create: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionBounds.kt` — value type (or nest in RegionProvider).
-- Modify: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvider.kt` — add `bounds`.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvider.kt` — implement `bounds`.
-- Create: `src/main/kotlin/net/badgersmc/em/application/StallInfoService.kt` — builds StallInfo.
-- Create: `src/main/kotlin/net/badgersmc/em/application/StallInfo.kt` — structured DTO.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` — `/em stall info`.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/PurchaseSignClickListener.kt` — INFO sign branch.
+
+- Create: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionBounds.kt` —
+  value type (or nest in RegionProvider).
+- Modify: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvider.kt` —
+  add `bounds`.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvider.kt`
+  — implement `bounds`.
+- Create: `src/main/kotlin/net/badgersmc/em/application/StallInfoService.kt` —
+  builds StallInfo.
+- Create: `src/main/kotlin/net/badgersmc/em/application/StallInfo.kt` —
+  structured DTO.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` —
+  `/em stall info`.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/PurchaseSignClickListener.kt`
+  — INFO sign branch.
 - Modify: `src/main/resources/lang/en_US.yml` — stall.info.* keys.
 
 ### Task C.1: RegionBounds + RegionProvider.bounds
 
 **Files:**
+
 - Modify: `src/main/kotlin/net/badgersmc/em/domain/ports/RegionProvider.kt`
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvider.kt`
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionProvider.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/domain/ports/RegionBoundsTest.kt`
 
 - [ ] **Step 1: Write the failing test for RegionBounds dimensions**
@@ -1894,7 +2132,8 @@ class RegionBoundsTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.ports.RegionBoundsTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.ports.RegionBoundsTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `RegionBounds` not defined.
 
 - [ ] **Step 3: Add RegionBounds + bounds() to RegionProvider**
@@ -1935,12 +2174,17 @@ In `RegionProvider.kt`, add the nested data class and method:
     }
 ```
 
-Note: PRE-CONFIRMED — WorldEdit 7.3.0 `BlockVector3` exposes `.x()`, `.y()`, `.z()` (and `.getX()` etc.). Use `.x()/.y()/.z()` as pasted. Repo precedent: `WorldEditSchematicAdapter.kt` uses `region.minimumPoint`/`maximumPoint` (both return BlockVector3).
+Note: PRE-CONFIRMED — WorldEdit 7.3.0 `BlockVector3` exposes `.x()`, `.y()`,
+`.z()` (and `.getX()` etc.). Use `.x()/.y()/.z()` as pasted. Repo precedent:
+`WorldEditSchematicAdapter.kt` uses `region.minimumPoint`/`maximumPoint` (both
+return BlockVector3).
 
 - [ ] **Step 5: Run the test + compile to verify pass**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.ports.RegionBoundsTest" compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: PASS + BUILD SUCCESSFUL. Fix any mock breakage from the new `bounds`/`regionAt` interface methods (relaxed mocks auto-stub).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.domain.ports.RegionBoundsTest" compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: PASS + BUILD SUCCESSFUL. Fix any mock breakage from the new
+`bounds`/`regionAt` interface methods (relaxed mocks auto-stub).
 
 - [ ] **Step 6: Commit**
 
@@ -1954,6 +2198,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task C.2: StallInfo DTO + StallInfoService
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/application/StallInfo.kt`
 - Create: `src/main/kotlin/net/badgersmc/em/application/StallInfoService.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/application/StallInfoServiceTest.kt`
@@ -2034,7 +2279,8 @@ class StallInfoServiceTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.StallInfoServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.StallInfoServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `StallInfo`/`StallInfoService` not defined.
 
 - [ ] **Step 3: Implement StallInfo DTO**
@@ -2066,7 +2312,9 @@ data class StallInfo(
 
 - [ ] **Step 4: Implement StallInfoService**
 
-Check `OwnerNameResolver.displayNameFor` exists (it does — referenced in PurchaseSignRenderer). Check `RentTerms.amountFor`/`pct` for the rent figure. The service computes current rent from the stall's rent terms and winning bid.
+Check `OwnerNameResolver.displayNameFor` exists (it does — referenced in
+PurchaseSignRenderer). Check `RentTerms.amountFor`/`pct` for the rent figure.
+The service computes current rent from the stall's rent terms and winning bid.
 
 ```kotlin
 package net.badgersmc.em.application
@@ -2116,12 +2364,18 @@ class StallInfoService(
 }
 ```
 
-Note: verify the exact signature of `OwnerNameResolver.displayNameFor` (it may take `OwnerRef` or `UUID`) and `RentTerms.amountFor` by reading those files before implementing. Adjust the two calls to match. If `displayNameFor` takes a `UUID`, resolve `stall.owner.id` to UUID for SOLO and use a guild path for GUILD — mirror `PurchaseSignRenderer`'s usage.
+Note: verify the exact signature of `OwnerNameResolver.displayNameFor` (it may
+take `OwnerRef` or `UUID`) and `RentTerms.amountFor` by reading those files
+before implementing. Adjust the two calls to match. If `displayNameFor` takes a
+`UUID`, resolve `stall.owner.id` to UUID for SOLO and use a guild path for GUILD
+— mirror `PurchaseSignRenderer`'s usage.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.StallInfoServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: PASS (adjust the test's `owners` mock to match the real `displayNameFor` signature if you changed it).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.StallInfoServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: PASS (adjust the test's `owners` mock to match the real
+`displayNameFor` signature if you changed it).
 
 - [ ] **Step 6: Commit**
 
@@ -2135,29 +2389,36 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task C.3: Wire info card to command + INFO sign
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` — `/em stall info`.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/PurchaseSignClickListener.kt` — INFO branch + renderer.
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` —
+  `/em stall info`.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/PurchaseSignClickListener.kt`
+  — INFO branch + renderer.
 - Modify: `src/main/resources/lang/en_US.yml` — `stall.info.card` key.
-- Test: `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/PurchaseSignClickInfoTest.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/PurchaseSignClickInfoTest.kt`
 
 - [ ] **Step 1: Add the stall.info.card lang key**
 
 In `en_US.yml`, under `stall:`, add:
 
 ```yaml
-  info:
-    card: |
-      <gold>━━━ Stall {stall} ━━━
-      <gray>Kind: <white>{kind}  <gray>State: <white>{state}
-      <gray>Owner: <white>{owner}  <gray>Members: <white>{members}
-      <gray>Rent: <white>{rent}  <gray>Next: <white>{next}
-      <gray>Size: <white>{width}x{height}x{length}
-      <gray>Available: <white>{available}
+info:
+  card: |
+    <gold>━━━ Stall {stall} ━━━
+    <gray>Kind: <white>{kind}  <gray>State: <white>{state}
+    <gray>Owner: <white>{owner}  <gray>Members: <white>{members}
+    <gray>Rent: <white>{rent}  <gray>Next: <white>{next}
+    <gray>Size: <white>{width}x{height}x{length}
+    <gray>Available: <white>{available}
 ```
 
 - [ ] **Step 2: Add `/em stall info` subcommand**
 
-Inject `StallInfoService` into `AdminCommands` constructor (add `private val stallInfo: net.badgersmc.em.application.StallInfoService,`). Add:
+Inject `StallInfoService` into `AdminCommands` constructor (add
+`private val stallInfo: net.badgersmc.em.application.StallInfoService,`). Add:
 
 ```kotlin
     @Subcommand("stall info")
@@ -2188,14 +2449,19 @@ Inject `StallInfoService` into `AdminCommands` constructor (add `private val sta
 ```
 
 Also add `stall.info.missing` to en_US.yml:
+
 ```yaml
-    missing: "<red>No stall named {stall}"
+missing: "<red>No stall named {stall}"
 ```
+
 (place under the `info:` block).
 
 - [ ] **Step 3: Write the failing test for INFO sign routing**
 
-A new INFO `PurchaseSign.kind` value drives the branch. Check the existing `PurchaseSign` kind enum (referenced as BUY|RENT|EXTEND|INFO in TDD-250). The click listener must route a non-owner right-click on an INFO sign to the info card. Test the routing decision via an extracted helper:
+A new INFO `PurchaseSign.kind` value drives the branch. Check the existing
+`PurchaseSign` kind enum (referenced as BUY|RENT|EXTEND|INFO in TDD-250). The
+click listener must route a non-owner right-click on an INFO sign to the info
+card. Test the routing decision via an extracted helper:
 
 ```kotlin
 package net.badgersmc.em.infrastructure.listeners
@@ -2228,12 +2494,20 @@ class PurchaseSignClickInfoTest {
 
 - [ ] **Step 4: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.PurchaseSignClickInfoTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.PurchaseSignClickInfoTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `infoCardPlaceholders` not defined.
 
-- [ ] **Step 5: Add the INFO branch + companion helper to PurchaseSignClickListener**
+- [ ] **Step 5: Add the INFO branch + companion helper to
+      PurchaseSignClickListener**
 
-Inject `StallInfoService` into the listener constructor (add `private val stallInfo: net.badgersmc.em.application.StallInfoService,`). Add a companion with the pure placeholder builder, and handle the INFO sign kind. First check `PurchaseSign` has a `kind` property and an `INFO` value — if the sign model stores kind, branch on it; the spec says signs have `kind: BUY|RENT|EXTEND|INFO`. In `onClick`, before the `when (stall.state)` block, add:
+Inject `StallInfoService` into the listener constructor (add
+`private val stallInfo: net.badgersmc.em.application.StallInfoService,`). Add a
+companion with the pure placeholder builder, and handle the INFO sign kind.
+First check `PurchaseSign` has a `kind` property and an `INFO` value — if the
+sign model stores kind, branch on it; the spec says signs have
+`kind: BUY|RENT|EXTEND|INFO`. In `onClick`, before the `when (stall.state)`
+block, add:
 
 ```kotlin
         // INFO signs always show the info card regardless of stall state.
@@ -2264,7 +2538,8 @@ Wait — to keep the listener testable and avoid Bukkit, add the companion:
     }
 ```
 
-And the INFO branch in `onClick` (after resolving `stall`, before `when (stall.state)`):
+And the INFO branch in `onClick` (after resolving `stall`, before
+`when (stall.state)`):
 
 ```kotlin
         if (sign.kind == net.badgersmc.em.domain.sign.PurchaseSign.Kind.INFO) {
@@ -2277,17 +2552,24 @@ And the INFO branch in `onClick` (after resolving `stall`, before `when (stall.s
         }
 ```
 
-Note: confirm `PurchaseSign.Kind` enum exists with an `INFO` member by reading `src/main/kotlin/net/badgersmc/em/domain/sign/PurchaseSign.kt`. If the kind type/name differs, adjust. If signs don't currently carry a kind, this branch keys off it being INFO — verify the model supports it (TDD-250 specified it).
+Note: confirm `PurchaseSign.Kind` enum exists with an `INFO` member by reading
+`src/main/kotlin/net/badgersmc/em/domain/sign/PurchaseSign.kt`. If the kind
+type/name differs, adjust. If signs don't currently carry a kind, this branch
+keys off it being INFO — verify the model supports it (TDD-250 specified it).
 
 - [ ] **Step 6: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.PurchaseSignClickInfoTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.PurchaseSignClickInfoTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
-- [ ] **Step 7: Build + fix any constructor breakage in PurchaseSignClickListener tests**
+- [ ] **Step 7: Build + fix any constructor breakage in
+      PurchaseSignClickListener tests**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. If existing PurchaseSignClickListener tests fail to construct, add the `stallInfo` mock arg.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. If existing PurchaseSignClickListener tests fail to
+construct, add the `stallInfo` mock arg.
 
 - [ ] **Step 8: Mark TDD-230 done + commit**
 
@@ -2305,17 +2587,26 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Workstream D — Particle outline (TDD-240)
 
 **File structure:**
-- Create: `src/main/kotlin/net/badgersmc/em/application/ParticleBorderService.kt` — outline tracking + global budget.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` — `/em stall outline`.
+
+- Create:
+  `src/main/kotlin/net/badgersmc/em/application/ParticleBorderService.kt` —
+  outline tracking + global budget.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` —
+  `/em stall outline`.
 - Modify: `src/main/resources/lang/en_US.yml` — stall.outline.* keys.
 
-The budget math is pure and unit-tested; the Bukkit particle-spawn + repeat-task are thin wrappers driven by the pure planner.
+The budget math is pure and unit-tested; the Bukkit particle-spawn + repeat-task
+are thin wrappers driven by the pure planner.
 
 ### Task D.1: ParticleBorderService budget planner (pure)
 
 **Files:**
-- Create: `src/main/kotlin/net/badgersmc/em/application/ParticleBorderService.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/application/ParticleBorderServiceTest.kt`
+
+- Create:
+  `src/main/kotlin/net/badgersmc/em/application/ParticleBorderService.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/application/ParticleBorderServiceTest.kt`
 
 - [ ] **Step 1: Write the failing test for the budget planner**
 
@@ -2360,7 +2651,8 @@ class ParticleBorderServiceTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ParticleBorderServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ParticleBorderServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `ParticleBorderService` not defined.
 
 - [ ] **Step 3: Implement the pure planner**
@@ -2437,8 +2729,13 @@ class ParticleBorderService {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ParticleBorderServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: PASS. If the budget assertion fails because corner sampling overshoots, the spacing formula may need `maxPerTick - (12 * outlines)` headroom for endpoint inclusion — adjust spacing to `(totalPerimeter / (maxPerTick * 0.8))` and re-run until total ≤ budget. Keep the test as the gate.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ParticleBorderServiceTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: PASS. If the budget assertion fails because corner sampling
+overshoots, the spacing formula may need `maxPerTick - (12 * outlines)` headroom
+for endpoint inclusion — adjust spacing to
+`(totalPerimeter / (maxPerTick * 0.8))` and re-run until total ≤ budget. Keep
+the test as the gate.
 
 - [ ] **Step 5: Commit**
 
@@ -2452,10 +2749,16 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task D.2: Bukkit task + outline command
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/application/ParticleBorderService.kt` — add active-outline tracking + Bukkit spawn.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` — `/em stall outline`.
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/application/ParticleBorderService.kt` — add
+  active-outline tracking + Bukkit spawn.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt` —
+  `/em stall outline`.
 - Modify: `src/main/resources/lang/en_US.yml` — stall.outline.* keys.
-- Test: `src/test/kotlin/net/badgersmc/em/application/ParticleBorderTrackingTest.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/application/ParticleBorderTrackingTest.kt`
 
 - [ ] **Step 1: Write the failing test for active-outline tracking + expiry**
 
@@ -2493,7 +2796,8 @@ class ParticleBorderTrackingTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ParticleBorderTrackingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ParticleBorderTrackingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `addOutline`/`activeCount`/`purgeExpired` not defined.
 
 - [ ] **Step 3: Add tracking to ParticleBorderService**
@@ -2532,12 +2836,14 @@ Add to the `ParticleBorderService` class body (instance state, not companion):
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ParticleBorderTrackingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ParticleBorderTrackingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Add the outline command + Bukkit render task**
 
-In `AdminCommands.kt`, inject `ParticleBorderService`, `RegionProvider` (already added in B.7), `EnthusiaMarketConfig` (present), and the plugin (present). Add:
+In `AdminCommands.kt`, inject `ParticleBorderService`, `RegionProvider` (already
+added in B.7), `EnthusiaMarketConfig` (present), and the plugin (present). Add:
 
 ```kotlin
     @Subcommand("stall outline")
@@ -2566,7 +2872,8 @@ In `AdminCommands.kt`, inject `ParticleBorderService`, `RegionProvider` (already
     }
 ```
 
-The repeating render task is started once in `onEnable`. Add to `EnthusiaMarket.kt` after listener registration:
+The repeating render task is started once in `onEnable`. Add to
+`EnthusiaMarket.kt` after listener registration:
 
 ```kotlin
         // Particle outline render loop (REQ-240/241): every 4 ticks, plan
@@ -2579,7 +2886,8 @@ The repeating render task is started once in `onEnable`. Add to `EnthusiaMarket.
         }, 0L, 4L)
 ```
 
-And add `renderTick` to `ParticleBorderService` (the Bukkit-touching method, exercised manually not in unit tests):
+And add `renderTick` to `ParticleBorderService` (the Bukkit-touching method,
+exercised manually not in unit tests):
 
 ```kotlin
     /** Spawn particles for the current tick within [maxPerTick]; END_ROD, per-player. */
@@ -2599,26 +2907,35 @@ And add `renderTick` to `ParticleBorderService` (the Bukkit-touching method, exe
     private fun ActiveOutline.stallWorldOrPlayer(player: org.bukkit.entity.Player): String = player.world.name
 ```
 
-Note: outline world tracking — `ActiveOutline` should also store the world. Add `val world: String` to `ActiveOutline` and `addOutline`, sourced from `stall.world` at the command. Simplify `renderTick` to use `outline.world`. Update the tracking test's `addOutline` calls to pass a world string (e.g. `"world"`).
+Note: outline world tracking — `ActiveOutline` should also store the world. Add
+`val world: String` to `ActiveOutline` and `addOutline`, sourced from
+`stall.world` at the command. Simplify `renderTick` to use `outline.world`.
+Update the tracking test's `addOutline` calls to pass a world string (e.g.
+`"world"`).
 
-Revisit: to keep the D.1/D.2 tests valid, add `world: String` as the 3rd param of `addOutline(player, stallId, world, bounds, expiresAt)` and update `ParticleBorderTrackingTest` calls accordingly before running. Keep `renderTick` using `outline.world`.
+Revisit: to keep the D.1/D.2 tests valid, add `world: String` as the 3rd param
+of `addOutline(player, stallId, world, bounds, expiresAt)` and update
+`ParticleBorderTrackingTest` calls accordingly before running. Keep `renderTick`
+using `outline.world`.
 
 - [ ] **Step 6: Add the outline lang keys**
 
 In `en_US.yml`, under `stall:`:
 
 ```yaml
-  outline:
-    ok: "<green>Outlining stall {stall} for {seconds}s"
-    missing: "<red>No stall named {stall}"
-    no_region: "<red>Stall {stall} has no WorldGuard region"
-    player_only: "<red>Only players can request an outline"
+outline:
+  ok: "<green>Outlining stall {stall} for {seconds}s"
+  missing: "<red>No stall named {stall}"
+  no_region: "<red>Stall {stall} has no WorldGuard region"
+  player_only: "<red>Only players can request an outline"
 ```
 
 - [ ] **Step 7: Build + full verify**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. Fix any AdminCommands test constructor breakage by adding `particleBorders` + other new mock args.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. Fix any AdminCommands test constructor breakage by
+adding `particleBorders` + other new mock args.
 
 - [ ] **Step 8: Mark TDD-240 done + commit**
 
@@ -2636,34 +2953,68 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Workstream G — Shop creation/edit menus (TDD-52 + TDD-60)
 
 Wire the two `shop.create` placeholder paths to real menus and fix the Bedrock
-item-serialization corruption bug. Build order: after C, before D. Depends only on the
-existing shop domain.
+item-serialization corruption bug. Build order: after C, before D. Depends only
+on the existing shop domain.
 
 **Traced codebase facts (confirmed 2026-06-01 — do not re-derive):**
-- Shared codec: `net.badgersmc.em.application.ItemStackSerializer` — `serialize(ItemStack): String`, `deserialize(String): ItemStack?`. Reuse; never duplicate base64 logic.
-- Held-item precedent: `SignPlaceListener.kt:122-127` — `player.inventory.itemInMainHand`; reject `Material.AIR`/`amount<=0` with `shop.create.no_held_item`; `held.clone().apply { amount = 1 }`; serialize.
-- `Shop.sellItem`/`costItem` are base64 ItemStacks. `costItem` is a UI hint only — store `ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1))`. Real price is `costAmount` (Int, Vault currency via EconomyProvider).
-- Platform routing: `MenuFactory.shouldUseBedrockMenus(player): Boolean` (already injected into `ShopInteractListener`). `UiDispatcher.dispatch()` is dead (zero callers) — delete `UiDispatcher` + its test.
-- IFramework GUI pattern to mirror: `interaction/gui/PurchaseMenu.kt` (`ChestGui`, `StaticPane`, `GuiItem`, `gui.show(player)`); implements `net.badgersmc.em.interaction.Menu` (`fun open(player: Player)`).
-- `Shop` required fields + `init` invariants: `sellAmount>0`, `costAmount>0`, `stallId` non-blank (see `domain/shop/Shop.kt`). `ShopRepository.upsert(shop): Shop`.
-- `ShopCreateListener` already resolves stall + container + authority; the placeholder is at the very end (line ~95, `shop.create.menu_placeholder`). It has `shopRepository`, `lang`, `stallRepository`, `guildProvider` injected.
-- `ShopInteractListener` line ~58 is the **purchase** path (right-click existing shop). Bedrock branch wrongly sends `shop.create.bedrock_placeholder`; replace with `BedrockPurchaseForm`. Java already opens `PurchaseMenu`.
-- `BedrockCreateShopForm` stores `sellItem = itemName` (raw string) — corruption bug. `BedrockPurchaseForm` + `BedrockShopEditForm` already exist. `BedrockMenuBase(player, logger, lang)` base class; `buildForm(): Form`.
+
+- Shared codec: `net.badgersmc.em.application.ItemStackSerializer` —
+  `serialize(ItemStack): String`, `deserialize(String): ItemStack?`. Reuse;
+  never duplicate base64 logic.
+- Held-item precedent: `SignPlaceListener.kt:122-127` —
+  `player.inventory.itemInMainHand`; reject `Material.AIR`/`amount<=0` with
+  `shop.create.no_held_item`; `held.clone().apply { amount = 1 }`; serialize.
+- `Shop.sellItem`/`costItem` are base64 ItemStacks. `costItem` is a UI hint only
+  — store `ItemStackSerializer.serialize(ItemStack(Material.EMERALD, 1))`. Real
+  price is `costAmount` (Int, Vault currency via EconomyProvider).
+- Platform routing: `MenuFactory.shouldUseBedrockMenus(player): Boolean`
+  (already injected into `ShopInteractListener`). `UiDispatcher.dispatch()` is
+  dead (zero callers) — delete `UiDispatcher` + its test.
+- IFramework GUI pattern to mirror: `interaction/gui/PurchaseMenu.kt`
+  (`ChestGui`, `StaticPane`, `GuiItem`, `gui.show(player)`); implements
+  `net.badgersmc.em.interaction.Menu` (`fun open(player: Player)`).
+- `Shop` required fields + `init` invariants: `sellAmount>0`, `costAmount>0`,
+  `stallId` non-blank (see `domain/shop/Shop.kt`).
+  `ShopRepository.upsert(shop): Shop`.
+- `ShopCreateListener` already resolves stall + container + authority; the
+  placeholder is at the very end (line ~95, `shop.create.menu_placeholder`). It
+  has `shopRepository`, `lang`, `stallRepository`, `guildProvider` injected.
+- `ShopInteractListener` line ~58 is the **purchase** path (right-click existing
+  shop). Bedrock branch wrongly sends `shop.create.bedrock_placeholder`; replace
+  with `BedrockPurchaseForm`. Java already opens `PurchaseMenu`.
+- `BedrockCreateShopForm` stores `sellItem = itemName` (raw string) — corruption
+  bug. `BedrockPurchaseForm` + `BedrockShopEditForm` already exist.
+  `BedrockMenuBase(player, logger, lang)` base class; `buildForm(): Form`.
 
 **File structure:**
-- Create: `src/main/kotlin/net/badgersmc/em/application/ShopFactory.kt` — pure `Shop`-builder (testable, no Bukkit beyond ItemStack).
-- Create: `src/main/kotlin/net/badgersmc/em/interaction/gui/CreateShopMenu.kt` — IFramework GUI.
-- Modify: `src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockCreateShopForm.kt` — base64 sell item, price+amount only.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListener.kt` — capture main-hand, route via MenuFactory.
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopInteractListener.kt` — Bedrock purchase form wiring.
-- Delete: `src/main/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcher.kt` + `src/test/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcherTest.kt`.
-- Modify: `src/main/resources/lang/en_US.yml` — add `gui.shop.create.*`; remove the two `*_placeholder` keys once unused.
+
+- Create: `src/main/kotlin/net/badgersmc/em/application/ShopFactory.kt` — pure
+  `Shop`-builder (testable, no Bukkit beyond ItemStack).
+- Create: `src/main/kotlin/net/badgersmc/em/interaction/gui/CreateShopMenu.kt` —
+  IFramework GUI.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockCreateShopForm.kt`
+  — base64 sell item, price+amount only.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListener.kt`
+  — capture main-hand, route via MenuFactory.
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopInteractListener.kt`
+  — Bedrock purchase form wiring.
+- Delete:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcher.kt` +
+  `src/test/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcherTest.kt`.
+- Modify: `src/main/resources/lang/en_US.yml` — add `gui.shop.create.*`; remove
+  the two `*_placeholder` keys once unused.
 
 ### Task G.1: ShopFactory — pure Shop builder
 
-Extracts the `Shop`-construction logic shared by both menu paths so it is unit-testable without Bukkit GUI/Cumulus. Mirrors `SignPlaceListener`'s field mapping exactly.
+Extracts the `Shop`-construction logic shared by both menu paths so it is
+unit-testable without Bukkit GUI/Cumulus. Mirrors `SignPlaceListener`'s field
+mapping exactly.
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/application/ShopFactory.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/application/ShopFactoryTest.kt`
 
@@ -2730,7 +3081,8 @@ class ShopFactoryTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopFactoryTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopFactoryTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `ShopFactory` not defined.
 
 - [ ] **Step 3: Implement ShopFactory**
@@ -2781,7 +3133,8 @@ object ShopFactory {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopFactoryTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopFactoryTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -2796,11 +3149,15 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task G.2: Fix BedrockCreateShopForm (base64 sell item, price+amount only)
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockCreateShopForm.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockCreateShopForm.kt`
 
 - [ ] **Step 1: Replace the form to take a pre-captured base64 sell item**
 
-Rewrite `BedrockCreateShopForm.kt`. The listener captures the main-hand item and passes its base64 + the per-trade amount source; the form asks only price + amount:
+Rewrite `BedrockCreateShopForm.kt`. The listener captures the main-hand item and
+passes its base64 + the per-trade amount source; the form asks only price +
+amount:
 
 ```kotlin
 package net.badgersmc.em.interaction.bedrock
@@ -2870,8 +3227,11 @@ class BedrockCreateShopForm(
 
 - [ ] **Step 2: Build to confirm the form compiles**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. If `BedrockMenuBaseTest` references the old constructor, it does not (it builds an anonymous subclass) — but if any test constructs `BedrockCreateShopForm` directly, update it to pass `sellItemBase64`.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. If `BedrockMenuBaseTest` references the old
+constructor, it does not (it builds an anonymous subclass) — but if any test
+constructs `BedrockCreateShopForm` directly, update it to pass `sellItemBase64`.
 
 - [ ] **Step 3: Commit**
 
@@ -2888,9 +3248,14 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ### Task G.3: CreateShopMenu (IFramework GUI)
 
-A minimal `ChestGui` mirroring `PurchaseMenu`: shows the captured sell item, a price control, an amount control, and a confirm button. To keep scope tight for release, price/amount use fixed-step +/- buttons with sane defaults (anvil text-entry deferred). The confirm button calls `ShopFactory.build` + `shopRepository.upsert`.
+A minimal `ChestGui` mirroring `PurchaseMenu`: shows the captured sell item, a
+price control, an amount control, and a confirm button. To keep scope tight for
+release, price/amount use fixed-step +/- buttons with sane defaults (anvil
+text-entry deferred). The confirm button calls `ShopFactory.build` +
+`shopRepository.upsert`.
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/interaction/gui/CreateShopMenu.kt`
 
 - [ ] **Step 1: Implement CreateShopMenu**
@@ -2996,26 +3361,30 @@ class CreateShopMenu(
 }
 ```
 
-- [ ] **Step 2: Add the gui.shop.create.* lang keys**
+- [ ] _*Step 2: Add the gui.shop.create.* lang keys_*
 
-In `en_US.yml`, under the `gui:` → `shop:` section (where `gui.shop.title` lives), add a `create:` block:
+In `en_US.yml`, under the `gui:` → `shop:` section (where `gui.shop.title`
+lives), add a `create:` block:
 
 ```yaml
-    create:
-      title: "<dark_gray>Create Shop"
-      price: "<green>Price: <gold>{price}"
-      price_up: "<green>+10 (now {price})"
-      price_down: "<red>-10 (now {price})"
-      amount: "<green>Amount: <gold>{amount}"
-      amount_up: "<green>+1 (now {amount})"
-      amount_down: "<red>-1 (now {amount})"
-      confirm: "<green>Confirm & create shop"
+create:
+  title: "<dark_gray>Create Shop"
+  price: "<green>Price: <gold>{price}"
+  price_up: "<green>+10 (now {price})"
+  price_down: "<red>-10 (now {price})"
+  amount: "<green>Amount: <gold>{amount}"
+  amount_up: "<green>+1 (now {amount})"
+  amount_down: "<red>-1 (now {amount})"
+  confirm: "<green>Confirm & create shop"
 ```
 
 - [ ] **Step 3: Build to confirm the menu compiles**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. Confirm the `GuiItem { event -> }` click-consumer signature matches the IFramework version in use (mirror `PurchaseMenu`'s `GuiItem(...) { event -> ... }`).
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. Confirm the `GuiItem { event -> }` click-consumer
+signature matches the IFramework version in use (mirror `PurchaseMenu`'s
+`GuiItem(...) { event -> ... }`).
 
 - [ ] **Step 4: Commit**
 
@@ -3029,12 +3398,18 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task G.4: Route ShopCreateListener through MenuFactory
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListener.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListenerRoutingTest.kt`
 
-- [ ] **Step 1: Write the failing test for held-item capture + routing decision**
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListener.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/infrastructure/listeners/ShopCreateListenerRoutingTest.kt`
 
-The routing + capture logic is extracted into a pure companion helper so it is testable without firing a real `PlayerInteractEvent`. Test that an empty hand is rejected and a held item yields base64:
+- [ ] **Step 1: Write the failing test for held-item capture + routing
+      decision**
+
+The routing + capture logic is extracted into a pure companion helper so it is
+testable without firing a real `PlayerInteractEvent`. Test that an empty hand is
+rejected and a held item yields base64:
 
 ```kotlin
 package net.badgersmc.em.infrastructure.listeners
@@ -3072,12 +3447,15 @@ class ShopCreateListenerRoutingTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.ShopCreateListenerRoutingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.ShopCreateListenerRoutingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `captureSellItem` not defined.
 
-- [ ] **Step 3: Add the companion helper + MenuFactory routing to ShopCreateListener**
+- [ ] **Step 3: Add the companion helper + MenuFactory routing to
+      ShopCreateListener**
 
-Inject `MenuFactory` and the plugin `Logger` into the constructor. Add the companion and replace the placeholder line. Update the constructor:
+Inject `MenuFactory` and the plugin `Logger` into the constructor. Add the
+companion and replace the placeholder line. Update the constructor:
 
 ```kotlin
 @Component
@@ -3108,7 +3486,9 @@ Add the companion (after the class opening brace or near the bottom):
     }
 ```
 
-Add the imports `org.bukkit.inventory.ItemStack` and `org.bukkit.Material` (Material is already imported; add ItemStack). Replace the placeholder block at the end of `onSignInteract`:
+Add the imports `org.bukkit.inventory.ItemStack` and `org.bukkit.Material`
+(Material is already imported; add ItemStack). Replace the placeholder block at
+the end of `onSignInteract`:
 
 ```kotlin
         event.setUseInteractedBlock(Event.Result.DENY)
@@ -3137,11 +3517,19 @@ Add the imports `org.bukkit.inventory.ItemStack` and `org.bukkit.Material` (Mate
         }
 ```
 
-Note: the shop owner for a GUILD-owned stall is the creating player (shops are player-or-guild scoped via `creatorId`/`guildId`); using `player.uniqueId` when not SOLO matches `SignPlaceListener` (`owner = player.uniqueId`). Simplify to `owner = player.uniqueId` if the guild-shop attribution is handled elsewhere — confirm against `SignPlaceListener` which uses `owner = player.uniqueId` unconditionally. Prefer that: pass `player.uniqueId` as owner for both branches to match existing behaviour.
+Note: the shop owner for a GUILD-owned stall is the creating player (shops are
+player-or-guild scoped via `creatorId`/`guildId`); using `player.uniqueId` when
+not SOLO matches `SignPlaceListener` (`owner = player.uniqueId`). Simplify to
+`owner = player.uniqueId` if the guild-shop attribution is handled elsewhere —
+confirm against `SignPlaceListener` which uses `owner = player.uniqueId`
+unconditionally. Prefer that: pass `player.uniqueId` as owner for both branches
+to match existing behaviour.
 
 - [ ] **Step 4: Simplify owner to player.uniqueId (match SignPlaceListener)**
 
-Replace both `java.util.UUID.fromString(...)` owner expressions with `player.uniqueId` to match the proven `SignPlaceListener` mapping (`owner = player.uniqueId`). Final branches:
+Replace both `java.util.UUID.fromString(...)` owner expressions with
+`player.uniqueId` to match the proven `SignPlaceListener` mapping
+(`owner = player.uniqueId`). Final branches:
 
 ```kotlin
         if (menuFactory.shouldUseBedrockMenus(player)) {
@@ -3159,13 +3547,17 @@ Replace both `java.util.UUID.fromString(...)` owner expressions with `player.uni
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.ShopCreateListenerRoutingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.infrastructure.listeners.ShopCreateListenerRoutingTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 6: Build + fix any ShopCreateListener test constructor breakage**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. If an existing `ShopCreateListenerTest` constructs the listener, add `menuFactory = mockk(relaxed = true)` and `logger = mockk(relaxed = true)` args.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. If an existing `ShopCreateListenerTest` constructs
+the listener, add `menuFactory = mockk(relaxed = true)` and
+`logger = mockk(relaxed = true)` args.
 
 - [ ] **Step 7: Commit**
 
@@ -3179,18 +3571,26 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ### Task G.5: Wire ShopInteractListener Bedrock purchase form + delete UiDispatcher
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopInteractListener.kt`
-- Delete: `src/main/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcher.kt`
-- Delete: `src/test/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcherTest.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopInteractListener.kt`
+- Delete:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcher.kt`
+- Delete:
+  `src/test/kotlin/net/badgersmc/em/infrastructure/bedrock/UiDispatcherTest.kt`
 
 - [ ] **Step 1: Confirm BedrockPurchaseForm constructor signature**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && sed -n '1,40p' src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockPurchaseForm.kt`
-Expected: shows the constructor params (likely `(player, shop, tradeService, logger, lang)`). Note the exact params for Step 2.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && sed -n '1,40p' src/main/kotlin/net/badgersmc/em/interaction/bedrock/BedrockPurchaseForm.kt`
+Expected: shows the constructor params (likely
+`(player, shop, tradeService, logger, lang)`). Note the exact params for Step 2.
 
 - [ ] **Step 2: Replace the Bedrock placeholder branch with the real form**
 
-In `ShopInteractListener.kt`, the listener needs a `Logger` to construct the form. Add `private val logger: java.util.logging.Logger,` to the constructor. Replace the placeholder branch in `onSignRightClick`:
+In `ShopInteractListener.kt`, the listener needs a `Logger` to construct the
+form. Add `private val logger: java.util.logging.Logger,` to the constructor.
+Replace the placeholder branch in `onSignRightClick`:
 
 ```kotlin
         if (menuFactory.shouldUseBedrockMenus(player)) {
@@ -3200,7 +3600,8 @@ In `ShopInteractListener.kt`, the listener needs a `Logger` to construct the for
         }
 ```
 
-And add the open method (mirroring `openPurchaseMenu`, using the confirmed constructor params from Step 1 — adjust arg order to match):
+And add the open method (mirroring `openPurchaseMenu`, using the confirmed
+constructor params from Step 1 — adjust arg order to match):
 
 ```kotlin
     /** Open the Bedrock purchase form. Open for testability. */
@@ -3211,7 +3612,8 @@ And add the open method (mirroring `openPurchaseMenu`, using the confirmed const
     }
 ```
 
-If `BedrockPurchaseForm`'s constructor differs from `(player, shop, tradeService, logger, lang)`, adjust to match Step 1's output.
+If `BedrockPurchaseForm`'s constructor differs from
+`(player, shop, tradeService, logger, lang)`, adjust to match Step 1's output.
 
 - [ ] **Step 3: Delete the dead UiDispatcher + its test**
 
@@ -3221,28 +3623,36 @@ cd /d/BadgersMC-Dev/EnthusiaMarket && git rm src/main/kotlin/net/badgersmc/em/in
 
 - [ ] **Step 4: Grep for any remaining UiDispatcher references**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && grep -rn "UiDispatcher" src/ || echo "no references"`
-Expected: `no references`. If any are found (e.g. a DI registration or import), remove them.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && grep -rn "UiDispatcher" src/ || echo "no references"`
+Expected: `no references`. If any are found (e.g. a DI registration or import),
+remove them.
 
 - [ ] **Step 5: Build + fix ShopInteractListener test constructor**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. Add `logger = mockk(relaxed = true)` to any existing `ShopInteractListener` test construction.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. Add `logger = mockk(relaxed = true)` to any existing
+`ShopInteractListener` test construction.
 
 - [ ] **Step 6: Remove the now-unused placeholder lang keys**
 
-In `en_US.yml`, delete `shop.create.menu_placeholder` and `shop.create.bedrock_placeholder` (lines ~130-131). Verify nothing references them:
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && grep -rn "menu_placeholder\|bedrock_placeholder" src/ || echo "clean"`
+In `en_US.yml`, delete `shop.create.menu_placeholder` and
+`shop.create.bedrock_placeholder` (lines ~130-131). Verify nothing references
+them: Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && grep -rn "menu_placeholder\|bedrock_placeholder" src/ || echo "clean"`
 Expected: `clean`.
 
 - [ ] **Step 7: Full verify**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL
 
 - [ ] **Step 8: Mark TDD-52/TDD-60 done + commit**
 
-Update `docs/tasks.md`: mark TDD-52 (CreateShopMenu) and TDD-60 (Bedrock create form) `[x]` with evidence. Then:
+Update `docs/tasks.md`: mark TDD-52 (CreateShopMenu) and TDD-60 (Bedrock create
+form) `[x]` with evidence. Then:
 
 ```bash
 cd /d/BadgersMC-Dev/EnthusiaMarket && git add -A
@@ -3263,30 +3673,44 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Full verify with all gates**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean detekt test shadowJar jacocoTestReport -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean detekt test shadowJar jacocoTestReport -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL, all tests pass, detekt 0 issues.
 
 - [ ] **Step 2: Verify generated paper-plugin.yml in the shaded jar**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && unzip -p build/libs/EnthusiaMarket-0.1.0.jar paper-plugin.yml | sed -n '/^permissions:/,$p'`
-Expected: permissions block present with `enthusiamarket.stall.buy/offer/sellback/members` + new feature nodes.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && unzip -p build/libs/EnthusiaMarket-0.1.0.jar paper-plugin.yml | sed -n '/^permissions:/,$p'`
+Expected: permissions block present with
+`enthusiamarket.stall.buy/offer/sellback/members` + new feature nodes.
 
 - [ ] **Step 3: Document the manual QA script (non-op account)**
 
-Append a manual QA checklist to the PR description when opening it. The checklist MUST include (all as a NON-OP player — op bypass masks build bugs):
-  1. `/em import` on the production world → message reports `provisioned` ≈ 71. Confirm a previously-dead stall (e.g. `stall66`, priority 0) now has priority 20 + build flags via `/rg info stall66`.
-  2. Claim a stall as a non-op player → place a block inside → succeeds.
-  3. Place item frames + armor stands → rotate an item frame → succeeds (decoration flags).
-  4. Breed villagers past the kind cap → spawn cancelled at cap; under cap allowed.
-  5. `/em stall info stall1` → card shows all 9 fields. Right-click an INFO sign as non-owner → same card.
-  6. `/em stall outline stall1 10` → END_ROD border visible for 10s, only to requester.
-  7. Confirm offer/sellback/buy/members commands work for a normal player (perm drift fix).
-  8. Shop create (Java): hold an item, left-click+sneak a container sign in your stall →
-     CreateShopMenu opens showing the held item; set price/amount; confirm → shop persists and
-     a buyer can trade it. Empty hand → rejected with no-held-item message.
-  9. Shop create (Bedrock/Floodgate, or `bedrock.forceForms: true`): same flow → Cumulus form
-     asks price+amount only; created shop's sell item is the held item (NOT a raw name) and
-     trades correctly (regression test for the deserialization bug).
+Append a manual QA checklist to the PR description when opening it. The
+checklist MUST include (all as a NON-OP player — op bypass masks build bugs):
+
+1. `/em import` on the production world → message reports `provisioned` ≈ 71.
+   Confirm a previously-dead stall (e.g. `stall66`, priority 0) now has priority
+   20 + build flags via `/rg info stall66`.
+2. Claim a stall as a non-op player → place a block inside → succeeds.
+3. Place item frames + armor stands → rotate an item frame → succeeds
+   (decoration flags).
+4. Breed villagers past the kind cap → spawn cancelled at cap; under cap
+   allowed.
+5. `/em stall info stall1` → card shows all 9 fields. Right-click an INFO sign
+   as non-owner → same card.
+6. `/em stall outline stall1 10` → END_ROD border visible for 10s, only to
+   requester.
+7. Confirm offer/sellback/buy/members commands work for a normal player (perm
+   drift fix).
+8. Shop create (Java): hold an item, left-click+sneak a container sign in your
+   stall → CreateShopMenu opens showing the held item; set price/amount; confirm
+   → shop persists and a buyer can trade it. Empty hand → rejected with
+   no-held-item message.
+9. Shop create (Bedrock/Floodgate, or `bedrock.forceForms: true`): same flow →
+   Cumulus form asks price+amount only; created shop's sell item is the held
+   item (NOT a raw name) and trades correctly (regression test for the
+   deserialization bug).
 
 - [ ] **Step 4: Final commit if any cleanup needed**
 
@@ -3300,17 +3724,42 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>" || echo "nothing to com
 
 ## Self-Review Notes (for the implementer)
 
-These are known points where the plan depends on signatures that should be confirmed by reading the file before implementing (the plan calls them out inline too):
+These are known points where the plan depends on signatures that should be
+confirmed by reading the file before implementing (the plan calls them out
+inline too):
 
-1. **`OwnerNameResolver.displayNameFor`** (Task C.2) — confirm it takes `OwnerRef` vs `UUID`; mirror `PurchaseSignRenderer`'s call. Adjust StallInfoService + its test mock.
-2. **`RentTerms.amountFor`** (Task C.2) — confirm the method name/signature for computing rent from winning bid. The codebase test TDD-20 references `RentTerms.amountFor(stall)`; it may take a Stall or a Long. Adjust `currentRent`.
-3. **`PurchaseSign.Kind.INFO`** (Task C.3) — confirm the enum exists with an INFO value (TDD-250 specified BUY|RENT|EXTEND|INFO). If the sign model names it differently, adjust the branch.
-4. **WG flag constants** (Task F.2) — ✅ **PRE-PINNED** in the "CONFIRMED API SYMBOLS" section above. `Flags.ITEM_FRAME_ROTATE` (not ...ROTATION) + all core flags verified against the real jar. Use as written; no confirmation needed.
-5. **WG `getApplicableRegions` / `BlockVector3`** (Task B.6) — ✅ **PRE-PINNED** above. `getApplicableRegions(BlockVector3): ApplicableRegionSet` (Iterable, `.regions` Set), `getApplicableRegionsIDs(BlockVector3): List<String>`. The plan's `.regions.maxByOrNull { it.priority }?.id` is confirmed valid.
-6. **WE `BlockVector3.x()/y()/z()`** (Task C.1) — ✅ **PRE-PINNED** above. Both `.x()` and `.getX()` exist; the plan's `.x()/.y()/.z()` is correct. No change.
-7. **`KEY_WORLD`/`KEY_REGION_PREFIX`** (Task B.7) — these constants are already referenced in AdminCommands.import; locate their existing declaration and reuse rather than redeclare.
-8. **`BedrockPurchaseForm` constructor** (Task G.5) — confirm exact param order (`sed -n '1,40p'` in the task); the `openBedrockPurchaseForm` call must match.
-9. **IFramework `GuiItem` click-consumer signature** (Task G.3) — mirror `PurchaseMenu`'s `GuiItem(item) { event -> ... }` form for the IF version in use.
-10. **`gui.shop.title` / `gui:` lang section location** (Task G.3) — confirm where the existing `gui.shop.*` keys live so the new `create:` block nests correctly.
+1. **`OwnerNameResolver.displayNameFor`** (Task C.2) — confirm it takes
+   `OwnerRef` vs `UUID`; mirror `PurchaseSignRenderer`'s call. Adjust
+   StallInfoService + its test mock.
+2. **`RentTerms.amountFor`** (Task C.2) — confirm the method name/signature for
+   computing rent from winning bid. The codebase test TDD-20 references
+   `RentTerms.amountFor(stall)`; it may take a Stall or a Long. Adjust
+   `currentRent`.
+3. **`PurchaseSign.Kind.INFO`** (Task C.3) — confirm the enum exists with an
+   INFO value (TDD-250 specified BUY|RENT|EXTEND|INFO). If the sign model names
+   it differently, adjust the branch.
+4. **WG flag constants** (Task F.2) — ✅ **PRE-PINNED** in the "CONFIRMED API
+   SYMBOLS" section above. `Flags.ITEM_FRAME_ROTATE` (not ...ROTATION) + all
+   core flags verified against the real jar. Use as written; no confirmation
+   needed.
+5. **WG `getApplicableRegions` / `BlockVector3`** (Task B.6) — ✅ **PRE-PINNED**
+   above. `getApplicableRegions(BlockVector3): ApplicableRegionSet` (Iterable,
+   `.regions` Set), `getApplicableRegionsIDs(BlockVector3): List<String>`. The
+   plan's `.regions.maxByOrNull { it.priority }?.id` is confirmed valid.
+6. **WE `BlockVector3.x()/y()/z()`** (Task C.1) — ✅ **PRE-PINNED** above. Both
+   `.x()` and `.getX()` exist; the plan's `.x()/.y()/.z()` is correct. No
+   change.
+7. **`KEY_WORLD`/`KEY_REGION_PREFIX`** (Task B.7) — these constants are already
+   referenced in AdminCommands.import; locate their existing declaration and
+   reuse rather than redeclare.
+8. **`BedrockPurchaseForm` constructor** (Task G.5) — confirm exact param order
+   (`sed -n '1,40p'` in the task); the `openBedrockPurchaseForm` call must
+   match.
+9. **IFramework `GuiItem` click-consumer signature** (Task G.3) — mirror
+   `PurchaseMenu`'s `GuiItem(item) { event -> ... }` form for the IF version in
+   use.
+10. **`gui.shop.title` / `gui:` lang section location** (Task G.3) — confirm
+    where the existing `gui.shop.*` keys live so the new `create:` block nests
+    correctly.
 
 Each is a single-symbol confirmation; the surrounding logic is fixed.
