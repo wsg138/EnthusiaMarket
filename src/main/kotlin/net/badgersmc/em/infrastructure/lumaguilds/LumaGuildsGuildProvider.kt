@@ -90,8 +90,9 @@ class LumaGuildsGuildProvider : GuildProvider {
         )
     }
 
-    override fun listGuilds(): List<GuildProvider.GuildRef> =
-        lookup?.getAllGuilds()?.map { toGuildRef(it) } ?: emptyList()
+    override fun listGuilds(): List<GuildProvider.GuildRef> {
+        return lookup?.getAllGuilds()?.map { toGuildRef(it) } ?: emptyList()
+    }
 
     override fun memberIds(guildId: String): Set<UUID> {
         val uuid = parseUuid(guildId) ?: return emptySet()
@@ -116,20 +117,22 @@ class LumaGuildsGuildProvider : GuildProvider {
     }
 
     /** Map a LumaGuilds [GuildSummary] to [GuildProvider.GuildRef], normalising tag/emoji to MiniMessage. */
-    private fun toGuildRef(guild: GuildSummary): GuildProvider.GuildRef =
-        GuildProvider.GuildRef(
+    private fun toGuildRef(guild: GuildSummary): GuildProvider.GuildRef {
+        return GuildProvider.GuildRef(
             guild.id.toString(),
             guild.name,
             normalizeToMiniMessage(guild.tag),
             normalizeToMiniMessage(guild.emoji),
         )
+    }
 
-    private fun parseUuid(value: String): UUID? =
-        try {
+    private fun parseUuid(value: String): UUID? {
+        return try {
             UUID.fromString(value)
         } catch (_: IllegalArgumentException) {
             null
         }
+    }
 
     /**
      * Normalise a stored guild tag/emoji to MiniMessage so EM's sign renderer
