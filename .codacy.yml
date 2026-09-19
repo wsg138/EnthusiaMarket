@@ -4,5 +4,8 @@ exclude_paths:
   - "src/main/resources/website-sync-migrations/**"
 
 engines:
+  lizard:
+    exclude_paths:
+      - "src/test/**"
   tsqllint:
     enabled: false
