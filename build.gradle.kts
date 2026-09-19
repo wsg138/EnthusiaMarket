@@ -34,10 +34,11 @@ repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://oss.sonatype.org/content/repositories/snapshots")
+    // Prefer the publisher's repository for Geyser artifacts and transitives.
+    maven("https://repo.opencollab.dev/main/")
     maven("https://jitpack.io")
     maven("https://maven.enginehub.org/repo/") // WorldGuard + WorldEdit
     maven("https://repo.fastasyncworldedit.com/releases") // FastAsyncWorldEdit
-    maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
 
     maven("https://repo.extendedclip.com/content/repositories/placeholderapi/") // PlaceholderAPI
 
