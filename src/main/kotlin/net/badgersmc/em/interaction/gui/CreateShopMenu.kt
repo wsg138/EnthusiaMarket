@@ -114,16 +114,28 @@ class CreateShopMenu(
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.create.confirm"))) { event ->
             event.isCancelled = true
             val shop = ShopFactory.build(
-                stallId = stallId, owner = stallOwner,
-                signWorld = signLoc.world?.name ?: "world",
-                signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
-                containerWorld = containerLoc.world?.name ?: "world",
-                containerX = containerLoc.blockX, containerY = containerLoc.blockY, containerZ = containerLoc.blockZ,
-                sellItemBase64 = sellItemBase64, sellAmount = amount, price = price,
-                direction = direction,
-                searchEnabled = true,
-                costItemBase64 = costItemB64,
-                costAmountOverride = if (direction == SignDirection.TRADE) costItemAmount else null,
+                ShopFactory.BuildRequest(
+                    identity = ShopFactory.ShopIdentity(stallId, stallOwner),
+                    sign = ShopFactory.BlockPosition(
+                        signLoc.world?.name ?: "world",
+                        signLoc.blockX,
+                        signLoc.blockY,
+                        signLoc.blockZ,
+                    ),
+                    container = ShopFactory.BlockPosition(
+                        containerLoc.world?.name ?: "world",
+                        containerLoc.blockX,
+                        containerLoc.blockY,
+                        containerLoc.blockZ,
+                    ),
+                    sale = ShopFactory.Sale(sellItemBase64, amount),
+                    pricing = ShopFactory.Pricing(
+                        price,
+                        costItemB64,
+                        if (direction == SignDirection.TRADE) costItemAmount else null,
+                    ),
+                    direction = direction,
+                ),
             )
             if (!writeSignText(shop)) {
                 player.closeInventory()
