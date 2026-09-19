@@ -122,30 +122,79 @@ class WebsiteSyncConfigLoader(private val dataFolder: File) {
         }
     }
 
-    @Suppress("LongMethod", "MagicNumber", "CyclomaticComplexMethod")
-    private fun validate(yaml: YamlConfiguration): WebsiteSyncConfigResult {
-        val errors = mutableListOf<String>()
+    private fun validate(yaml: YamlConfiguration): WebsiteSyncConfigResult =
+        WebsiteSyncConfigValidator(yaml).validate()
+}
+
+private class WebsiteSyncConfigValidator(private val yaml: YamlConfiguration) {
+    private val errors = mutableListOf<String>()
+
+    fun validate(): WebsiteSyncConfigResult {
+        validateVersion()
+        val endpoint = endpoint()
+        val serverId = serverId()
+        val timing = timing()
+        val http = http()
+        val retry = retry()
+        validateRelativeBounds(timing, retry)
+        return result(endpoint, serverId, timing, http, retry)
+    }
+
+    private fun validateVersion() {
         if (yaml.getInt("config-version") != 1) errors += "config_version"
+    }
+
+    private fun endpoint(): URI? {
         val endpoint = runCatching { URI(yaml.getString("endpoint") ?: "") }.getOrNull()
-        if (endpoint == null || endpoint.scheme != "https" || endpoint.host.isNullOrBlank()) errors += "endpoint"
+        if (!isSecureEndpoint(endpoint)) errors += "endpoint"
+        return endpoint
+    }
+
+    private fun isSecureEndpoint(endpoint: URI?): Boolean =
+        endpoint != null && endpoint.scheme == "https" && !endpoint.host.isNullOrBlank()
+
+    private fun serverId(): String {
         val serverId = yaml.getString("server-id") ?: ""
         if (serverId != "enthusia-main") errors += "server_id"
-        fun bounded(path: String, min: Int, max: Int): Int {
-            val value = yaml.getInt(path, Int.MIN_VALUE)
-            if (value !in min..max) errors += path.replace('.', '_')
-            return value
-        }
-        val startup = bounded("timing.startup-delay-seconds", 0, 3600)
-        val debounce = bounded("timing.stall-debounce-milliseconds", 50, 30_000)
-        val maximumDebounce = bounded("timing.maximum-debounce-milliseconds", 50, 30_000)
-        val reconciliation = bounded("timing.reconciliation-minutes", 1, 1440)
-        val connect = bounded("http.connect-timeout-seconds", 1, 120)
-        val request = bounded("http.request-timeout-seconds", 1, 300)
-        val concurrent = bounded("http.maximum-concurrent-requests", 1, 1)
-        val initial = bounded("retry.initial-delay-seconds", 1, 3600)
-        val maximum = bounded("retry.maximum-delay-seconds", 1, 86_400)
-        if (maximumDebounce < debounce) errors += "maximum_debounce"
-        if (maximum < initial) errors += "maximum_retry"
+        return serverId
+    }
+
+    private fun timing(): TimingValues = TimingValues(
+        startup = bounded("timing.startup-delay-seconds", 0, 3600),
+        debounce = bounded("timing.stall-debounce-milliseconds", 50, 30_000),
+        maximumDebounce = bounded("timing.maximum-debounce-milliseconds", 50, 30_000),
+        reconciliation = bounded("timing.reconciliation-minutes", 1, 1440),
+    )
+
+    private fun http(): HttpValues = HttpValues(
+        connect = bounded("http.connect-timeout-seconds", 1, 120),
+        request = bounded("http.request-timeout-seconds", 1, 300),
+        concurrent = bounded("http.maximum-concurrent-requests", 1, 1),
+    )
+
+    private fun retry(): RetryValues = RetryValues(
+        initial = bounded("retry.initial-delay-seconds", 1, 3600),
+        maximum = bounded("retry.maximum-delay-seconds", 1, 86_400),
+    )
+
+    private fun bounded(path: String, min: Int, max: Int): Int {
+        val value = yaml.getInt(path, Int.MIN_VALUE)
+        if (value !in min..max) errors += path.replace('.', '_')
+        return value
+    }
+
+    private fun validateRelativeBounds(timing: TimingValues, retry: RetryValues) {
+        if (timing.maximumDebounce < timing.debounce) errors += "maximum_debounce"
+        if (retry.maximum < retry.initial) errors += "maximum_retry"
+    }
+
+    private fun result(
+        endpoint: URI?,
+        serverId: String,
+        timing: TimingValues,
+        http: HttpValues,
+        retry: RetryValues,
+    ): WebsiteSyncConfigResult {
         if (errors.isNotEmpty() || endpoint == null) return WebsiteSyncConfigResult(null, errors.distinct())
         return WebsiteSyncConfigResult(
             WebsiteSyncConfig(
@@ -153,15 +202,15 @@ class WebsiteSyncConfigLoader(private val dataFolder: File) {
                 endpoint = endpoint,
                 serverId = serverId,
                 secret = yaml.getString("sync-secret", "") ?: "",
-                startupDelay = Duration.ofSeconds(startup.toLong()),
-                debounce = Duration.ofMillis(debounce.toLong()),
-                maximumDebounce = Duration.ofMillis(maximumDebounce.toLong()),
-                reconciliation = Duration.ofMinutes(reconciliation.toLong()),
-                connectTimeout = Duration.ofSeconds(connect.toLong()),
-                requestTimeout = Duration.ofSeconds(request.toLong()),
-                maximumConcurrentRequests = concurrent,
-                initialRetry = Duration.ofSeconds(initial.toLong()),
-                maximumRetry = Duration.ofSeconds(maximum.toLong()),
+                startupDelay = Duration.ofSeconds(timing.startup.toLong()),
+                debounce = Duration.ofMillis(timing.debounce.toLong()),
+                maximumDebounce = Duration.ofMillis(timing.maximumDebounce.toLong()),
+                reconciliation = Duration.ofMinutes(timing.reconciliation.toLong()),
+                connectTimeout = Duration.ofSeconds(http.connect.toLong()),
+                requestTimeout = Duration.ofSeconds(http.request.toLong()),
+                maximumConcurrentRequests = http.concurrent,
+                initialRetry = Duration.ofSeconds(retry.initial.toLong()),
+                maximumRetry = Duration.ofSeconds(retry.maximum.toLong()),
                 logStatusChanges = yaml.getBoolean("logging.status-changes", true),
                 logSuccessfulStallUpdates = yaml.getBoolean("logging.successful-stall-updates", false),
             ),
@@ -169,3 +218,14 @@ class WebsiteSyncConfigLoader(private val dataFolder: File) {
         )
     }
 }
+
+private data class TimingValues(
+    val startup: Int,
+    val debounce: Int,
+    val maximumDebounce: Int,
+    val reconciliation: Int,
+)
+
+private data class HttpValues(val connect: Int, val request: Int, val concurrent: Int)
+
+private data class RetryValues(val initial: Int, val maximum: Int)
