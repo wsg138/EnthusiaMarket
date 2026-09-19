@@ -1,12 +1,30 @@
 package net.badgersmc.em.interaction.bedrock
 
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
+import io.mockk.verify
+import net.badgersmc.em.application.ItemStackSerializer
+import net.badgersmc.em.application.ShopSignRenderer
+import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
+import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.nexus.i18n.LangService
 import org.bukkit.Location
+import org.bukkit.Material
+import org.bukkit.block.Block
+import org.bukkit.block.BlockState
 import org.bukkit.entity.Player
+import org.geysermc.cumulus.form.impl.FormImpl
+import org.geysermc.cumulus.response.CustomFormResponse
+import org.geysermc.cumulus.response.result.FormResponseResult
+import org.mockbukkit.mockbukkit.MockBukkit
 import java.util.UUID
 import java.util.logging.Logger
+import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 /**
@@ -16,6 +34,16 @@ class BedrockCreateShopFormTest {
 
     private val stallOwner = UUID.randomUUID()
     private val stallId = "stall_01"
+
+    @BeforeTest
+    fun setUp() {
+        MockBukkit.mock()
+    }
+
+    @AfterTest
+    fun tearDown() {
+        MockBukkit.unmock()
+    }
 
     @Test
     fun `create shop form constructs without throwing`() {
@@ -57,4 +85,101 @@ class BedrockCreateShopFormTest {
         val built = form.buildForm()
         assertNotNull(built)
     }
+
+    @Test
+    fun `currency form directions persist their entered price`() {
+        listOf(
+            0 to SignDirection.SELL,
+            1 to SignDirection.BUY,
+        ).forEach { (directionIndex, direction) ->
+            val fixture = fixture()
+            val captured = slot<Shop>()
+
+            submit(fixture.form, response(directionIndex, "100", "3"))
+
+            verify(exactly = 1) { fixture.repository.upsert(capture(captured)) }
+            assertEquals(direction, captured.captured.direction)
+            assertEquals(100, captured.captured.costAmount)
+            assertEquals(3, captured.captured.sellAmount)
+        }
+    }
+
+    @Test
+    fun `currency form retains the factory price clamp`() {
+        val fixture = fixture()
+        val captured = slot<Shop>()
+
+        submit(fixture.form, response(0, Long.MAX_VALUE.toString(), "1"))
+
+        verify(exactly = 1) { fixture.repository.upsert(capture(captured)) }
+        assertEquals(Int.MAX_VALUE, captured.captured.costAmount)
+    }
+
+    @Test
+    fun `currency form rejects a nonpositive price without persistence`() {
+        val fixture = fixture()
+
+        submit(fixture.form, response(0, "0", "1"))
+
+        verify(exactly = 0) { fixture.repository.upsert(any()) }
+    }
+
+    @Test
+    fun `trade form retains its item cost amount`() {
+        val fixture = fixture()
+        val captured = slot<Shop>()
+
+        submit(fixture.form, response(2, "2 diamond", "1"))
+
+        verify(exactly = 1) { fixture.repository.upsert(capture(captured)) }
+        assertEquals(SignDirection.TRADE, captured.captured.direction)
+        assertEquals(2, captured.captured.costAmount)
+        assertEquals(Material.DIAMOND, ItemStackSerializer.deserialize(captured.captured.costItem)?.type)
+    }
+
+    private fun fixture(): FormFixture {
+        val repository = mockk<ShopRepository>(relaxed = true)
+        val form = BedrockCreateShopForm(
+            mockk<Player>(relaxed = true),
+            stallOwner,
+            stallId,
+            location(),
+            location(),
+            "dummyBase64",
+            repository,
+            mockk<Logger>(relaxed = true),
+            mockk<LangService>(relaxed = true),
+            mockk<ShopSignRenderer>(relaxed = true),
+        )
+        return FormFixture(form, repository)
+    }
+
+    private fun location(): Location {
+        val location = mockk<Location>()
+        val block = mockk<Block>()
+        every { location.world } returns null
+        every { location.blockX } returns 1
+        every { location.blockY } returns 64
+        every { location.blockZ } returns 1
+        every { location.block } returns block
+        every { block.state } returns mockk<BlockState>()
+        return location
+    }
+
+    private fun response(direction: Int, price: String, amount: String): CustomFormResponse = mockk {
+        every { asDropdown(1) } returns direction
+        every { asInput(2) } returns price
+        every { asInput(3) } returns amount
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun submit(form: BedrockCreateShopForm, response: CustomFormResponse) {
+        val built = form.buildForm() as FormImpl<CustomFormResponse>
+        built.callResultHandler(FormResponseResult.valid(response))
+    }
+
+    private data class FormFixture(
+        val form: BedrockCreateShopForm,
+        val repository: ShopRepository,
+    )
 }

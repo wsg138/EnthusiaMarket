@@ -59,7 +59,7 @@ class BedrockCreateShopForm(
             return
         }
         val costItemBase64: String?
-        val costAmount: Int
+        val costAmount: Int?
         val price: Long
         if (direction == SignDirection.TRADE) {
             val trade = parseTradeCost(priceText)
@@ -77,7 +77,7 @@ class BedrockCreateShopForm(
                 return
             }
             price = p
-            costAmount = 0
+            costAmount = null
             costItemBase64 = null
         }
         val shop = ShopFactory.build(
