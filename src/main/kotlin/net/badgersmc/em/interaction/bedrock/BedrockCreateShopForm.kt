@@ -48,39 +48,59 @@ class BedrockCreateShopForm(
             .build()
     }
 
-    @Suppress("ReturnCount", "ComplexCondition", "ThrowsCount")
     private fun handleCreate(response: CustomFormResponse) {
         val direction = directionFrom(response.asDropdown(1) ?: 0)
         val priceText = response.asInput(2) ?: ""
         val amountText = response.asInput(3) ?: "1"
+        val amount = parseAmount(amountText) ?: return
+        val pricing = parsePricing(direction, priceText) ?: return
+        val shop = createShop(direction, amount, pricing)
+        shopRepository.upsert(shop)
+        renderSign(shop)
+        player.sendMessage(lang.legacy("shop.create.success"))
+    }
+
+    private fun parseAmount(amountText: String): Int? {
         val amount = amountText.toIntOrNull() ?: 1
-        if (amount <= 0) {
-            player.sendMessage(lang.legacy("shop.create.invalid_input"))
-            return
+        if (amount > 0) {
+            return amount
         }
-        val costItemBase64: String?
-        val costAmount: Int?
-        val price: Long
-        if (direction == SignDirection.TRADE) {
-            val trade = parseTradeCost(priceText)
-            if (trade == null) {
-                player.sendMessage(lang.legacy("shop.create.invalid_trade_cost"))
-                return
-            }
-            price = 0
-            costAmount = trade.first
-            costItemBase64 = trade.second
+        player.sendMessage(lang.legacy("shop.create.invalid_input"))
+        return null
+    }
+
+    private fun parsePricing(direction: SignDirection, priceText: String): ShopFactory.Pricing? {
+        return if (direction == SignDirection.TRADE) {
+            parseTradePricing(priceText)
         } else {
-            val p = priceText.toLongOrNull()
-            if (p == null || p <= 0) {
-                player.sendMessage(lang.legacy("shop.create.invalid_input"))
-                return
-            }
-            price = p
-            costAmount = null
-            costItemBase64 = null
+            parseCurrencyPricing(priceText)
         }
-        val shop = ShopFactory.build(
+    }
+
+    private fun parseTradePricing(priceText: String): ShopFactory.Pricing? {
+        val trade = parseTradeCost(priceText)
+        if (trade == null) {
+            player.sendMessage(lang.legacy("shop.create.invalid_trade_cost"))
+            return null
+        }
+        return ShopFactory.Pricing(0, trade.second, trade.first)
+    }
+
+    private fun parseCurrencyPricing(priceText: String): ShopFactory.Pricing? {
+        val price = priceText.toLongOrNull()
+        if (price == null || price <= 0) {
+            player.sendMessage(lang.legacy("shop.create.invalid_input"))
+            return null
+        }
+        return ShopFactory.Pricing(price)
+    }
+
+    private fun createShop(
+        direction: SignDirection,
+        amount: Int,
+        pricing: ShopFactory.Pricing,
+    ): net.badgersmc.em.domain.shop.Shop {
+        return ShopFactory.build(
             ShopFactory.BuildRequest(
                 identity = ShopFactory.ShopIdentity(stallId, stallOwner),
                 sign = ShopFactory.BlockPosition(
@@ -96,13 +116,10 @@ class BedrockCreateShopForm(
                     containerLoc.blockZ,
                 ),
                 sale = ShopFactory.Sale(sellItemBase64, amount),
-                pricing = ShopFactory.Pricing(price, costItemBase64, costAmount),
+                pricing = pricing,
                 direction = direction,
             ),
         )
-        shopRepository.upsert(shop)
-        renderSign(shop)
-        player.sendMessage(lang.legacy("shop.create.success"))
     }
 
     /** Parse "16 diamond" → Pair(16, base64). Returns null on failure. */

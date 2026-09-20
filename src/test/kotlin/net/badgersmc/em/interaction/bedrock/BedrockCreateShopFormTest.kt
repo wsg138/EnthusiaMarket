@@ -101,6 +101,7 @@ class BedrockCreateShopFormTest {
             assertEquals(direction, captured.captured.direction)
             assertEquals(100, captured.captured.costAmount)
             assertEquals(3, captured.captured.sellAmount)
+            assertEquals(Material.RAW_GOLD, ItemStackSerializer.deserialize(captured.captured.costItem)?.type)
         }
     }
 
@@ -116,12 +117,36 @@ class BedrockCreateShopFormTest {
     }
 
     @Test
+    fun `currency form defaults missing and malformed amount to one`() {
+        listOf<String?>(null, "not-a-number").forEach { amountText ->
+            val fixture = fixture()
+            val captured = slot<Shop>()
+
+            submit(fixture.form, response(0, "100", amountText))
+
+            verify(exactly = 1) { fixture.repository.upsert(capture(captured)) }
+            assertEquals(1, captured.captured.sellAmount)
+        }
+    }
+
+    @Test
     fun `currency form rejects a nonpositive price without persistence`() {
         val fixture = fixture()
 
         submit(fixture.form, response(0, "0", "1"))
 
         verify(exactly = 0) { fixture.repository.upsert(any()) }
+    }
+
+    @Test
+    fun `form rejects a nonpositive amount with the invalid input message`() {
+        val fixture = fixture()
+        every { fixture.lang.legacy("shop.create.invalid_input") } returns "invalid input"
+
+        submit(fixture.form, response(0, "100", "0"))
+
+        verify(exactly = 0) { fixture.repository.upsert(any()) }
+        verify(exactly = 1) { fixture.player.sendMessage("invalid input") }
     }
 
     @Test
@@ -137,10 +162,23 @@ class BedrockCreateShopFormTest {
         assertEquals(Material.DIAMOND, ItemStackSerializer.deserialize(captured.captured.costItem)?.type)
     }
 
+    @Test
+    fun `trade form rejects invalid trade cost with its dedicated message`() {
+        val fixture = fixture()
+        every { fixture.lang.legacy("shop.create.invalid_trade_cost") } returns "invalid trade cost"
+
+        submit(fixture.form, response(2, "not-a-trade", "1"))
+
+        verify(exactly = 0) { fixture.repository.upsert(any()) }
+        verify(exactly = 1) { fixture.player.sendMessage("invalid trade cost") }
+    }
+
     private fun fixture(): FormFixture {
         val repository = mockk<ShopRepository>(relaxed = true)
+        val player = mockk<Player>(relaxed = true)
+        val lang = mockk<LangService>(relaxed = true)
         val form = BedrockCreateShopForm(
-            mockk<Player>(relaxed = true),
+            player,
             stallOwner,
             stallId,
             location(),
@@ -148,10 +186,10 @@ class BedrockCreateShopFormTest {
             "dummyBase64",
             repository,
             mockk<Logger>(relaxed = true),
-            mockk<LangService>(relaxed = true),
+            lang,
             mockk<ShopSignRenderer>(relaxed = true),
         )
-        return FormFixture(form, repository)
+        return FormFixture(form, repository, player, lang)
     }
 
     private fun location(): Location {
@@ -166,7 +204,7 @@ class BedrockCreateShopFormTest {
         return location
     }
 
-    private fun response(direction: Int, price: String, amount: String): CustomFormResponse = mockk {
+    private fun response(direction: Int, price: String?, amount: String?): CustomFormResponse = mockk {
         every { asDropdown(1) } returns direction
         every { asInput(2) } returns price
         every { asInput(3) } returns amount
@@ -181,5 +219,7 @@ class BedrockCreateShopFormTest {
     private data class FormFixture(
         val form: BedrockCreateShopForm,
         val repository: ShopRepository,
+        val player: Player,
+        val lang: LangService,
     )
 }
