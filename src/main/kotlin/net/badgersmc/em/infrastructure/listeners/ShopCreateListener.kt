@@ -10,6 +10,7 @@ import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.nexus.annotations.Component
 import org.bukkit.Location
+import org.bukkit.block.Block
 import org.bukkit.block.Container
 import org.bukkit.block.Sign
 import org.bukkit.block.data.type.WallSign
@@ -19,6 +20,7 @@ import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
 import org.bukkit.event.Event
 import org.bukkit.event.player.PlayerInteractEvent
+import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
 
 /**
@@ -38,70 +40,109 @@ open class ShopCreateListener(
 
     private val logger = java.util.logging.Logger.getLogger(ShopCreateListener::class.java.name)
 
+    private data class ShopCreationTarget(
+        val signBlock: Block,
+        val attachedBlock: Block,
+        val stall: Stall,
+    )
+
     @EventHandler
     fun onSignInteract(event: PlayerInteractEvent) {
-        // Must be left-click while sneaking
-        if (event.action != Action.LEFT_CLICK_BLOCK) return
-        if (!event.player.isSneaking) return
+        if (!isCreateGesture(event)) return
 
-        val block = event.clickedBlock ?: return
-        val state = block.state
+        val signBlock = event.clickedBlock ?: return
+        if (!isWallSign(signBlock)) return
 
-        // Must be a wall sign
-        if (state !is Sign || block.blockData !is WallSign) return
-
-        // Must not already be a registered shop
-        val loc = block.location
-        if (shopRepository.findBySign(loc.world?.name ?: "world", loc.blockX, loc.blockY, loc.blockZ) != null) {
-            event.player.sendMessage(lang.msg("shop.create.already_shop"))
-            return
-        }
-
-        // Find attached container via the sign's attached block face
-        val wallSignData = block.blockData as WallSign
-        val facing = wallSignData.facing
-        val attachedBlock = block.getRelative(facing.oppositeFace)
-
-        if (attachedBlock.state !is Container) {
-            event.player.sendMessage(lang.msg("shop.create.needs_container"))
-            return
-        }
-
-        // Check the sign is inside an owned stall
-        val stall = findStallAt(loc) ?: run {
-            event.player.sendMessage(lang.msg("shop.create.not_in_stall"))
-            return
-        }
-
-        // Check player can manage this stall
-        if (!canManageStall(stall, event.player)) {
-            event.player.sendMessage(lang.msg("shop.create.no_authority"))
-            return
-        }
+        val target = resolveCreationTarget(signBlock, event.player) ?: return
 
         event.setUseInteractedBlock(Event.Result.DENY)
 
         // Capture the held item as the sell item (REQ-012).
-        val sellItemB64 = captureSellItem(event.player.inventory.itemInMainHand)
-        if (sellItemB64 == null) {
-            event.player.sendMessage(lang.msg("shop.create.no_held_item"))
+        val player = event.player
+        val sellItemB64 = captureSellItem(player.inventory.itemInMainHand) ?: run {
+            player.sendMessage(lang.msg("shop.create.no_held_item"))
             return
         }
 
-        val signLoc = block.location
-        val containerLoc = attachedBlock.location
-        val player = event.player
-        if (menuFactory.shouldUseBedrockMenus(player)) {
-            net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
-                player, player.uniqueId, stall.id.value, signLoc, containerLoc,
-                sellItemB64, shopRepository, logger, lang, shopSignRenderer,
-            ).open(player)
-        } else {
-            net.badgersmc.em.interaction.gui.CreateShopMenu(
-                stall.id.value, player.uniqueId, signLoc, containerLoc,
-                sellItemB64, shopRepository, lang,
-            ).open(player)
+        openCreateMenu(player, target, sellItemB64)
+    }
+
+    private fun isCreateGesture(event: PlayerInteractEvent): Boolean =
+        event.action == Action.LEFT_CLICK_BLOCK &&
+            event.hand == EquipmentSlot.HAND &&
+            event.player.isSneaking
+
+    private fun isWallSign(block: Block): Boolean {
+        val state = block.state
+        return state is Sign && block.blockData is WallSign
+    }
+
+    private fun resolveCreationTarget(signBlock: Block, player: Player): ShopCreationTarget? {
+        val location = signBlock.location
+        if (shopRepository.findBySign(
+                location.world?.name ?: "world", location.blockX, location.blockY, location.blockZ,
+            ) != null
+        ) {
+            player.sendMessage(lang.msg("shop.create.already_shop"))
+            return null
         }
+
+        val attachedBlock = findAttachedContainer(signBlock) ?: run {
+            player.sendMessage(lang.msg("shop.create.needs_container"))
+            return null
+        }
+        val stall = findStallAt(location) ?: run {
+            player.sendMessage(lang.msg("shop.create.not_in_stall"))
+            return null
+        }
+        if (!canManageStall(stall, player)) {
+            player.sendMessage(lang.msg("shop.create.no_authority"))
+            return null
+        }
+
+        return ShopCreationTarget(signBlock, attachedBlock, stall)
+    }
+
+    private fun findAttachedContainer(signBlock: Block): Block? {
+        val wallSignData = signBlock.blockData as WallSign
+        val attachedBlock = signBlock.getRelative(wallSignData.facing.oppositeFace)
+        return attachedBlock.takeIf { it.state is Container }
+    }
+
+    private fun openCreateMenu(player: Player, target: ShopCreationTarget, sellItemB64: String) {
+        val signLoc = target.signBlock.location
+        val containerLoc = target.attachedBlock.location
+        if (menuFactory.shouldUseBedrockMenus(player)) {
+            openBedrockCreateShopForm(player, target.stall, signLoc, containerLoc, sellItemB64)
+        } else {
+            openCreateShopMenu(player, target.stall, signLoc, containerLoc, sellItemB64)
+        }
+    }
+
+    protected open fun openBedrockCreateShopForm(
+        player: Player,
+        stall: Stall,
+        signLocation: Location,
+        containerLocation: Location,
+        sellItemB64: String,
+    ) {
+        net.badgersmc.em.interaction.bedrock.BedrockCreateShopForm(
+            player, player.uniqueId, stall.id.value, signLocation, containerLocation,
+            sellItemB64, shopRepository, logger, lang, shopSignRenderer,
+        ).open(player)
+    }
+
+    protected open fun openCreateShopMenu(
+        player: Player,
+        stall: Stall,
+        signLocation: Location,
+        containerLocation: Location,
+        sellItemB64: String,
+    ) {
+        net.badgersmc.em.interaction.gui.CreateShopMenu(
+            stall.id.value, player.uniqueId, signLocation, containerLocation,
+            sellItemB64, shopRepository, lang,
+        ).open(player)
     }
 
     companion object {

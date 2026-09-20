@@ -10,6 +10,8 @@ import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
+import net.badgersmc.em.interaction.MenuFactory
+import net.badgersmc.nexus.i18n.LangService
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Block
@@ -23,6 +25,7 @@ import org.bukkit.event.block.Action
 import org.bukkit.event.player.PlayerInteractEvent
 import org.bukkit.inventory.EquipmentSlot
 import org.bukkit.inventory.ItemStack
+import org.bukkit.inventory.PlayerInventory
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.mockbukkit.mockbukkit.MockBukkit
@@ -103,37 +106,87 @@ class ShopCreateListenerTest {
         rentTerms = RentTerms.formula(0.01)
     )
 
+    private class RecordingShopCreateListener(
+        stallRepository: StallRepository,
+        shopRepository: ShopRepository,
+        lang: LangService,
+        menuFactory: MenuFactory,
+        private val foundStall: Stall?,
+        private val managesStall: Boolean,
+    ) : ShopCreateListener(
+        stallRepository,
+        shopRepository,
+        lang,
+        menuFactory,
+        mockk<net.badgersmc.em.application.ShopSignRenderer>(relaxed = true),
+        mockk(relaxed = true),
+    ) {
+        var javaMenuOpened = false
+        var bedrockFormOpened = false
+
+        override fun findStallAt(location: Location): Stall? = foundStall
+
+        override fun canManageStall(stall: Stall, player: Player): Boolean = managesStall
+
+        protected override fun openCreateShopMenu(
+            player: Player,
+            stall: Stall,
+            signLocation: Location,
+            containerLocation: Location,
+            sellItemB64: String,
+        ) {
+            javaMenuOpened = true
+        }
+
+        protected override fun openBedrockCreateShopForm(
+            player: Player,
+            stall: Stall,
+            signLocation: Location,
+            containerLocation: Location,
+            sellItemB64: String,
+        ) {
+            bedrockFormOpened = true
+        }
+    }
+
     /** Create a listener whose findStallAt returns the given stall. */
     private fun listenerWithStall(
         stallRepo: StallRepository = mockk(relaxed = true),
         shopRepo: ShopRepository = mockk(relaxed = true),
-        stall: Stall? = sampleStall()
-    ): ShopCreateListener {
-        val listener = ShopCreateListener(stallRepo, shopRepo, mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.application.ShopSignRenderer>(relaxed = true), mockk(relaxed = true))
-        return object : ShopCreateListener(stallRepo, shopRepo, mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.application.ShopSignRenderer>(relaxed = true), mockk(relaxed = true)) {
-            override fun findStallAt(location: Location): Stall? = stall
-            override fun canManageStall(stall: Stall, player: Player): Boolean = true
-        }
+        stall: Stall? = sampleStall(),
+        lang: LangService = mockk(relaxed = true),
+        menuFactory: MenuFactory = mockk(relaxed = true),
+        managesStall: Boolean = true,
+    ): RecordingShopCreateListener = RecordingShopCreateListener(
+        stallRepo, shopRepo, lang, menuFactory, stall, managesStall,
+    )
+
+    private fun setHeldItem(player: Player, item: ItemStack) {
+        val inventory: PlayerInventory = mockk(relaxed = true)
+        every { player.inventory } returns inventory
+        every { inventory.itemInMainHand } returns item
     }
 
     /** Helper: create a PlayerInteractEvent. */
     private fun interactEvent(
         player: Player,
         action: Action = Action.LEFT_CLICK_BLOCK,
-        block: Block
+        block: Block?,
+        hand: EquipmentSlot = EquipmentSlot.HAND,
     ): PlayerInteractEvent {
-        val loc = block.location ?: location()
-        every { block.location } returns loc
-        return PlayerInteractEvent(player, action, null as ItemStack?, block, BlockFace.NORTH, EquipmentSlot.HAND)
+        val loc = block?.location ?: location()
+        if (block != null) every { block.location } returns loc
+        return PlayerInteractEvent(player, action, null as ItemStack?, block, BlockFace.NORTH, hand)
     }
 
-    // ===== Primary success case =====
+    // ===== Valid creation paths =====
 
     @Test
-    fun `left-click sneaking on wall sign attached to container inside owned stall cancels event`() {
+    fun `empty hand denies block use and shows held item message`() {
         val player: Player = mockk(relaxed = true)
         every { player.uniqueId } returns testUuid
         every { player.isSneaking } returns true
+        setHeldItem(player, ItemStack(Material.AIR))
 
         val signBlock: Block = mockk(relaxed = true)
         val loc = location()
@@ -143,14 +196,70 @@ class ShopCreateListenerTest {
 
         val shopRepo = mockk<ShopRepository>(relaxed = true)
         every { shopRepo.findBySign(worldName, 100, 64, 200) } returns null
+        val lang: LangService = mockk(relaxed = true)
+        every { lang.msg("shop.create.no_held_item") } returns Component.empty()
 
-        val listener = listenerWithStall(shopRepo = shopRepo)
+        val listener = listenerWithStall(shopRepo = shopRepo, lang = lang)
 
         val event = interactEvent(player, block = signBlock)
         listener.onSignInteract(event)
 
-        assert(event.useInteractedBlock() == Event.Result.DENY) { "Event should be cancelled" }
-        verify { player.sendMessage(any<Component>()) }
+        assert(event.useInteractedBlock() == Event.Result.DENY) { "Event should deny block use" }
+        verify(exactly = 1) { lang.msg("shop.create.no_held_item") }
+        assert(!listener.javaMenuOpened) { "Empty hand should not open the Java menu" }
+        assert(!listener.bedrockFormOpened) { "Empty hand should not open the Bedrock form" }
+    }
+
+    @Test
+    fun `eligible main-hand interaction opens Java create menu`() {
+        val player: Player = mockk(relaxed = true)
+        every { player.uniqueId } returns testUuid
+        every { player.isSneaking } returns true
+        setHeldItem(player, ItemStack(Material.DIAMOND, 16))
+
+        val signBlock: Block = mockk(relaxed = true)
+        val loc = location()
+        every { signBlock.location } returns loc
+        wallSignBlock(signBlock, containerBlock())
+
+        val shopRepo = mockk<ShopRepository>(relaxed = true)
+        every { shopRepo.findBySign(worldName, 100, 64, 200) } returns null
+        val menuFactory: MenuFactory = mockk(relaxed = true)
+        every { menuFactory.shouldUseBedrockMenus(player) } returns false
+        val listener = listenerWithStall(shopRepo = shopRepo, menuFactory = menuFactory)
+
+        val event = interactEvent(player, block = signBlock)
+        listener.onSignInteract(event)
+
+        assert(event.useInteractedBlock() == Event.Result.DENY) { "Event should deny block use" }
+        assert(listener.javaMenuOpened) { "Eligible Java player should open the create menu" }
+        assert(!listener.bedrockFormOpened) { "Java player should not open the Bedrock form" }
+    }
+
+    @Test
+    fun `eligible main-hand interaction opens Bedrock create form`() {
+        val player: Player = mockk(relaxed = true)
+        every { player.uniqueId } returns testUuid
+        every { player.isSneaking } returns true
+        setHeldItem(player, ItemStack(Material.DIAMOND, 16))
+
+        val signBlock: Block = mockk(relaxed = true)
+        val loc = location()
+        every { signBlock.location } returns loc
+        wallSignBlock(signBlock, containerBlock())
+
+        val shopRepo = mockk<ShopRepository>(relaxed = true)
+        every { shopRepo.findBySign(worldName, 100, 64, 200) } returns null
+        val menuFactory: MenuFactory = mockk(relaxed = true)
+        every { menuFactory.shouldUseBedrockMenus(player) } returns true
+        val listener = listenerWithStall(shopRepo = shopRepo, menuFactory = menuFactory)
+
+        val event = interactEvent(player, block = signBlock)
+        listener.onSignInteract(event)
+
+        assert(event.useInteractedBlock() == Event.Result.DENY) { "Event should deny block use" }
+        assert(!listener.javaMenuOpened) { "Bedrock player should not open the Java menu" }
+        assert(listener.bedrockFormOpened) { "Eligible Bedrock player should open the create form" }
     }
 
     // ===== Negative cases =====
@@ -191,6 +300,39 @@ class ShopCreateListenerTest {
         listener.onSignInteract(event)
 
         assert(event.useInteractedBlock() != Event.Result.DENY) { "Event should not be cancelled on right-click" }
+    }
+
+    @Test
+    fun `off-hand left-click does not open a second create flow`() {
+        val player: Player = mockk(relaxed = true)
+        every { player.uniqueId } returns testUuid
+        every { player.isSneaking } returns true
+
+        val signBlock: Block = mockk(relaxed = true)
+        val loc = location()
+        every { signBlock.location } returns loc
+        wallSignBlock(signBlock, containerBlock())
+
+        val listener = listenerWithStall()
+        val event = interactEvent(player, block = signBlock, hand = EquipmentSlot.OFF_HAND)
+        listener.onSignInteract(event)
+
+        assert(event.useInteractedBlock() != Event.Result.DENY) { "Off-hand event should not deny block use" }
+        assert(!listener.javaMenuOpened) { "Off-hand event should not open the Java menu" }
+        assert(!listener.bedrockFormOpened) { "Off-hand event should not open the Bedrock form" }
+    }
+
+    @Test
+    fun `left-click without a target block does not open a create flow`() {
+        val player: Player = mockk(relaxed = true)
+        every { player.isSneaking } returns true
+
+        val listener = listenerWithStall()
+        val event = interactEvent(player, block = null)
+        listener.onSignInteract(event)
+
+        assert(!listener.javaMenuOpened) { "Missing target should not open the Java menu" }
+        assert(!listener.bedrockFormOpened) { "Missing target should not open the Bedrock form" }
     }
 
     @Test
@@ -304,10 +446,12 @@ class ShopCreateListenerTest {
 
         val stall = sampleStall()
         val stallRepo = mockk<StallRepository>(relaxed = true)
-        val listener = object : ShopCreateListener(stallRepo, shopRepo, mockk(relaxed = true), mockk(relaxed = true), mockk<net.badgersmc.em.application.ShopSignRenderer>(relaxed = true), mockk(relaxed = true)) {
-            override fun findStallAt(location: Location): Stall? = stall
-            override fun canManageStall(stall: Stall, player: Player): Boolean = false
-        }
+        val listener = listenerWithStall(
+            stallRepo = stallRepo,
+            shopRepo = shopRepo,
+            stall = stall,
+            managesStall = false,
+        )
 
         val event = interactEvent(player, block = signBlock)
         listener.onSignInteract(event)
