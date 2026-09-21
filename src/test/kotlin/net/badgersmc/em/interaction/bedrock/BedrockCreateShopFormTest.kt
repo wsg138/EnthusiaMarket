@@ -2,19 +2,30 @@ package net.badgersmc.em.interaction.bedrock
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.slot
+import io.mockk.unmockkAll
 import io.mockk.verify
+import io.mockk.verifyOrder
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.nexus.i18n.LangService
+import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Block
 import org.bukkit.block.BlockState
+import org.bukkit.block.Sign
+import org.bukkit.block.sign.Side
+import org.bukkit.block.sign.SignSide
 import org.bukkit.entity.Player
+import org.bukkit.event.Event
+import org.bukkit.inventory.ItemStack
+import org.bukkit.plugin.PluginManager
 import org.geysermc.cumulus.form.impl.FormImpl
 import org.geysermc.cumulus.response.CustomFormResponse
 import org.geysermc.cumulus.response.result.FormResponseResult
@@ -42,7 +53,8 @@ class BedrockCreateShopFormTest {
 
     @AfterTest
     fun tearDown() {
-        MockBukkit.unmock()
+        unmockkAll()
+        if (MockBukkit.isMocked()) MockBukkit.unmock()
     }
 
     @Test
@@ -173,7 +185,49 @@ class BedrockCreateShopFormTest {
         verify(exactly = 1) { fixture.player.sendMessage("invalid trade cost") }
     }
 
-    private fun fixture(): FormFixture {
+    @Test
+    fun `successful form updates the live sign before persisting and publishing its event`() {
+        val fixture = fixture()
+        val eventSlot = slot<Event>()
+        val pluginManager = mockk<PluginManager>(relaxed = true)
+        mockkStatic(Bukkit::class)
+        every { pluginManager.callEvent(capture(eventSlot)) } answers { }
+        every { Bukkit.getPluginManager() } returns pluginManager
+
+        submit(fixture.form, response(0, "100", "1"))
+
+        verifyOrder {
+            fixture.sign!!.update(true, false)
+            fixture.repository.upsert(any())
+            pluginManager.callEvent(any<ShopCreatedEvent>())
+        }
+        assertEquals(stallOwner, (eventSlot.captured as ShopCreatedEvent).ownerId)
+    }
+
+    @Test
+    fun `form does not persist when the sign is no longer live`() {
+        val fixture = fixture(signState = mockk<BlockState>(relaxed = true))
+        every { fixture.lang.legacy("shop.create.sign_failed") } returns "sign failed"
+
+        submit(fixture.form, response(0, "100", "1"))
+
+        verify(exactly = 0) { fixture.repository.upsert(any()) }
+        verify(exactly = 1) { fixture.player.sendMessage("sign failed") }
+    }
+
+    @Test
+    fun `form does not persist when the live sign update fails`() {
+        val fixture = fixture(signState = liveSign(updateSucceeds = false))
+        every { fixture.lang.legacy("shop.create.sign_failed") } returns "sign failed"
+
+        submit(fixture.form, response(0, "100", "1"))
+
+        verify(exactly = 1) { fixture.sign!!.update(true, false) }
+        verify(exactly = 0) { fixture.repository.upsert(any()) }
+        verify(exactly = 1) { fixture.player.sendMessage("sign failed") }
+    }
+
+    private fun fixture(signState: BlockState = liveSign()): FormFixture {
         val repository = mockk<ShopRepository>(relaxed = true)
         val player = mockk<Player>(relaxed = true)
         val lang = mockk<LangService>(relaxed = true)
@@ -181,18 +235,25 @@ class BedrockCreateShopFormTest {
             player,
             stallOwner,
             stallId,
+            location(signState),
             location(),
-            location(),
-            "dummyBase64",
+            ItemStackSerializer.serialize(ItemStack(Material.DIAMOND)),
             repository,
             mockk<Logger>(relaxed = true),
             lang,
-            mockk<ShopSignRenderer>(relaxed = true),
+            ShopSignRenderer(),
         )
-        return FormFixture(form, repository, player, lang)
+        return FormFixture(form, repository, player, lang, signState as? Sign)
     }
 
-    private fun location(): Location {
+    private fun liveSign(updateSucceeds: Boolean = true): Sign {
+        val sign = mockk<Sign>(relaxed = true)
+        every { sign.getSide(Side.FRONT) } returns mockk<SignSide>(relaxed = true)
+        every { sign.update(true, false) } returns updateSucceeds
+        return sign
+    }
+
+    private fun location(state: BlockState = mockk(relaxed = true)): Location {
         val location = mockk<Location>()
         val block = mockk<Block>()
         every { location.world } returns null
@@ -200,7 +261,7 @@ class BedrockCreateShopFormTest {
         every { location.blockY } returns 64
         every { location.blockZ } returns 1
         every { location.block } returns block
-        every { block.state } returns mockk<BlockState>()
+        every { block.state } returns state
         return location
     }
 
@@ -221,5 +282,6 @@ class BedrockCreateShopFormTest {
         val repository: ShopRepository,
         val player: Player,
         val lang: LangService,
+        val sign: Sign?,
     )
 }

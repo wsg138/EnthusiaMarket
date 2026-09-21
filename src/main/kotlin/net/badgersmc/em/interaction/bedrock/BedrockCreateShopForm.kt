@@ -5,7 +5,9 @@ import net.badgersmc.em.application.ShopFactory
 import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.nexus.i18n.LangService
+import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Sign
@@ -55,9 +57,13 @@ class BedrockCreateShopForm(
         val amount = parseAmount(amountText) ?: return
         val pricing = parsePricing(direction, priceText) ?: return
         val shop = createShop(direction, amount, pricing)
+        if (!renderSign(shop)) {
+            player.sendMessage(lang.legacy("shop.create.sign_failed"))
+            return
+        }
         shopRepository.upsert(shop)
-        renderSign(shop)
         player.sendMessage(lang.legacy("shop.create.success"))
+        publishShopCreated(shop.owner)
     }
 
     private fun parseAmount(amountText: String): Int? {
@@ -138,8 +144,8 @@ class BedrockCreateShopForm(
     }
 
     /** Write the shop's sign text via [ShopSignRenderer], matching SignPlaceListener. */
-    private fun renderSign(shop: net.badgersmc.em.domain.shop.Shop) {
-        val state = signLoc.block.state as? Sign ?: return
+    private fun renderSign(shop: net.badgersmc.em.domain.shop.Shop): Boolean {
+        val state = signLoc.block.state as? Sign ?: return false
         val deserialized = ItemStackSerializer.deserialize(shop.sellItem)
         val sell = deserialized?.type?.name?.lowercase() ?: "?"
         val displayName = deserialized?.itemMeta?.displayName()
@@ -152,6 +158,14 @@ class BedrockCreateShopForm(
         val side = state.getSide(org.bukkit.block.sign.Side.FRONT)
         signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay, displayName)
             .forEachIndexed { i, c -> side.line(i, c) }
-        state.update(true, false)
+        return state.update(true, false)
+    }
+
+    private fun publishShopCreated(ownerId: UUID) {
+        try {
+            Bukkit.getPluginManager().callEvent(ShopCreatedEvent(ownerId))
+        } catch (_: Throwable) {
+            // External listener failure must not roll back the create.
+        }
     }
 }
