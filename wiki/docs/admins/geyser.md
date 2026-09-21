@@ -10,7 +10,8 @@ updated: 2026-06-25
 
 # Geyser & Bedrock setup
 
-EnthusiaMarket supports Bedrock players through Geyser and Floodgate. No special config is needed beyond installing the plugins.
+EnthusiaMarket supports Bedrock players through Geyser and Floodgate. No special
+config is needed beyond installing the plugins.
 
 ## Requirements
 
@@ -21,17 +22,19 @@ Both are soft dependencies — the plugin works without them.
 
 ## How it works
 
-Floodgate provides an API to detect Bedrock players. When EnthusiaMarket detects a Bedrock player, it opens **Cumulus forms** instead of Java inventory GUIs.
+Floodgate provides an API to detect Bedrock players. When EnthusiaMarket detects
+a Bedrock player, it opens **Cumulus forms** instead of Java inventory GUIs.
 
-The forms have the same functionality but use chat-based menus instead of chest GUIs.
+The forms have the same functionality but use chat-based menus instead of chest
+GUIs.
 
 ## Config
 
-| Key | Default | Purpose |
-|-----|---------|---------|
-| `bedrock.forceForms` | `false` | Use forms even without Floodgate (for testing). |
-| `bedrock.formTimeoutSec` | `60` | Seconds before a form auto-closes. |
-| `shop.allowBedrockEdit` | `true` | Allow Bedrock players to edit sign content. |
+| Key                      | Default | Purpose                                         |
+| ------------------------ | ------- | ----------------------------------------------- |
+| `bedrock.forceForms`     | `false` | Use forms even without Floodgate (for testing). |
+| `bedrock.formTimeoutSec` | `60`    | Seconds before a form auto-closes.              |
+| `shop.allowBedrockEdit`  | `true`  | Allow Bedrock players to edit sign content.     |
 
 ## Forms affected
 

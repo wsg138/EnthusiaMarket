@@ -2,7 +2,9 @@
 title: Shops
 audience: player
 topic: shops
-summary: How to create and manage sign shops — sell, buy, barter, trust, vault, and search.
+summary:
+  How to create and manage sign shops — sell, buy, barter, trust, vault, and
+  search.
 keywords: [shops, sign shop, sell, buy, barter, vault, trust, search]
 related: [stalls, rent]
 updated: 2026-06-06
@@ -10,30 +12,38 @@ updated: 2026-06-06
 
 # Shops
 
-Shops let you trade items with other players from inside your stall. You create them by placing signs on containers.
+Shops let you trade items with other players from inside your stall. You create
+them by placing signs on containers.
 
 ## Creating a shop
 
-You need the `enthusiamarket.shop.create` permission (granted to players by default).
+You need the `enthusiamarket.shop.create` permission (granted to players by
+default).
 
-1. **Hold the item** the shop deals in — the item in your hand defines what's bought/sold/traded.
+1. **Hold the item** the shop deals in — the item in your hand defines what's
+   bought/sold/traded.
 2. Place a **wall sign** on a container (chest, barrel, etc.) inside your stall.
-3. Line 1: the **direction token** — `[SELL]`, `[BUY]`, or `[TRADE]`. This is **required** (there is no default); brackets are optional and case doesn't matter, so `SELL` works too.
+3. Line 1: the **direction token** — `[SELL]`, `[BUY]`, or `[TRADE]`. This is
+   **required** (there is no default); brackets are optional and case doesn't
+   matter, so `SELL` works too.
 4. Line 2: **quantity** per trade (e.g., `64`).
-5. Line 3: **price** in server currency (e.g., `1000`). For `[TRADE]` shops this is instead the item + amount you charge, e.g. `10xdiamond`.
-6. The sign auto-formats into a working shop (it's rejected, with a message, if it isn't a wall sign on a container inside a stall you manage).
+5. Line 3: **price** in server currency (e.g., `1000`). For `[TRADE]` shops this
+   is instead the item + amount you charge, e.g. `10xdiamond`.
+6. The sign auto-formats into a working shop (it's rejected, with a message, if
+   it isn't a wall sign on a container inside a stall you manage).
 
 ## Trade directions
 
-| Direction | Line 1 token | What happens | Line 3 |
-|-----------|--------------|-------------|--------|
-| **SELL** | `[SELL]` | You sell items to players. They pay you, receive items from your container. | Price (e.g., `1000`) |
-| **BUY** | `[BUY]` | You buy items from players. They give you items, receive payment. | Price (e.g., `1000`) |
-| **TRADE** | `[TRADE]` | Barter: players give you one item, receive another. | `10xdiamond` (what you charge) |
+| Direction | Line 1 token | What happens                                                                | Line 3                         |
+| --------- | ------------ | --------------------------------------------------------------------------- | ------------------------------ |
+| **SELL**  | `[SELL]`     | You sell items to players. They pay you, receive items from your container. | Price (e.g., `1000`)           |
+| **BUY**   | `[BUY]`      | You buy items from players. They give you items, receive payment.           | Price (e.g., `1000`)           |
+| **TRADE** | `[TRADE]`    | Barter: players give you one item, receive another.                         | `10xdiamond` (what you charge) |
 
 ### Sell shops
 
-The most common type. You stock the container with items. Players click the sign, pay the listed price, and receive the listed quantity.
+The most common type. You stock the container with items. Players click the
+sign, pay the listed price, and receive the listed quantity.
 
 - Payment goes to your [shop vault](#shop-vault).
 - Container must have enough stock.
@@ -41,7 +51,8 @@ The most common type. You stock the container with items. Players click the sign
 
 ### Buy shops
 
-You set a price you're willing to pay. Players click the sign to sell items to you.
+You set a price you're willing to pay. Players click the sign to sell items to
+you.
 
 - Items go into your container.
 - Payment comes from your wallet.
@@ -62,7 +73,8 @@ Let other players manage your shop without giving them stall ownership:
 /shop trust <player>
 ```
 
-This opens a menu where you can select which shops to share. To trust on all shops at once:
+This opens a menu where you can select which shops to share. To trust on all
+shops at once:
 
 ```text
 /shop trust <player> all
@@ -82,7 +94,8 @@ Removes the player from all your shops.
 /shop edit
 ```
 
-Opens a menu showing all your shops. Click one to change price, quantity, direction, or other settings.
+Opens a menu showing all your shops. Click one to change price, quantity,
+direction, or other settings.
 
 ## Deleting shops
 
@@ -106,7 +119,8 @@ Temporarily break a shop sign to delete it:
 /shop breakdelete <duration>
 ```
 
-Then punch the shop sign to remove it. Mode turns off automatically after the duration, or manually:
+Then punch the shop sign to remove it. Mode turns off automatically after the
+duration, or manually:
 
 ```text
 /shop breakdelete off
@@ -136,7 +150,8 @@ Find shops selling a specific item:
 /shop search <item>
 ```
 
-For example, `/shop search diamond` shows all shops selling diamonds. Results are paginated.
+For example, `/shop search diamond` shows all shops selling diamonds. Results
+are paginated.
 
 ## Transaction history
 

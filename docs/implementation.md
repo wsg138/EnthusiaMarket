@@ -1,12 +1,11 @@
 # Implementation — EnthusiaMarket
 
-**Date:** 2026-05-24
-**Status:** Bootstrap (emitted by `/spear:init`; extend as components land)
-**Owner:** BadgersMC
+**Date:** 2026-05-24 **Status:** Bootstrap (emitted by `/spear:init`; extend as
+components land) **Owner:** BadgersMC
 
 ## 1. Repo layout (canonical)
 
-```
+```text
 EnthusiaMarket/
 ├── src/main/kotlin/net/badgersmc/em/
 │   ├── domain/             # rules of the game — zero framework imports
@@ -41,19 +40,24 @@ EnthusiaMarket/
 
 ## 2. Layer Dependency Rules
 
-The three-layer discipline SPEAR enforces. `/spear:arch` reads this exact section and blocks on violations.
+The three-layer discipline SPEAR enforces. `/spear:arch` reads this exact
+section and blocks on violations.
 
-| Layer | Concrete files | May depend on |
-|---|---|---|
-| `domain/` (rules-of-the-game) | `src/main/kotlin/net/badgersmc/em/domain/**` | nothing outside `domain/` + Kotlin stdlib |
-| `application/` (use cases / workflow) | `src/main/kotlin/net/badgersmc/em/application/**` | `domain/` only |
-| `infrastructure/` (adapters, frameworks, I/O) | `src/main/kotlin/net/badgersmc/em/infrastructure/**` + `di/**` + `EnthusiaMarket.kt` | anything |
+| Layer                                         | Concrete files                                                                       | May depend on                             |
+| --------------------------------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `domain/` (rules-of-the-game)                 | `src/main/kotlin/net/badgersmc/em/domain/**`                                         | nothing outside `domain/` + Kotlin stdlib |
+| `application/` (use cases / workflow)         | `src/main/kotlin/net/badgersmc/em/application/**`                                    | `domain/` only                            |
+| `infrastructure/` (adapters, frameworks, I/O) | `src/main/kotlin/net/badgersmc/em/infrastructure/**` + `di/**` + `EnthusiaMarket.kt` | anything                                  |
 
-Violations are reported as `file:line:symbol`. Suggested fixes: move the offending type, introduce a port interface in `domain/`, or relocate framework wiring to `infrastructure/`.
+Violations are reported as `file:line:symbol`. Suggested fixes: move the
+offending type, introduce a port interface in `domain/`, or relocate framework
+wiring to `infrastructure/`.
 
 ## Forbidden Domain Annotations
 
-Framework annotations that must NOT appear on any type under `domain/**`. `/spear:arch` scans for these; the default denylist covers common JVM offenders. Extend the YAML list below for project-specific additions.
+Framework annotations that must NOT appear on any type under `domain/**`.
+`/spear:arch` scans for these; the default denylist covers common JVM offenders.
+Extend the YAML list below for project-specific additions.
 
 ```yaml
 # Default denylist (always active on JVM projects):
@@ -82,12 +86,14 @@ forbidden:
 
 ### 3.1 Stall aggregate (domain)
 
-Root entity for a market stall. Holds owner ref (player UUID or guild id), rent terms, state (vacant/rented/owned/default), and region binding.
+Root entity for a market stall. Holds owner ref (player UUID or guild id), rent
+terms, state (vacant/rented/owned/default), and region binding.
 
 - Layer: domain
 - Ports / interfaces: `StallRepository`
 - Adapters: `infrastructure/persistence/StallRepositorySql`
-- Evidence sources consulted: `src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt`
+- Evidence sources consulted:
+  `src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt`
 
 ### 3.2 Auction aggregate (domain)
 
@@ -96,7 +102,8 @@ Timed sale of an escrowed item with anti-snipe extension on late winning bids.
 - Layer: domain
 - Ports / interfaces: `AuctionRepository`
 - Adapters: (planned) `infrastructure/persistence/AuctionRepositorySql`
-- Evidence sources consulted: `src/main/kotlin/net/badgersmc/em/domain/auction/Auction.kt`
+- Evidence sources consulted:
+  `src/main/kotlin/net/badgersmc/em/domain/auction/Auction.kt`
 
 ### 3.3 ShopSign (domain)
 
@@ -104,15 +111,19 @@ Sign registered to a stall region, buy or sell direction, item + price.
 
 - Layer: domain
 - Ports / interfaces: `SignRepository`
-- Adapters: (planned) `infrastructure/persistence/SignRepositorySql`, listener in `infrastructure/listeners/SignPlaceListener`
-- Evidence sources consulted: `src/main/kotlin/net/badgersmc/em/domain/shop/ShopSign.kt`
+- Adapters: (planned) `infrastructure/persistence/SignRepositorySql`, listener
+  in `infrastructure/listeners/SignPlaceListener`
+- Evidence sources consulted:
+  `src/main/kotlin/net/badgersmc/em/domain/shop/ShopSign.kt`
 
 ### 3.4 Ports (domain)
 
-`RegionProvider` (WorldGuard adapter), `EconomyProvider` (Vault adapter), `GuildProvider` (LumaGuilds adapter).
+`RegionProvider` (WorldGuard adapter), `EconomyProvider` (Vault adapter),
+`GuildProvider` (LumaGuilds adapter).
 
 - Layer: domain (port interfaces only)
-- Adapters: `infrastructure/worldguard/`, `infrastructure/vault/`, `infrastructure/lumaguilds/`
+- Adapters: `infrastructure/worldguard/`, `infrastructure/vault/`,
+  `infrastructure/lumaguilds/`
 
 ### 3.5 ImportStallsService (application)
 
@@ -120,34 +131,59 @@ Idempotent: enumerate WG regions matching prefix, upsert Stall rows.
 
 - Layer: application
 - Inputs: `RegionProvider`, `StallRepository`, default `RentTerms`
-- Evidence sources consulted: `src/main/kotlin/net/badgersmc/em/application/ImportStallsService.kt`
+- Evidence sources consulted:
+  `src/main/kotlin/net/badgersmc/em/application/ImportStallsService.kt`
 
 ### 3.6 (planned) RentCollectionService (application)
 
-Runs on a scheduler. For each rented/owned stall, debit owner via `EconomyProvider`; on failure mark default; on grace expiry call `Stall.evict()`.
+Runs on a scheduler. For each rented/owned stall, debit owner via
+`EconomyProvider`; on failure mark default; on grace expiry call
+`Stall.evict()`.
 
 ### 3.7 (planned) AuctionLifecycleService (application)
 
-Open, bid, close. Anti-snipe extension implemented in `Auction.placeBid()`; settlement on tick.
+Open, bid, close. Anti-snipe extension implemented in `Auction.placeBid()`;
+settlement on tick.
 
 ### 3.8 (planned) ShopTradeService (application)
 
-Validate sign + actor, perform atomic item ↔ economy swap with rollback on failure.
+Validate sign + actor, perform atomic item ↔ economy swap with rollback on
+failure.
 
 ### 3.9 EnthusiaMarket (infrastructure / JavaPlugin)
 
-Bootstraps NexusContext with classpath scanning, opens Hikari datasource, runs migrations, registers Paper commands via Nexus's Brigadier system.
+Bootstraps NexusContext with classpath scanning, opens Hikari datasource, runs
+migrations, registers Paper commands via Nexus's Brigadier system.
 
-After registering the DataSource (and before commands/listeners construct any consumer) it builds the shop repository chain: `ShopRepositorySql` → `InMemoryShopLocationIndex` → `IndexedShopRepository`, rebuilds the index from `shopSqlRepo.all()`, and registers the decorator as the sole `ShopRepository` bean (REQ-281/282, PERF-4). `ShopRepositorySql` is deliberately NOT `@Repository` — nexus indexes a bean under its type + interfaces and `getBean(type)` throws on more than one match, so a scanned SQL repo plus the registered decorator would be ambiguous under `ShopRepository`.
+After registering the DataSource (and before commands/listeners construct any
+consumer) it builds the shop repository chain: `ShopRepositorySql` →
+`InMemoryShopLocationIndex` → `IndexedShopRepository`, rebuilds the index from
+`shopSqlRepo.all()`, and registers the decorator as the sole `ShopRepository`
+bean (REQ-281/282, PERF-4). `ShopRepositorySql` is deliberately NOT
+`@Repository` — nexus indexes a bean under its type + interfaces and
+`getBean(type)` throws on more than one match, so a scanned SQL repo plus the
+registered decorator would be ambiguous under `ShopRepository`.
 
 ### 3.10 ShopLocationIndex (domain port) + IndexedShopRepository (application)
 
-Authoritative in-memory index of which container coordinates host shops, so the hopper-control hot path resolves shop status without a per-event DB query (REQ-281/282).
+Authoritative in-memory index of which container coordinates host shops, so the
+hopper-control hot path resolves shop status without a per-event DB query
+(REQ-281/282).
 
-- Layer: domain (port `ShopLocationIndex`) + application (`InMemoryShopLocationIndex` adapter, `IndexedShopRepository` decorator)
-- Ports / interfaces: `domain/shop/ShopLocationIndex` (`shopsAt` / `put` / `remove` / `rebuild`)
-- Adapters: `application/InMemoryShopLocationIndex` (coord-keyed map, stdlib only); `application/IndexedShopRepository` decorates any `ShopRepository`, delegates every mutation and reconciles the index, and serves `findByContainer` from the index. Single choke point: all ~25 `ShopRepository` consumers inject the interface, so the decorator covers every mutation path transparently. Sync chosen over `ShopCreated/DeletedEvent` because those events fire on only some create/delete paths.
-- Evidence sources consulted: `src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt`, `src/main/kotlin/net/badgersmc/em/application/IndexedShopRepository.kt`
+- Layer: domain (port `ShopLocationIndex`) + application
+  (`InMemoryShopLocationIndex` adapter, `IndexedShopRepository` decorator)
+- Ports / interfaces: `domain/shop/ShopLocationIndex` (`shopsAt` / `put` /
+  `remove` / `rebuild`)
+- Adapters: `application/InMemoryShopLocationIndex` (coord-keyed map, stdlib
+  only); `application/IndexedShopRepository` decorates any `ShopRepository`,
+  delegates every mutation and reconciles the index, and serves
+  `findByContainer` from the index. Single choke point: all ~25 `ShopRepository`
+  consumers inject the interface, so the decorator covers every mutation path
+  transparently. Sync chosen over `ShopCreated/DeletedEvent` because those
+  events fire on only some create/delete paths.
+- Evidence sources consulted:
+  `src/main/kotlin/net/badgersmc/em/domain/shop/ShopLocationIndex.kt`,
+  `src/main/kotlin/net/badgersmc/em/application/IndexedShopRepository.kt`
 
 ## 4. Data flows
 
@@ -156,7 +192,8 @@ Authoritative in-memory index of which container coordinates host shops, so the 
 1. Operator runs `/em import`.
 2. `AdminCommands.import()` calls `ImportStallsService.run()`.
 3. Service queries `RegionProvider.regionsWithPrefix(world, prefix)`.
-4. For each region, `StallRepository.upsert(Stall(...))` (idempotent by region id).
+4. For each region, `StallRepository.upsert(Stall(...))` (idempotent by region
+   id).
 5. Service returns count; command replies.
 
 ### 4.2 Rent collection (REQ-003 → REQ-004)
@@ -170,15 +207,18 @@ Authoritative in-memory index of which container coordinates host shops, so the 
 ### 4.3 Shop transaction (REQ-005 → REQ-006)
 
 1. Listener catches `PlayerInteractEvent` on registered sign.
-2. `ShopTradeService.execute(sign, actor)` validates ownership and inventory space.
+2. `ShopTradeService.execute(sign, actor)` validates ownership and inventory
+   space.
 3. Inside a try block: economy debit → item transfer → economy credit owner.
 4. On exception: reverse any completed step (REQ-040).
 
 ### 4.4 Auction lifecycle (REQ-007 → REQ-009)
 
 1. `/em auction start <duration> <price>` → escrow held item into auction lot.
-2. `/em bid <id> <amount>` → `Auction.placeBid(...)` returns new state; anti-snipe extends `endsAt`.
-3. Scheduler tick finds expired auctions → settle: item to bidder, fee to system, remainder to seller.
+2. `/em bid <id> <amount>` → `Auction.placeBid(...)` returns new state;
+   anti-snipe extends `endsAt`.
+3. Scheduler tick finds expired auctions → settle: item to bidder, fee to
+   system, remainder to seller.
 
 ### 4.5 Bedrock form (REQ-011)
 
@@ -188,11 +228,19 @@ Authoritative in-memory index of which container coordinates host shops, so the 
 
 ### 4.6 Hopper control hot path (REQ-281/282)
 
-1. `InventoryMoveItemEvent` fires (once per hopper transfer tick, the highest-frequency event on the server).
-2. `HopperControlListener` resolves source + destination container blocks and calls `shopRepository.findByContainer(...)`.
-3. The injected `IndexedShopRepository` answers from `InMemoryShopLocationIndex.shopsAt(...)` — an O(1) coordinate lookup, no DB query on the server thread.
-4. If a shop is found, the listener cancels the move when `hopperAllowOut` (source) / `hopperAllowIn` (destination) is false; otherwise the event passes through.
-5. The index stays correct because every shop mutation flows through `IndexedShopRepository` (4.3 and the management/guild services), and `onEnable` rebuilds it from persistence.
+1. `InventoryMoveItemEvent` fires (once per hopper transfer tick, the
+   highest-frequency event on the server).
+2. `HopperControlListener` resolves source + destination container blocks and
+   calls `shopRepository.findByContainer(...)`.
+3. The injected `IndexedShopRepository` answers from
+   `InMemoryShopLocationIndex.shopsAt(...)` — an O(1) coordinate lookup, no DB
+   query on the server thread.
+4. If a shop is found, the listener cancels the move when `hopperAllowOut`
+   (source) / `hopperAllowIn` (destination) is false; otherwise the event passes
+   through.
+5. The index stays correct because every shop mutation flows through
+   `IndexedShopRepository` (4.3 and the management/guild services), and
+   `onEnable` rebuilds it from persistence.
 
 ## 5. Briefing contract for subagent dispatch
 
@@ -205,11 +253,13 @@ Every worker dispatch (`Agent` tool call) for implementation work carries:
 - Forbidden actions — scope fences.
 - The task's `Evidence:` block verbatim.
 
-Tasks whose full briefing exceeds ~1500 tokens are decomposed further by `/spear:spec` before dispatch.
+Tasks whose full briefing exceeds ~1500 tokens are decomposed further by
+`/spear:spec` before dispatch.
 
 ## 6. Versioning
 
-Semantic versioning. Start at `0.1.0`. Bump major on breaking public-API or DB schema change (migrations always additive within a major).
+Semantic versioning. Start at `0.1.0`. Bump major on breaking public-API or DB
+schema change (migrations always additive within a major).
 
 ## 7. Out of scope (this doc)
 

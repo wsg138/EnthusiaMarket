@@ -104,6 +104,8 @@ complexity:
     ignoreDeprecated: false
     ignorePrivate: false
     ignoreOverridden: false
+    excludes:
+      - '**/test/**'
 
 coroutines:
   active: true

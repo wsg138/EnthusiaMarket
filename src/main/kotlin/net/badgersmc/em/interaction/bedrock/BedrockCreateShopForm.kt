@@ -5,7 +5,9 @@ import net.badgersmc.em.application.ShopFactory
 import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.nexus.i18n.LangService
+import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Sign
@@ -48,52 +50,82 @@ class BedrockCreateShopForm(
             .build()
     }
 
-    @Suppress("ReturnCount", "ComplexCondition", "ThrowsCount")
     private fun handleCreate(response: CustomFormResponse) {
         val direction = directionFrom(response.asDropdown(1) ?: 0)
         val priceText = response.asInput(2) ?: ""
         val amountText = response.asInput(3) ?: "1"
-        val amount = amountText.toIntOrNull() ?: 1
-        if (amount <= 0) {
-            player.sendMessage(lang.legacy("shop.create.invalid_input"))
+        val amount = parseAmount(amountText) ?: return
+        val pricing = parsePricing(direction, priceText) ?: return
+        val shop = createShop(direction, amount, pricing)
+        if (!renderSign(shop)) {
+            player.sendMessage(lang.legacy("shop.create.sign_failed"))
             return
         }
-        val costItemBase64: String?
-        val costAmount: Int
-        val price: Long
-        if (direction == SignDirection.TRADE) {
-            val trade = parseTradeCost(priceText)
-            if (trade == null) {
-                player.sendMessage(lang.legacy("shop.create.invalid_trade_cost"))
-                return
-            }
-            price = 0
-            costAmount = trade.first
-            costItemBase64 = trade.second
-        } else {
-            val p = priceText.toLongOrNull()
-            if (p == null || p <= 0) {
-                player.sendMessage(lang.legacy("shop.create.invalid_input"))
-                return
-            }
-            price = p
-            costAmount = 0
-            costItemBase64 = null
-        }
-        val shop = ShopFactory.build(
-            stallId = stallId, owner = stallOwner,
-            signWorld = signLoc.world?.name ?: "world",
-            signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
-            containerWorld = containerLoc.world?.name ?: "world",
-            containerX = containerLoc.blockX, containerY = containerLoc.blockY, containerZ = containerLoc.blockZ,
-            sellItemBase64 = sellItemBase64, sellAmount = amount, price = price,
-            direction = direction,
-            costItemBase64 = costItemBase64, costAmountOverride = costAmount,
-            searchEnabled = true,
-        )
         shopRepository.upsert(shop)
-        renderSign(shop)
         player.sendMessage(lang.legacy("shop.create.success"))
+        publishShopCreated(shop.owner)
+    }
+
+    private fun parseAmount(amountText: String): Int? {
+        val amount = amountText.toIntOrNull() ?: 1
+        if (amount > 0) {
+            return amount
+        }
+        player.sendMessage(lang.legacy("shop.create.invalid_input"))
+        return null
+    }
+
+    private fun parsePricing(direction: SignDirection, priceText: String): ShopFactory.Pricing? {
+        return if (direction == SignDirection.TRADE) {
+            parseTradePricing(priceText)
+        } else {
+            parseCurrencyPricing(priceText)
+        }
+    }
+
+    private fun parseTradePricing(priceText: String): ShopFactory.Pricing? {
+        val trade = parseTradeCost(priceText)
+        if (trade == null) {
+            player.sendMessage(lang.legacy("shop.create.invalid_trade_cost"))
+            return null
+        }
+        return ShopFactory.Pricing(0, trade.second, trade.first)
+    }
+
+    private fun parseCurrencyPricing(priceText: String): ShopFactory.Pricing? {
+        val price = priceText.toLongOrNull()
+        if (price == null || price <= 0) {
+            player.sendMessage(lang.legacy("shop.create.invalid_input"))
+            return null
+        }
+        return ShopFactory.Pricing(price)
+    }
+
+    private fun createShop(
+        direction: SignDirection,
+        amount: Int,
+        pricing: ShopFactory.Pricing,
+    ): net.badgersmc.em.domain.shop.Shop {
+        return ShopFactory.build(
+            ShopFactory.BuildRequest(
+                identity = ShopFactory.ShopIdentity(stallId, stallOwner),
+                sign = ShopFactory.BlockPosition(
+                    signLoc.world?.name ?: "world",
+                    signLoc.blockX,
+                    signLoc.blockY,
+                    signLoc.blockZ,
+                ),
+                container = ShopFactory.BlockPosition(
+                    containerLoc.world?.name ?: "world",
+                    containerLoc.blockX,
+                    containerLoc.blockY,
+                    containerLoc.blockZ,
+                ),
+                sale = ShopFactory.Sale(sellItemBase64, amount),
+                pricing = pricing,
+                direction = direction,
+            ),
+        )
     }
 
     /** Parse "16 diamond" → Pair(16, base64). Returns null on failure. */
@@ -112,8 +144,8 @@ class BedrockCreateShopForm(
     }
 
     /** Write the shop's sign text via [ShopSignRenderer], matching SignPlaceListener. */
-    private fun renderSign(shop: net.badgersmc.em.domain.shop.Shop) {
-        val state = signLoc.block.state as? Sign ?: return
+    private fun renderSign(shop: net.badgersmc.em.domain.shop.Shop): Boolean {
+        val state = signLoc.block.state as? Sign ?: return false
         val deserialized = ItemStackSerializer.deserialize(shop.sellItem)
         val sell = deserialized?.type?.name?.lowercase() ?: "?"
         val displayName = deserialized?.itemMeta?.displayName()
@@ -126,6 +158,14 @@ class BedrockCreateShopForm(
         val side = state.getSide(org.bukkit.block.sign.Side.FRONT)
         signRenderer.lines(shop.direction, sell, shop.sellAmount, costDisplay, displayName)
             .forEachIndexed { i, c -> side.line(i, c) }
-        state.update(true, false)
+        return state.update(true, false)
+    }
+
+    private fun publishShopCreated(ownerId: UUID) {
+        try {
+            Bukkit.getPluginManager().callEvent(ShopCreatedEvent(ownerId))
+        } catch (_: Throwable) {
+            // External listener failure must not roll back the create.
+        }
     }
 }

@@ -10,11 +10,13 @@ import net.badgersmc.em.application.ShopSignRenderer
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.shop.SignDirection
+import net.badgersmc.em.events.ShopCreatedEvent
 import net.badgersmc.em.interaction.Menu
 import net.badgersmc.em.interaction.blockItemTheft
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.TextDecoration
+import org.bukkit.Bukkit
 import org.bukkit.Location
 import org.bukkit.Material
 import org.bukkit.block.Sign
@@ -69,6 +71,46 @@ class CreateShopMenu(
         render(player)
     }
 
+    /** Complete a confirmed creation after the GUI has collected the shop settings. */
+    internal fun confirmCreation(player: Player): Boolean {
+        val shop = createShop()
+        if (!writeSignText(shop)) {
+            player.closeInventory()
+            player.sendMessage(lang.msg("shop.create.sign_failed"))
+            return false
+        }
+        shopRepository.upsert(shop)
+        player.closeInventory()
+        player.sendMessage(lang.msg("shop.create.success"))
+        publishShopCreated(shop.owner)
+        return true
+    }
+
+    private fun createShop(): Shop = ShopFactory.build(
+        ShopFactory.BuildRequest(
+            identity = ShopFactory.ShopIdentity(stallId, stallOwner),
+            sign = ShopFactory.BlockPosition(
+                signLoc.world?.name ?: "world",
+                signLoc.blockX,
+                signLoc.blockY,
+                signLoc.blockZ,
+            ),
+            container = ShopFactory.BlockPosition(
+                containerLoc.world?.name ?: "world",
+                containerLoc.blockX,
+                containerLoc.blockY,
+                containerLoc.blockZ,
+            ),
+            sale = ShopFactory.Sale(sellItemBase64, amount),
+            pricing = ShopFactory.Pricing(
+                price,
+                costItemB64,
+                if (direction == SignDirection.TRADE) costItemAmount else null,
+            ),
+            direction = direction,
+        ),
+    )
+
     @Suppress("LongMethod")
     private fun render(player: Player) {
         val gui = ChestGui(4, ComponentHolder.of(lang.msg("gui.shop.create.title")))
@@ -113,26 +155,7 @@ class CreateShopMenu(
         // Row 3: confirm + cancel
         pane.addItem(GuiItem(decorated(Material.LIME_STAINED_GLASS_PANE, lang.msg("gui.shop.create.confirm"))) { event ->
             event.isCancelled = true
-            val shop = ShopFactory.build(
-                stallId = stallId, owner = stallOwner,
-                signWorld = signLoc.world?.name ?: "world",
-                signX = signLoc.blockX, signY = signLoc.blockY, signZ = signLoc.blockZ,
-                containerWorld = containerLoc.world?.name ?: "world",
-                containerX = containerLoc.blockX, containerY = containerLoc.blockY, containerZ = containerLoc.blockZ,
-                sellItemBase64 = sellItemBase64, sellAmount = amount, price = price,
-                direction = direction,
-                searchEnabled = true,
-                costItemBase64 = costItemB64,
-                costAmountOverride = if (direction == SignDirection.TRADE) costItemAmount else null,
-            )
-            if (!writeSignText(shop)) {
-                player.closeInventory()
-                player.sendMessage(lang.msg("shop.create.sign_failed"))
-                return@GuiItem
-            }
-            shopRepository.upsert(shop)
-            player.closeInventory()
-            player.sendMessage(lang.msg("shop.create.success"))
+            confirmCreation(player)
         }, 7, 3)
         pane.addItem(GuiItem(decorated(Material.RED_CONCRETE, lang.msg("gui.shop.create.cancel"))) { event ->
             event.isCancelled = true; player.closeInventory()
@@ -281,6 +304,14 @@ class CreateShopMenu(
         signRenderer.lines(shop.direction, sellMatName, shop.sellAmount, costDisplay, displayName)
             .forEachIndexed { i, c -> side.line(i, c) }
         return sign.update(true, false)
+    }
+
+    private fun publishShopCreated(ownerId: UUID) {
+        try {
+            Bukkit.getPluginManager().callEvent(ShopCreatedEvent(ownerId))
+        } catch (_: Throwable) {
+            // External listener failure must not roll back the create.
+        }
     }
 
     companion object {

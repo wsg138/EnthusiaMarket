@@ -4,6 +4,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.stall.OwnerRef
@@ -32,29 +33,40 @@ class StallEvictionServiceTest {
         repo: StallRepository,
         regions: RegionMemberSync,
         shops: net.badgersmc.em.domain.shop.ShopRepository = mockk(relaxed = true),
+        ipLimiter: IpLimiter = mockk(relaxed = true),
     ): StallEvictionService {
         val config = mockk<EnthusiaMarketConfig>()
         val schem = mockk<EnthusiaMarketConfig.Schematics>()
         every { schem.enabled } returns false
         every { config.schematics } returns schem
-        return StallEvictionService(repo, shops, regions, config, ipLimiter = mockk<IpLimiter>(relaxed = true))
+        return StallEvictionService(repo, shops, regions, config, ipLimiter = ipLimiter)
     }
 
     @Test fun `evict resets an owned stall to UNOWNED and clears WG`() {
         val repo = mockk<StallRepository>(relaxed = true)
         val regions = mockk<RegionMemberSync>(relaxed = true)
-        every { repo.findById(StallId("stall1")) } returns ownedStall()
+        val stall = ownedStall()
+        every { repo.findById(StallId("stall1")) } returns stall
         val saved = slot<Stall>()
         every { repo.save(capture(saved)) } returns Unit
+        val ipLimiter = mockk<IpLimiter>(relaxed = true)
+        val shops = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
 
-        val result = service(repo, regions).evict(StallId("stall1"))
+        val result = service(repo, regions, shops, ipLimiter).evict(StallId("stall1"))
 
         assertIs<StallEvictionService.Result.Evicted>(result)
         assertEquals(StallState.UNOWNED, saved.captured.state)
         assertEquals(OwnerType.NONE, saved.captured.owner.type)
         assertEquals(0L, saved.captured.winningBid)
         assertEquals(emptySet(), saved.captured.members)
+        verify { ipLimiter.releaseStallByOwnerId(stall.owner.id) }
         verify { regions.clearOwnersAndMembers("world", "stall1") }
+        verifyOrder {
+            repo.save(any())
+            ipLimiter.releaseStallByOwnerId(stall.owner.id)
+            shops.findByStall(stall.id.value)
+            regions.clearOwnersAndMembers(stall.world, stall.regionId)
+        }
     }
 
     /** M-4 (audit 2026-06-09): the next owner must not inherit the evicted owner's live shops. */

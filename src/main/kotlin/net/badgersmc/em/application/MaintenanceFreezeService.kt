@@ -53,7 +53,9 @@ class MaintenanceFreezeService(
     private val cacheLock = Any()
 
     /** True while a maintenance freeze is active. Cheap — safe for per-tick calls. */
-    fun isFrozen(): Boolean = frozenSince() != null
+    fun isFrozen(): Boolean {
+        return frozenSince() != null
+    }
 
     /**
      * The instant the active freeze began, or null when not frozen.

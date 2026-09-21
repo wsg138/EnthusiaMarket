@@ -1,23 +1,22 @@
-
 # WorldGuard 7.0.9 — API Snapshot
 
 **Source:** enginehub/worldguarddocs (context7) + enginehub/worldguard 7.0.9
-**Pinned version:** `com.sk89q.worldguard:worldguard-bukkit:7.0.9`
-**Snapshot date:** 2026-05-24
+**Pinned version:** `com.sk89q.worldguard:worldguard-bukkit:7.0.9` **Snapshot
+date:** 2026-05-24
 
 ## Key Classes
 
-| Class | Package | Role |
-|---|---|---|
-| `WorldGuard` | `com.sk89q.worldguard` | Static entry point |
-| `RegionContainer` | `com.sk89q.worldguard.protection` | Access region managers |
-| `RegionManager` | `com.sk89q.worldguard.protection.regions` | Region CRUD per world |
-| `RegionQuery` | `com.sk89q.worldguard.protection.regions` | Cached spatial queries |
-| `ApplicableRegionSet` | `com.sk89q.worldguard.protection` | Query result set |
-| `ProtectedRegion` | `com.sk89q.worldguard.protection.regions` | Region data |
-| `ProtectedCuboidRegion` | `com.sk89q.worldguard.protection.regions` | Cuboid region type |
-| `BlockVector3` | `com.sk89q.worldedit.math` | 3D integer vector |
-| `BukkitAdapter` | `com.sk89q.worldedit.bukkit` | Bukkit→WorldEdit adapter |
+| Class                   | Package                                   | Role                     |
+| ----------------------- | ----------------------------------------- | ------------------------ |
+| `WorldGuard`            | `com.sk89q.worldguard`                    | Static entry point       |
+| `RegionContainer`       | `com.sk89q.worldguard.protection`         | Access region managers   |
+| `RegionManager`         | `com.sk89q.worldguard.protection.regions` | Region CRUD per world    |
+| `RegionQuery`           | `com.sk89q.worldguard.protection.regions` | Cached spatial queries   |
+| `ApplicableRegionSet`   | `com.sk89q.worldguard.protection`         | Query result set         |
+| `ProtectedRegion`       | `com.sk89q.worldguard.protection.regions` | Region data              |
+| `ProtectedCuboidRegion` | `com.sk89q.worldguard.protection.regions` | Cuboid region type       |
+| `BlockVector3`          | `com.sk89q.worldedit.math`                | 3D integer vector        |
+| `BukkitAdapter`         | `com.sk89q.worldedit.bukkit`              | Bukkit→WorldEdit adapter |
 
 ## Critical Signatures
 
@@ -60,17 +59,20 @@ ApplicableRegionSet overlapSet = regions.getApplicableRegions(dummy);
 
 ## Enums Used by EnthusiaMarket
 
-| Enum | Values |
-|---|---|
+| Enum                      | Values                                     |
+| ------------------------- | ------------------------------------------ |
 | `RegionQuery.QueryOption` | `COMPUTE_REGION_CHILDREN`, `ALLOW_VIRTUAL` |
 
 ## Breaking-Change Watchpoints
 
-1. `RegionContainer.get(BukkitWorld)` — return type may be null if world not loaded.
+1. `RegionContainer.get(BukkitWorld)` — return type may be null if world not
+   loaded.
 2. `ProtectedRegion.getId()` — region IDs are case-sensitive.
-3. `WorldGuard.getInstance().getPlatform().getRegionContainer()` — WG must be loaded; call after `onEnable` or in a `PluginEnableEvent` listener.
+3. `WorldGuard.getInstance().getPlatform().getRegionContainer()` — WG must be
+   loaded; call after `onEnable` or in a `PluginEnableEvent` listener.
 
 ## Evidence
 
-- context7:/enginehub/worldguarddocs — spatial queries, region access, adapter usage
+- context7:/enginehub/worldguarddocs — spatial queries, region access, adapter
+  usage
 - com.sk89q.worldguard:worldguard-bukkit:7.0.9 (pinned in build.gradle.kts:26)

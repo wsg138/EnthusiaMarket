@@ -4,6 +4,7 @@ import net.badgersmc.em.config.EnthusiaMarketConfig
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallId
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
@@ -46,6 +47,16 @@ class StallEvictionService(
             return Result.NotOwned
         }
         val previous = stall.state
+        resetStall(stall)
+        ipLimiter.releaseStallByOwnerId(stall.owner.id)
+        deleteBoundShops(stall)
+        clearRegionMembers(stall)
+        fireStateChanged(stall.id.value, previous, StallState.UNOWNED)
+        restoreSchematicIfEnabled(stall)
+        return Result.Evicted
+    }
+
+    private fun resetStall(stall: Stall) {
         stalls.save(
             stall.copy(
                 state = StallState.UNOWNED,
@@ -56,7 +67,9 @@ class StallEvictionService(
                 nextRentAt = null,
             )
         )
-        ipLimiter.releaseStallByOwnerId(stall.owner.id)
+    }
+
+    private fun deleteBoundShops(stall: Stall) {
         // M-4 — wipe shops bound to the stall (parity with sellback) so the
         // next buyer never inherits the evicted owner's live shops.
         for (shop in shops.findByStall(stall.id.value)) {
@@ -69,23 +82,26 @@ class StallEvictionService(
                 )
             }
         }
+    }
+
+    private fun clearRegionMembers(stall: Stall) {
         try {
             regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
         } catch (e: Exception) {
             // DB is authoritative; WG can be resynced via /em rg resync.
             log.warning("Evict: WG owner/member clear failed for ${stall.id.value}: ${e.message}")
         }
-        fireStateChanged(stall.id.value, previous, StallState.UNOWNED)
-        if (config.schematics.enabled) {
-            val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
-            if (restore is SchematicService.Result.Failure) {
-                log.warning(
-                    "Evict: schematic restore failed for ${stall.id.value}; " +
-                        "geometry left as-is. cause=${restore.cause.message}"
-                )
-            }
+    }
+
+    private fun restoreSchematicIfEnabled(stall: Stall) {
+        if (!config.schematics.enabled) return
+        val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+        if (restore is SchematicService.Result.Failure) {
+            log.warning(
+                "Evict: schematic restore failed for ${stall.id.value}; " +
+                    "geometry left as-is. cause=${restore.cause.message}"
+            )
         }
-        return Result.Evicted
     }
 
     @Suppress("TooGenericExceptionCaught")

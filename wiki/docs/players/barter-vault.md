@@ -10,7 +10,8 @@ updated: 2026-06-25
 
 # Barter vault
 
-When you run a **TRADE** shop, players pay you in items — not money. Those payment items go to your **shop vault**.
+When you run a **TRADE** shop, players pay you in items — not money. Those
+payment items go to your **shop vault**.
 
 ## Opening your vault
 
@@ -24,7 +25,8 @@ A GUI opens showing all the items players have paid you. Click to withdraw.
 
 ## What goes into the vault
 
-Every TRADE transaction deposits the payment items into your vault. The vault is per-player — all your TRADE shops feed into the same pool.
+Every TRADE transaction deposits the payment items into your vault. The vault is
+per-player — all your TRADE shops feed into the same pool.
 
 ## Admin access
 
@@ -38,6 +40,7 @@ Requires `enthusiamarket.admin.shop` permission.
 
 ## Notes
 
-- The vault is **not** a physical chest. It's a virtual inventory the plugin manages.
+- The vault is **not** a physical chest. It's a virtual inventory the plugin
+  manages.
 - Only the shop owner can open their vault (unless an admin overrides).
 - Items are stored indefinitely until withdrawn.

@@ -2,6 +2,7 @@ package net.badgersmc.em.application
 
 import java.util.UUID
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -39,11 +40,39 @@ class BreakDeleteModeTest {
         assertFalse(mode.isActive(b, nowMs = 1))
     }
 
-    @Test fun `parseDuration handles off on 5m and garbage`() {
+    @Test fun `parseDuration normalizes and prioritizes mode values`() {
         assertTrue(BreakDeleteMode.parseDurationMs("off") == null)
-        assertTrue(BreakDeleteMode.parseDurationMs("on") == 5L * 60_000)
-        assertTrue(BreakDeleteMode.parseDurationMs("5m") == 5L * 60_000)
-        assertTrue(BreakDeleteMode.parseDurationMs("10m") == 10L * 60_000)
-        assertTrue(BreakDeleteMode.parseDurationMs("garbage") == 5L * 60_000)
+        assertTrue(BreakDeleteMode.parseDurationMs(" OFF ") == null)
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs(null))
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs("on"))
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs(" ON "))
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs(""))
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs("   "))
+    }
+
+    @Test fun `parseDuration accepts positive minute values`() {
+        assertEquals(5L * MINUTE_MS, BreakDeleteMode.parseDurationMs("5m"))
+        assertEquals(10L * MINUTE_MS, BreakDeleteMode.parseDurationMs("10M"))
+        assertEquals(5L * MINUTE_MS, BreakDeleteMode.parseDurationMs(" 5m "))
+    }
+
+    @Test fun `parseDuration falls back for invalid minute values`() {
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs("0m"))
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs("-1m"))
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs("m"))
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs("garbage"))
+        assertEquals(DEFAULT_MS, BreakDeleteMode.parseDurationMs("9223372036854775808m"))
+    }
+
+    @Test fun `parseDuration keeps long multiplication overflow behavior`() {
+        assertEquals(
+            Long.MAX_VALUE * MINUTE_MS,
+            BreakDeleteMode.parseDurationMs("${Long.MAX_VALUE}m")
+        )
+    }
+
+    private companion object {
+        const val MINUTE_MS = 60_000L
+        const val DEFAULT_MS = 5L * MINUTE_MS
     }
 }

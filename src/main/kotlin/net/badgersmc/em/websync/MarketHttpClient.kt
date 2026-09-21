@@ -15,6 +15,21 @@ sealed class DeliveryOutcome {
     data class Pause(val category: String) : DeliveryOutcome()
 }
 
+private data class OutboundRequest(
+    val method: String,
+    val path: String,
+    val eventId: String,
+    val body: ByteArray,
+    val options: RequestOptions = RequestOptions(),
+)
+
+private data class RequestOptions(
+    val requireAuthenticated: Boolean = false,
+    val contentType: String = "application/json",
+    val extraHeaders: Map<String, String> = emptyMap(),
+    val responseValidator: ((ByteArray) -> Boolean)? = null,
+)
+
 class MarketHttpClient(
     private val config: WebsiteSyncConfig,
     private val userAgent: String = "EnthusiaMarket/0.2.0",
@@ -30,7 +45,7 @@ class MarketHttpClient(
             DeliveryKind.STALL -> "/internal/v1/stalls/${delivery.stallId}"
         }
         val method = if (delivery.kind == DeliveryKind.FULL) "POST" else "PUT"
-        return send(method, path, delivery.eventId, delivery.body)
+        return send(OutboundRequest(method, path, delivery.eventId, delivery.body))
     }
 
     fun authenticatedTest(serverEpoch: String): DeliveryOutcome {
@@ -39,48 +54,53 @@ class MarketHttpClient(
             TestRequest(serverEpoch = serverEpoch, eventId = eventId, sentAt = Instant.now().toString(), probe = "website-sync-test")
         )
         require(body.size <= 32 * 1024) { "test_body_limit" }
-        return send("POST", "/internal/v1/test", eventId, body, requireAuthenticated = true)
+        return send(OutboundRequest(
+            method = "POST",
+            path = "/internal/v1/test",
+            eventId = eventId,
+            body = body,
+            options = RequestOptions(requireAuthenticated = true),
+        ))
     }
 
     fun uploadPlayerHead(playerId: java.util.UUID, hash: String, png: ByteArray): DeliveryOutcome {
         val eventId = java.util.UUID.randomUUID().toString()
-        return send(
+        return send(OutboundRequest(
             method = "PUT",
             path = "/internal/v1/player-heads/$hash.png",
             eventId = eventId,
             body = png,
-            contentType = "image/png",
-            extraHeaders = mapOf("X-Enthusia-Player-Id" to playerId.toString()),
-            responseValidator = { validPlayerHeadResponse(it, hash) },
-        )
+            options = RequestOptions(
+                contentType = "image/png",
+                extraHeaders = mapOf("X-Enthusia-Player-Id" to playerId.toString()),
+                responseValidator = { validPlayerHeadResponse(it, hash) },
+            ),
+        ))
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun send(
-        method: String,
-        path: String,
-        eventId: String,
-        body: ByteArray,
-        requireAuthenticated: Boolean = false,
-        contentType: String = "application/json",
-        extraHeaders: Map<String, String> = emptyMap(),
-        responseValidator: ((ByteArray) -> Boolean)? = null,
-    ): DeliveryOutcome {
+    private fun send(request: OutboundRequest): DeliveryOutcome {
         return try {
             val timestamp = System.currentTimeMillis().toString()
-            val signature = MarketRequestSigner.sign(config.secret, method, path, config.serverId, timestamp, eventId, body)
-            val builder = HttpRequest.newBuilder(config.endpoint.resolve(path))
+            val signature = MarketRequestSigner.sign(
+                config.secret, request.method, request.path, config.serverId, timestamp, request.eventId, request.body,
+            )
+            val builder = HttpRequest.newBuilder(config.endpoint.resolve(request.path))
                 .timeout(config.requestTimeout)
-                .header("Content-Type", contentType)
+                .header("Content-Type", request.options.contentType)
                 .header("User-Agent", userAgent)
                 .header("X-Enthusia-Server-Id", config.serverId)
                 .header("X-Enthusia-Timestamp", timestamp)
-                .header("X-Enthusia-Event-Id", eventId)
+                .header("X-Enthusia-Event-Id", request.eventId)
                 .header("X-Enthusia-Signature", signature)
-                .method(method, HttpRequest.BodyPublishers.ofByteArray(body))
-            extraHeaders.forEach(builder::header)
-            val request = builder.build()
-            classify(client.send(request, HttpResponse.BodyHandlers.ofByteArray()), requireAuthenticated, responseValidator)
+                .method(request.method, HttpRequest.BodyPublishers.ofByteArray(request.body))
+            request.options.extraHeaders.forEach(builder::header)
+            val httpRequest = builder.build()
+            classify(
+                client.send(httpRequest, HttpResponse.BodyHandlers.ofByteArray()),
+                request.options.requireAuthenticated,
+                request.options.responseValidator,
+            )
         } catch (_: java.net.http.HttpTimeoutException) {
             DeliveryOutcome.Retry()
         } catch (_: java.io.IOException) {

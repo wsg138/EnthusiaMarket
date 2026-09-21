@@ -1,37 +1,98 @@
 # Admin Tooling Implementation Plan (ItemShops Parity SP5)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Steps use checkbox (`- [ ]`) syntax.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development or superpowers:executing-plans. Steps
+> use checkbox (`- [ ]`) syntax.
 
-**Goal:** Port the ItemShops admin shop-verbs onto EM's Vault-money model as a `/shop admin` subtree — `view`, `info`, `remove`, `fix`, `breakothers` — plus an admin teleport branch in the SP2 search results GUI. One permission node, look-at targeting.
+**Goal:** Port the ItemShops admin shop-verbs onto EM's Vault-money model as a
+`/shop admin` subtree — `view`, `info`, `remove`, `fix`, `breakothers` — plus an
+admin teleport branch in the SP2 search results GUI. One permission node,
+look-at targeting.
 
-**Architecture:** Hexagonal/SPEAR. New pure units (`AdminBreakMode`, `LookAtShopResolver`, `ShopSignRenderer`) + a `ShopManagementService.adminDelete` + thin glue in `ShopCommands`, `BlockProtectionListener`, `SignPlaceListener`, `ShopEditMenu`, `SearchResultsMenu`.
+**Architecture:** Hexagonal/SPEAR. New pure units (`AdminBreakMode`,
+`LookAtShopResolver`, `ShopSignRenderer`) + a
+`ShopManagementService.adminDelete` + thin glue in `ShopCommands`,
+`BlockProtectionListener`, `SignPlaceListener`, `ShopEditMenu`,
+`SearchResultsMenu`.
 
-**Tech Stack:** Kotlin 2.0.0, Nexus DI + commands, IFramework GUIs, JUnit 5 + MockK + MockBukkit, detekt 1.23.8.
+**Tech Stack:** Kotlin 2.0.0, Nexus DI + commands, IFramework GUIs, JUnit 5 +
+MockK + MockBukkit, detekt 1.23.8.
 
-**Reference spec:** `docs/superpowers/specs/2026-06-04-itemshops-parity-admin-tooling-design.md`
+**Reference spec:**
+`docs/superpowers/specs/2026-06-04-itemshops-parity-admin-tooling-design.md`
 
 **Standing rules (every task):**
-- Prefix bash with `cd <REPO> &&` (`/d/BadgersMC-Dev/EnthusiaMarket`, or `/opt/data/EnthusiaMarket`). On Hermes' box also prefix gradle with `export JAVA_HOME=/opt/data/jdk-21.0.11+10 &&`.
-- Every gradle command includes `-Plumaguilds.jar=<JAR> --no-daemon --console=plain` (`/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar` or `/opt/data/...`).
-- LF→CRLF git warnings expected. Branch `feat/admin-tooling`. Do not push (coordinator opens the PR).
-- TDD: write failing test, run RED, then GREEN. Commit after every task with the given message.
-- Gate rule: compare each `Run:` to `Expected:`; mismatch → STOP, fix, re-run; HALT after 3 tries. Final gate runs on the EXACT committed HEAD.
+
+- Prefix bash with `cd <REPO> &&` (`/d/BadgersMC-Dev/EnthusiaMarket`, or
+  `/opt/data/EnthusiaMarket`). On Hermes' box also prefix gradle with
+  `export JAVA_HOME=/opt/data/jdk-21.0.11+10 &&`.
+- Every gradle command includes
+  `-Plumaguilds.jar=<JAR> --no-daemon --console=plain`
+  (`/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar` or
+  `/opt/data/...`).
+- LF→CRLF git warnings expected. Branch `feat/admin-tooling`. Do not push
+  (coordinator opens the PR).
+- TDD: write failing test, run RED, then GREEN. Commit after every task with the
+  given message.
+- Gate rule: compare each `Run:` to `Expected:`; mismatch → STOP, fix, re-run;
+  HALT after 3 tries. Final gate runs on the EXACT committed HEAD.
 
 ---
 
 ## CONFIRMED API SYMBOLS (verified against the repo — use exactly)
 
-- **`ShopCommands`** (`infrastructure/commands/ShopCommands.kt`) — `@Command(name="shop", aliases=["shops"])`. Current constructor: `(management: ShopManagementService, shopRepository: ShopRepository, breakDelete: BreakDeleteMode, search: ShopSearchService, lang: LangService)`. Uses `@Subcommand`, `@Permission`, `@Context sender: CommandSender`, `@net.badgersmc.nexus.commands.annotations.Arg("name") x: T = default`. Multi-segment subcommands with args are already used in `AdminCommands` (`auction start`, `stall members add`) — `admin view` etc. are fine.
-- **`BreakDeleteMode`** (`application/BreakDeleteMode.kt`) — `@Component`; `enable(UUID, Long, nowMs=System.currentTimeMillis())`, `disable(UUID)`, `isActive(UUID, nowMs=…): Boolean`; companion `parseDurationMs(arg: String?): Long?` (null=off, "on"/absent/garbage=5m, "Nm"=N min). **Reuse `BreakDeleteMode.parseDurationMs` for breakothers** — do not duplicate it.
-- **`ShopRepository`** (`domain/shop/ShopRepository.kt`) — `findBySign(world,x,y,z): Shop?`, `findByContainer(world,x,y,z): List<Shop>`, `findById(Long): Shop?`, `delete(Long)`, `all(): List<Shop>`, `findByOwner(UUID): List<Shop>`, `upsert(Shop): Shop`.
-- **`ShopManagementService`** (`application/ShopManagementService.kt`) — `@Service(shopRepository)`; has `delete(actor, shopId): Boolean` (owner-checked) and a private null-safe `fireShopDeleted(owner: UUID)` (uses `Bukkit.getServer()?.pluginManager?.callEvent(ShopDeletedEvent(owner))`, no-ops in unit tests). Add `adminDelete` here.
-- **`Shop`** (`domain/shop/Shop.kt`) — data class. Fields used: `id: Long`, `owner: UUID`, `signWorld/signX/signY/signZ`, `containerWorld/containerX/containerY/containerZ`, `sellItem: String` (base64), `sellAmount: Int`, `costItem: String`, `costAmount: Int`, `trusted: Set<UUID>`, `frozen: Boolean`, `searchEnabled: Boolean`, `direction: SignDirection`.
+- **`ShopCommands`** (`infrastructure/commands/ShopCommands.kt`) —
+  `@Command(name="shop", aliases=["shops"])`. Current constructor:
+  `(management: ShopManagementService, shopRepository: ShopRepository, breakDelete: BreakDeleteMode, search: ShopSearchService, lang: LangService)`.
+  Uses `@Subcommand`, `@Permission`, `@Context sender: CommandSender`,
+  `@net.badgersmc.nexus.commands.annotations.Arg("name") x: T = default`.
+  Multi-segment subcommands with args are already used in `AdminCommands`
+  (`auction start`, `stall members add`) — `admin view` etc. are fine.
+- **`BreakDeleteMode`** (`application/BreakDeleteMode.kt`) — `@Component`;
+  `enable(UUID, Long, nowMs=System.currentTimeMillis())`, `disable(UUID)`,
+  `isActive(UUID, nowMs=…): Boolean`; companion
+  `parseDurationMs(arg: String?): Long?` (null=off, "on"/absent/garbage=5m,
+  "Nm"=N min). **Reuse `BreakDeleteMode.parseDurationMs` for breakothers** — do
+  not duplicate it.
+- **`ShopRepository`** (`domain/shop/ShopRepository.kt`) —
+  `findBySign(world,x,y,z): Shop?`, `findByContainer(world,x,y,z): List<Shop>`,
+  `findById(Long): Shop?`, `delete(Long)`, `all(): List<Shop>`,
+  `findByOwner(UUID): List<Shop>`, `upsert(Shop): Shop`.
+- **`ShopManagementService`** (`application/ShopManagementService.kt`) —
+  `@Service(shopRepository)`; has `delete(actor, shopId): Boolean`
+  (owner-checked) and a private null-safe `fireShopDeleted(owner: UUID)` (uses
+  `Bukkit.getServer()?.pluginManager?.callEvent(ShopDeletedEvent(owner))`,
+  no-ops in unit tests). Add `adminDelete` here.
+- **`Shop`** (`domain/shop/Shop.kt`) — data class. Fields used: `id: Long`,
+  `owner: UUID`, `signWorld/signX/signY/signZ`,
+  `containerWorld/containerX/containerY/containerZ`, `sellItem: String`
+  (base64), `sellAmount: Int`, `costItem: String`, `costAmount: Int`,
+  `trusted: Set<UUID>`, `frozen: Boolean`, `searchEnabled: Boolean`,
+  `direction: SignDirection`.
 - **`SignDirection`** (`domain/shop/SignDirection.kt`) — `enum { BUY, SELL }`.
-- **`ItemStackSerializer`** (`application/`) — `deserialize(base64: String): ItemStack?`, `serialize(ItemStack): String`.
-- **`ShopEditMenu`** (`interaction/gui/ShopEditMenu.kt`) — constructor `(shop: Shop, shopRepository: ShopRepository, management: ShopManagementService, lang: LangService)`. `open(player)` guards with `if (player.uniqueId != shop.owner && !player.hasPermission("enthusiamarket.admin")) { … return }`. **Widen that guard** (Task 5) to also accept `enthusiamarket.admin.shop`.
-- **`SearchResultsMenu`** (`interaction/gui/SearchResultsMenu.kt`) — constructor `(results: List<Shop>, query: String, page: Int, lang: LangService)`. Result icons added via `pane.addItem(GuiItem(icon) { it.isCancelled = true; player.closeInventory(); player.sendMessage(lang.msg("gui.shop.search.clicked", …)) }, idx % 9, idx / 9)`. **Edit that click lambda** (Task 7).
-- **`BlockProtectionListener`** (`infrastructure/listeners/BlockProtectionListener.kt`) — `@Component`, constructor `(shopRepository, breakDelete: BreakDeleteMode, management: ShopManagementService, logger: Logger, lang: LangService)`. In `onBlockBreak`, the sign branch does: `if (shop.owner == player.uniqueId && breakDelete.isActive(player.uniqueId)) { management.delete(…); …; return }` then `cancelSignBreak(event, shop, player)`. **Insert the breakothers branch** between those (Task 5).
-- **`SignPlaceListener`** (`infrastructure/listeners/SignPlaceListener.kt`) — after building `val shop = Shop(...)` it formats four lines:
+- **`ItemStackSerializer`** (`application/`) —
+  `deserialize(base64: String): ItemStack?`, `serialize(ItemStack): String`.
+- **`ShopEditMenu`** (`interaction/gui/ShopEditMenu.kt`) — constructor
+  `(shop: Shop, shopRepository: ShopRepository, management: ShopManagementService, lang: LangService)`.
+  `open(player)` guards with
+  `if (player.uniqueId != shop.owner && !player.hasPermission("enthusiamarket.admin")) { … return }`.
+  **Widen that guard** (Task 5) to also accept `enthusiamarket.admin.shop`.
+- **`SearchResultsMenu`** (`interaction/gui/SearchResultsMenu.kt`) — constructor
+  `(results: List<Shop>, query: String, page: Int, lang: LangService)`. Result
+  icons added via
+  `pane.addItem(GuiItem(icon) { it.isCancelled = true; player.closeInventory(); player.sendMessage(lang.msg("gui.shop.search.clicked", …)) }, idx % 9, idx / 9)`.
+  **Edit that click lambda** (Task 7).
+- **`BlockProtectionListener`**
+  (`infrastructure/listeners/BlockProtectionListener.kt`) — `@Component`,
+  constructor
+  `(shopRepository, breakDelete: BreakDeleteMode, management: ShopManagementService, logger: Logger, lang: LangService)`.
+  In `onBlockBreak`, the sign branch does:
+  `if (shop.owner == player.uniqueId && breakDelete.isActive(player.uniqueId)) { management.delete(…); …; return }`
+  then `cancelSignBreak(event, shop, player)`. **Insert the breakothers branch**
+  between those (Task 5).
+- **`SignPlaceListener`** (`infrastructure/listeners/SignPlaceListener.kt`) —
+  after building `val shop = Shop(...)` it formats four lines:
+
   ```kotlin
   val headerColor = if (direction == SignDirection.BUY) NamedTextColor.GOLD else NamedTextColor.AQUA
   event.line(0, AdventureComponent.text("[${direction.name}]", headerColor))
@@ -39,26 +100,45 @@
   event.line(2, AdventureComponent.text("$price", NamedTextColor.GOLD))
   event.line(3, AdventureComponent.text("[Shop]", NamedTextColor.GOLD))
   ```
-  **Replace those four** with `ShopSignRenderer.lines(...)` applied per index (Task 3). `AdventureComponent` is `net.kyori.adventure.text.Component`; colors `net.kyori.adventure.text.format.NamedTextColor`.
-- **`Player.getTargetBlockExact(maxDistance: Int): org.bukkit.block.Block?`** — Bukkit raycast (null if nothing in range). `Block.world.name`, `Block.x/y/z`, `Block.state`.
-- **Sign write (fix):** `(block.state as org.bukkit.block.Sign).getSide(org.bukkit.block.sign.Side.FRONT).line(i, component)` then `state.update()`.
-- **Teleport:** `player.teleport(org.bukkit.Location(world, x + 0.5, y.toDouble(), z + 0.5, player.location.yaw, player.location.pitch))`; `org.bukkit.Bukkit.getWorld(name): World?`.
-- **`LangService`** — `lang.msg("key", "tok" to v)`; placeholders use `<token>` (NEVER `{token}`).
-- **Permission DSL** (`build.gradle.kts`) — `node("name", default = Default.OP, description = "…")`; existing admin nodes (`enthusiamarket.admin`, `enthusiamarket.admin.evict`, …) are nearby. `Default` is `net.badgersmc.nexus.permissions.Default`.
-- **Lang file** (`src/main/resources/lang/en_US.yml`) — top-level `shop:` block (contains `trade`, `edit`, `protect`, `cmd`); add a `shop.admin` block. `gui.shop.search` already has `title/result/clicked/prev/next`; add `teleported` beside `clicked`. Existing key `shop.cmd.players_only` is reused for console senders.
+
+  **Replace those four** with `ShopSignRenderer.lines(...)` applied per index
+  (Task 3). `AdventureComponent` is `net.kyori.adventure.text.Component`; colors
+  `net.kyori.adventure.text.format.NamedTextColor`.
+- **`Player.getTargetBlockExact(maxDistance: Int): org.bukkit.block.Block?`** —
+  Bukkit raycast (null if nothing in range). `Block.world.name`, `Block.x/y/z`,
+  `Block.state`.
+- **Sign write (fix):**
+  `(block.state as org.bukkit.block.Sign).getSide(org.bukkit.block.sign.Side.FRONT).line(i, component)`
+  then `state.update()`.
+- **Teleport:**
+  `player.teleport(org.bukkit.Location(world, x + 0.5, y.toDouble(), z + 0.5, player.location.yaw, player.location.pitch))`;
+  `org.bukkit.Bukkit.getWorld(name): World?`.
+- **`LangService`** — `lang.msg("key", "tok" to v)`; placeholders use `<token>`
+  (NEVER `{token}`).
+- **Permission DSL** (`build.gradle.kts`) —
+  `node("name", default = Default.OP, description = "…")`; existing admin nodes
+  (`enthusiamarket.admin`, `enthusiamarket.admin.evict`, …) are nearby.
+  `Default` is `net.badgersmc.nexus.permissions.Default`.
+- **Lang file** (`src/main/resources/lang/en_US.yml`) — top-level `shop:` block
+  (contains `trade`, `edit`, `protect`, `cmd`); add a `shop.admin` block.
+  `gui.shop.search` already has `title/result/clicked/prev/next`; add
+  `teleported` beside `clicked`. Existing key `shop.cmd.players_only` is reused
+  for console senders.
 
 ---
 
 ## Task 1: Permission node + AdminBreakMode
 
 **Files:**
+
 - Modify: `build.gradle.kts`
 - Create: `src/main/kotlin/net/badgersmc/em/application/AdminBreakMode.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/application/AdminBreakModeTest.kt`
 
 - [ ] **Step 1: Add the permission node**
 
-In `build.gradle.kts`, inside the `permissionTree { … }` block, next to the other `enthusiamarket.admin*` standalone nodes, add:
+In `build.gradle.kts`, inside the `permissionTree { … }` block, next to the
+other `enthusiamarket.admin*` standalone nodes, add:
 
 ```kotlin
         node("enthusiamarket.admin.shop", default = Default.OP, description = "Admin shop tooling (/shop admin view/info/remove/fix/breakothers + search teleport)")
@@ -108,7 +188,8 @@ class AdminBreakModeTest {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.AdminBreakModeTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.AdminBreakModeTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `AdminBreakMode` not defined.
 
 - [ ] **Step 4: Implement AdminBreakMode**
@@ -155,7 +236,8 @@ class AdminBreakMode {
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.AdminBreakModeTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.AdminBreakModeTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -172,6 +254,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 2: LookAtShopResolver
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/application/LookAtShopResolver.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/application/LookAtShopResolverTest.kt`
 
@@ -230,7 +313,8 @@ class LookAtShopResolverTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.LookAtShopResolverTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.LookAtShopResolverTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `LookAtShopResolver` not defined.
 
 - [ ] **Step 3: Implement LookAtShopResolver**
@@ -264,7 +348,8 @@ class LookAtShopResolver(
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.LookAtShopResolverTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.LookAtShopResolverTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -281,9 +366,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 3: ShopSignRenderer + SignPlaceListener refactor
 
 **Files:**
+
 - Create: `src/main/kotlin/net/badgersmc/em/application/ShopSignRenderer.kt`
 - Test: `src/test/kotlin/net/badgersmc/em/application/ShopSignRendererTest.kt`
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/SignPlaceListener.kt`
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/SignPlaceListener.kt`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -318,7 +405,8 @@ class ShopSignRendererTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopSignRendererTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopSignRendererTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `ShopSignRenderer` not defined.
 
 - [ ] **Step 3: Implement ShopSignRenderer**
@@ -356,12 +444,16 @@ class ShopSignRenderer {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopSignRendererTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopSignRendererTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Refactor SignPlaceListener to use the renderer**
 
-Read `SignPlaceListener.kt` first. Add `private val signRenderer: net.badgersmc.em.application.ShopSignRenderer,` to its constructor (it's a `@Component`; Nexus injects the `@Service`). Replace the four inline `event.line(...)` formatting lines (the `headerColor` block) with:
+Read `SignPlaceListener.kt` first. Add
+`private val signRenderer: net.badgersmc.em.application.ShopSignRenderer,` to
+its constructor (it's a `@Component`; Nexus injects the `@Service`). Replace the
+four inline `event.line(...)` formatting lines (the `headerColor` block) with:
 
 ```kotlin
         net.badgersmc.em.application.ShopSignRenderer
@@ -369,12 +461,18 @@ Read `SignPlaceListener.kt` first. Add `private val signRenderer: net.badgersmc.
         lines.forEachIndexed { i, c -> event.line(i, c) }
 ```
 
-(Delete the now-unused `headerColor` val and the four `AdventureComponent.text(...)` lines. Leave the rest of the method — `player.sendMessage(...)`, the `ShopCreatedEvent` fire — untouched. If `NamedTextColor` / `AdventureComponent` become unused imports, remove them to keep detekt happy.)
+(Delete the now-unused `headerColor` val and the four
+`AdventureComponent.text(...)` lines. Leave the rest of the method —
+`player.sendMessage(...)`, the `ShopCreatedEvent` fire — untouched. If
+`NamedTextColor` / `AdventureComponent` become unused imports, remove them to
+keep detekt happy.)
 
 - [ ] **Step 6: Build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. (If a `SignPlaceListener` test constructs it directly, add a `ShopSignRenderer()` arg.)
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. (If a `SignPlaceListener` test constructs it
+directly, add a `ShopSignRenderer()` arg.)
 
 - [ ] **Step 7: Commit**
 
@@ -390,8 +488,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 4: ShopManagementService.adminDelete
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/application/ShopManagementService.kt`
-- Test: `src/test/kotlin/net/badgersmc/em/application/ShopManagementAdminDeleteTest.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/application/ShopManagementService.kt`
+- Test:
+  `src/test/kotlin/net/badgersmc/em/application/ShopManagementAdminDeleteTest.kt`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -441,7 +542,8 @@ class ShopManagementAdminDeleteTest {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopManagementAdminDeleteTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopManagementAdminDeleteTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: FAIL — `adminDelete` unresolved.
 
 - [ ] **Step 3: Add adminDelete**
@@ -460,7 +562,8 @@ In `ShopManagementService.kt`, after `delete(...)`:
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopManagementAdminDeleteTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew test --tests "net.badgersmc.em.application.ShopManagementAdminDeleteTest" -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -477,13 +580,19 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 5: breakothers wiring + ShopEditMenu admin widening
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/BlockProtectionListener.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/listeners/BlockProtectionListener.kt`
 - Modify: `src/main/kotlin/net/badgersmc/em/interaction/gui/ShopEditMenu.kt`
 - Modify: `src/main/resources/lang/en_US.yml`
 
 - [ ] **Step 1: Inject AdminBreakMode + add the breakothers branch**
 
-Read `BlockProtectionListener.kt` first. Add `private val adminBreak: net.badgersmc.em.application.AdminBreakMode,` to the constructor. In `onBlockBreak`, inside the `if (shop != null)` block, **between** the existing owner+breakDelete `if` (which `return`s) and the `cancelSignBreak(...)` call, insert:
+Read `BlockProtectionListener.kt` first. Add
+`private val adminBreak: net.badgersmc.em.application.AdminBreakMode,` to the
+constructor. In `onBlockBreak`, inside the `if (shop != null)` block,
+**between** the existing owner+breakDelete `if` (which `return`s) and the
+`cancelSignBreak(...)` call, insert:
 
 ```kotlin
                 if (player.hasPermission("enthusiamarket.admin.shop") && adminBreak.isActive(player.uniqueId)) {
@@ -495,7 +604,8 @@ Read `BlockProtectionListener.kt` first. Add `private val adminBreak: net.badger
 
 - [ ] **Step 2: Widen the ShopEditMenu admin guard**
 
-In `ShopEditMenu.kt` `open(player)`, change the guard to also accept the shop-admin node:
+In `ShopEditMenu.kt` `open(player)`, change the guard to also accept the
+shop-admin node:
 
 ```kotlin
         if (player.uniqueId != shop.owner &&
@@ -509,21 +619,26 @@ In `ShopEditMenu.kt` `open(player)`, change the guard to also accept the shop-ad
 
 - [ ] **Step 3: Add the breakothers lang key (partial shop.admin block)**
 
-In `en_US.yml`, under the top-level `shop:` block (e.g. after the `cmd:` block), add the start of a `shop.admin` block — the rest is added in Task 6. For now add:
+In `en_US.yml`, under the top-level `shop:` block (e.g. after the `cmd:` block),
+add the start of a `shop.admin` block — the rest is added in Task 6. For now
+add:
 
 ```yaml
-  admin:
-    no_target: "<red>You're not looking at a shop sign or container."
-    breakothers:
-      deleted: "<green>Admin-broke and deleted that shop."
+admin:
+  no_target: "<red>You're not looking at a shop sign or container."
+  breakothers:
+    deleted: "<green>Admin-broke and deleted that shop."
 ```
 
-(Use exactly two-space indentation so these nest under `shop:`. `<token>` style, never `{token}`.)
+(Use exactly two-space indentation so these nest under `shop:`. `<token>` style,
+never `{token}`.)
 
 - [ ] **Step 4: Build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. (If a `BlockProtectionListener` test constructs it directly, add an `AdminBreakMode()` arg.)
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. (If a `BlockProtectionListener` test constructs it
+directly, add an `AdminBreakMode()` arg.)
 
 - [ ] **Step 5: Commit**
 
@@ -539,7 +654,9 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 6: `/shop admin` subcommands + lang
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/infrastructure/commands/ShopCommands.kt`
 - Modify: `src/main/resources/lang/en_US.yml`
 
 - [ ] **Step 1: Inject the new dependencies into ShopCommands**
@@ -633,41 +750,60 @@ Inside `ShopCommands`, add:
     }
 ```
 
-(`ItemStackSerializer` and `BreakDeleteMode` are already imported in `ShopCommands.kt` from SP1/SP2; if not, add the imports.)
+(`ItemStackSerializer` and `BreakDeleteMode` are already imported in
+`ShopCommands.kt` from SP1/SP2; if not, add the imports.)
 
 - [ ] **Step 3: Complete the shop.admin lang block**
 
-In `en_US.yml`, extend the `shop.admin` block started in Task 5 so the full block reads:
+In `en_US.yml`, extend the `shop.admin` block started in Task 5 so the full
+block reads:
 
 ```yaml
-  admin:
-    no_target: "<red>You're not looking at a shop sign or container."
-    info:
-      header: "<gold>━━ Shop owned by <yellow><owner></yellow> ━━"
-      where: "<gray>Sign <white><world> <x>,<y>,<z></white>  <dark_gray>|  <gray>Chest <white><cworld> <cx>,<cy>,<cz>"
-      trade: "<gray>Mode <white><dir></white>  <dark_gray>|  <green><sell_amt>x <sell></green>  <dark_gray>|  <gold><cost>"
-      flags: "<gray>Trusted <white><trusted></white>  <dark_gray>|  <gray>Frozen <white><frozen></white>  <dark_gray>|  <gray>Searchable <white><searchable>"
-    remove:
-      done: "<green>Shop removed."
-      not_found: "<red>That shop no longer exists."
-    fix:
-      done: "<green>Sign re-rendered; container OK."
-      container_missing: "<yellow>Sign re-rendered, but the linked container is gone — use /shop admin remove."
-      not_a_sign: "<red>The stored sign block isn't a sign anymore — use /shop admin remove."
-    breakothers:
-      enabled: "<green>Break-others mode ON for <gold><minutes></gold> minute(s). Break any shop sign to delete it."
-      disabled: "<gray>Break-others mode disabled."
-      deleted: "<green>Admin-broke and deleted that shop."
+admin:
+  no_target: "<red>You're not looking at a shop sign or container."
+  info:
+    header: "<gold>━━ Shop owned by <yellow><owner></yellow> ━━"
+    where:
+      "<gray>Sign <white><world> <x>,<y>,<z></white>  <dark_gray>|  <gray>Chest
+      <white><cworld> <cx>,<cy>,<cz>"
+    trade:
+      "<gray>Mode <white><dir></white>  <dark_gray>|  <green><sell_amt>x
+      <sell></green>  <dark_gray>|  <gold><cost>"
+    flags:
+      "<gray>Trusted <white><trusted></white>  <dark_gray>|  <gray>Frozen
+      <white><frozen></white>  <dark_gray>|  <gray>Searchable
+      <white><searchable>"
+  remove:
+    done: "<green>Shop removed."
+    not_found: "<red>That shop no longer exists."
+  fix:
+    done: "<green>Sign re-rendered; container OK."
+    container_missing:
+      "<yellow>Sign re-rendered, but the linked container is gone — use /shop
+      admin remove."
+    not_a_sign:
+      "<red>The stored sign block isn't a sign anymore — use /shop admin remove."
+  breakothers:
+    enabled:
+      "<green>Break-others mode ON for <gold><minutes></gold> minute(s). Break
+      any shop sign to delete it."
+    disabled: "<gray>Break-others mode disabled."
+    deleted: "<green>Admin-broke and deleted that shop."
 ```
 
-> Note: `enabled`/`disabled` (not `on`/`off`) — SnakeYAML parses unquoted `on:`/`off:` keys as booleans, which would break the lookup.
+> Note: `enabled`/`disabled` (not `on`/`off`) — SnakeYAML parses unquoted
+> `on:`/`off:` keys as booleans, which would break the lookup.
 
-(Replace the partial block from Task 5 with this complete one. Keep two-space indentation under `shop:`.)
+(Replace the partial block from Task 5 with this complete one. Keep two-space
+indentation under `shop:`.)
 
 - [ ] **Step 4: Build (+ fix ShopCommands test constructor if present)**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
-Expected: BUILD SUCCESSFUL. If a `ShopCommands` test constructs it directly, add `mockk<LookAtShopResolver>(relaxed = true)`, `AdminBreakMode()`, `ShopSignRenderer()` args.
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin compileTestKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Expected: BUILD SUCCESSFUL. If a `ShopCommands` test constructs it directly, add
+`mockk<LookAtShopResolver>(relaxed = true)`, `AdminBreakMode()`,
+`ShopSignRenderer()` args.
 
 - [ ] **Step 5: Commit**
 
@@ -683,12 +819,15 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 7: SearchResultsMenu admin teleport
 
 **Files:**
-- Modify: `src/main/kotlin/net/badgersmc/em/interaction/gui/SearchResultsMenu.kt`
+
+- Modify:
+  `src/main/kotlin/net/badgersmc/em/interaction/gui/SearchResultsMenu.kt`
 - Modify: `src/main/resources/lang/en_US.yml`
 
 - [ ] **Step 1: Add the teleport branch to the result click**
 
-In `SearchResultsMenu.kt`, replace the result-icon click lambda body (currently closes inventory + sends `gui.shop.search.clicked`) with:
+In `SearchResultsMenu.kt`, replace the result-icon click lambda body (currently
+closes inventory + sends `gui.shop.search.clicked`) with:
 
 ```kotlin
             pane.addItem(GuiItem(icon) {
@@ -716,12 +855,13 @@ In `SearchResultsMenu.kt`, replace the result-icon click lambda body (currently 
 In `en_US.yml`, under `gui.shop.search`, beside `clicked`, add:
 
 ```yaml
-      teleported: "<green>Teleported to shop at <white><world> <x> <y> <z></white>."
+teleported: "<green>Teleported to shop at <white><world> <x> <y> <z></white>."
 ```
 
 - [ ] **Step 3: Build**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew compileKotlin -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL.
 
 - [ ] **Step 4: Commit**
@@ -739,12 +879,15 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Full verification on the committed HEAD**
 
-Run: `cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
+Run:
+`cd /d/BadgersMC-Dev/EnthusiaMarket && ./gradlew clean detekt test shadowJar -Plumaguilds.jar=/d/BadgersMC-Dev/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar --no-daemon --console=plain`
 Expected: BUILD SUCCESSFUL, detekt 0, all tests pass.
 
 - [ ] **Step 2: Mark progress + commit**
 
-Append to `docs/tasks.md`: `- [x] ItemShops parity SP5 — admin tooling (/shop admin view/info/remove/fix/breakothers + search teleport)`. Then:
+Append to `docs/tasks.md`:
+`- [x] ItemShops parity SP5 — admin tooling (/shop admin view/info/remove/fix/breakothers + search teleport)`.
+Then:
 
 ```bash
 cd /d/BadgersMC-Dev/EnthusiaMarket && git add docs/tasks.md
@@ -761,11 +904,34 @@ Report the final gate output + commit list. Do NOT push.
 
 ## Self-Review Notes (for the implementer)
 
-1. **`AdminBreakMode` mirrors `BreakDeleteMode` exactly** (Task 1) — same `ConcurrentHashMap<UUID, Long>` shape. Reuse `BreakDeleteMode.parseDurationMs` (Task 6); do not add a second parser.
-2. **`LookAtShopResolver` is coord-based, not Block-based** (Task 2) — the caller (`ShopCommands.lookAtShop`) does the `getTargetBlockExact` raycast and passes `world.name, x, y, z`. This keeps the resolver pure (MockK repo, no MockBukkit).
-3. **`ShopSignRenderer` is Bukkit-free** (Task 3) — it takes a material-name string, not an ItemStack. The caller deserializes. SignPlaceListener passes `held.type.name.lowercase()`; fix passes the deserialized sell type.
-4. **Don't break the SignPlaceListener refactor** (Task 3 Step 5) — it must stay behaviour-identical; only the four `event.line` formats move into the renderer. Read the file before editing; remove now-unused imports (`NamedTextColor`, possibly `AdventureComponent`) or detekt will flag them.
-5. **breakothers branch ordering** (Task 5 Step 1) — it goes AFTER the owner+breakDelete check and BEFORE `cancelSignBreak`, so owners keep their own breakdelete behaviour and only admins-with-mode get the any-shop delete.
-6. **Multi-segment subcommands** (Task 6) — `@Subcommand("admin view")` etc. work the same way `AdminCommands`' `auction start` / `stall members add` do (PaperCommandRegistry builds literals bottom-up). The `breakothers` `@Arg("mode")` mirrors SP1's `breakdelete`.
-7. **Lang indentation** (Tasks 5–7) — the `shop.admin` block nests under the existing top-level `shop:` at two spaces; `gui.shop.search.teleported` nests under `gui.shop.search`. Watch for accidental duplicate `admin:` keys (there is already a TOP-LEVEL `admin:` block for `/em` messages — the new one is `shop.admin`, a different parent). Do not merge them.
-8. **Constructor churn** (Tasks 3, 5, 6) — `SignPlaceListener`, `BlockProtectionListener`, and `ShopCommands` each gain constructor params. If any has a direct-construction test, add the new args (`ShopSignRenderer()`, `AdminBreakMode()`, `mockk(relaxed=true)` resolver). Nexus injects them in production automatically.
+1. **`AdminBreakMode` mirrors `BreakDeleteMode` exactly** (Task 1) — same
+   `ConcurrentHashMap<UUID, Long>` shape. Reuse
+   `BreakDeleteMode.parseDurationMs` (Task 6); do not add a second parser.
+2. **`LookAtShopResolver` is coord-based, not Block-based** (Task 2) — the
+   caller (`ShopCommands.lookAtShop`) does the `getTargetBlockExact` raycast and
+   passes `world.name, x, y, z`. This keeps the resolver pure (MockK repo, no
+   MockBukkit).
+3. **`ShopSignRenderer` is Bukkit-free** (Task 3) — it takes a material-name
+   string, not an ItemStack. The caller deserializes. SignPlaceListener passes
+   `held.type.name.lowercase()`; fix passes the deserialized sell type.
+4. **Don't break the SignPlaceListener refactor** (Task 3 Step 5) — it must stay
+   behaviour-identical; only the four `event.line` formats move into the
+   renderer. Read the file before editing; remove now-unused imports
+   (`NamedTextColor`, possibly `AdventureComponent`) or detekt will flag them.
+5. **breakothers branch ordering** (Task 5 Step 1) — it goes AFTER the
+   owner+breakDelete check and BEFORE `cancelSignBreak`, so owners keep their
+   own breakdelete behaviour and only admins-with-mode get the any-shop delete.
+6. **Multi-segment subcommands** (Task 6) — `@Subcommand("admin view")` etc.
+   work the same way `AdminCommands`' `auction start` / `stall members add` do
+   (PaperCommandRegistry builds literals bottom-up). The `breakothers`
+   `@Arg("mode")` mirrors SP1's `breakdelete`.
+7. **Lang indentation** (Tasks 5–7) — the `shop.admin` block nests under the
+   existing top-level `shop:` at two spaces; `gui.shop.search.teleported` nests
+   under `gui.shop.search`. Watch for accidental duplicate `admin:` keys (there
+   is already a TOP-LEVEL `admin:` block for `/em` messages — the new one is
+   `shop.admin`, a different parent). Do not merge them.
+8. **Constructor churn** (Tasks 3, 5, 6) — `SignPlaceListener`,
+   `BlockProtectionListener`, and `ShopCommands` each gain constructor params.
+   If any has a direct-construction test, add the new args
+   (`ShopSignRenderer()`, `AdminBreakMode()`, `mockk(relaxed=true)` resolver).
+   Nexus injects them in production automatically.

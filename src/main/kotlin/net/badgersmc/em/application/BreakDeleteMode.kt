@@ -39,13 +39,16 @@ class BreakDeleteMode {
             val a = arg?.lowercase()?.trim()
             if (a == "off") return null
             if (a == null || a == "on" || a.isEmpty()) return DEFAULT_MS
-            if (a.endsWith("m")) {
-                val mins = a.dropLast(1).toLongOrNull()
-                if (mins != null && mins > 0) return mins * 60_000
-            }
-            return DEFAULT_MS
+            return parseMinutesMs(a) ?: DEFAULT_MS
         }
 
-        private const val DEFAULT_MS = 5L * 60_000
+        private fun parseMinutesMs(arg: String): Long? {
+            if (!arg.endsWith("m")) return null
+            val minutes = arg.dropLast(1).toLongOrNull()
+            return minutes?.takeIf { it > 0 }?.times(MINUTE_MS)
+        }
+
+        private const val MINUTE_MS = 60_000L
+        private const val DEFAULT_MS = 5L * MINUTE_MS
     }
 }

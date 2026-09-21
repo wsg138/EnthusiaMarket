@@ -1,20 +1,18 @@
-
 # Cumulus 2.0 — API Snapshot
 
-**Source:** geysermc/cumulus (context7)
-**Pinned version:** `org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT`
-**Snapshot date:** 2026-05-24
+**Source:** geysermc/cumulus (context7) **Pinned version:**
+`org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT` **Snapshot date:** 2026-05-24
 
 ## Key Classes / Interfaces
 
-| Class | Package | Role |
-|---|---|---|
-| `SimpleForm` | `org.geysermc.cumulus.SimpleForm` | Simple button form (builder available) |
-| `ModalForm` | `org.geysermc.cumulus.ModalForm` | Yes/no form (builder available) |
-| `CustomForm` | `org.geysermc.cumulus.CustomForm` | Full custom form (builder available) |
-| `Form` | `org.geysermc.cumulus.Form` | Base form interface |
-| `FormResponse` | `org.geysermc.cumulus.response.FormResponse` | Base response |
-| `SimpleFormResponse` | `org.geysermc.cumulus.response.SimpleFormResponse` | Button click response |
+| Class                | Package                                            | Role                                   |
+| -------------------- | -------------------------------------------------- | -------------------------------------- |
+| `SimpleForm`         | `org.geysermc.cumulus.SimpleForm`                  | Simple button form (builder available) |
+| `ModalForm`          | `org.geysermc.cumulus.ModalForm`                   | Yes/no form (builder available)        |
+| `CustomForm`         | `org.geysermc.cumulus.CustomForm`                  | Full custom form (builder available)   |
+| `Form`               | `org.geysermc.cumulus.Form`                        | Base form interface                    |
+| `FormResponse`       | `org.geysermc.cumulus.response.FormResponse`       | Base response                          |
+| `SimpleFormResponse` | `org.geysermc.cumulus.response.SimpleFormResponse` | Button click response                  |
 
 ## Critical Signatures — Form Builders
 
@@ -87,16 +85,22 @@ form.setResponseHandler((formObj, responseData) -> {
 
 ## EnthusiaMarket Usage Notes
 
-- Forms shown when `bedrock.force-forms: true` OR when sender is a Floodgate player (REQ-011).
-- `bedrock.form-timeout-sec: 60` controls form expiry (not a Cumulus API value; project-level).
+- Forms shown when `bedrock.force-forms: true` OR when sender is a Floodgate
+  player (REQ-011).
+- `bedrock.form-timeout-sec: 60` controls form expiry (not a Cumulus API value;
+  project-level).
 
 ## Breaking-Change Watchpoints
 
-1. `response.next()` on CustomForm reads values **in component declaration order** — do not reorder components in existing forms without updating handler logic.
-2. `FloodgateApi.getPlayer(UUID)` — returns null for online Java players; always null-check.
+1. `response.next()` on CustomForm reads values **in component declaration
+   order** — do not reorder components in existing forms without updating
+   handler logic.
+2. `FloodgateApi.getPlayer(UUID)` — returns null for online Java players; always
+   null-check.
 3. Form builders are immutable after `.build()` — recreate to modify.
 
 ## Evidence
 
-- context7:/geysermc/cumulus — SimpleForm, ModalForm, CustomForm builders, response handling, Floodgate integration
+- context7:/geysermc/cumulus — SimpleForm, ModalForm, CustomForm builders,
+  response handling, Floodgate integration
 - org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT (pinned in build.gradle.kts:27)
