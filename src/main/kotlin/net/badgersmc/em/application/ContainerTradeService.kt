@@ -61,17 +61,27 @@ open class ContainerTradeService(
     /** Read-only balance lookup for purchase-menu affordability previews. */
     fun balanceOf(playerUuid: UUID): Long = economy.balance(playerUuid)
 
-    fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult {
+    fun executeBuy(shop: Shop, playerUuid: UUID): ContainerTradeResult =
+        executeBuyBatch(shop, playerUuid, 1)
+
+    /** Batch variant: executes [quantity] buy trades in a single atomic operation. */
+    fun executeBuyBatch(shop: Shop, playerUuid: UUID, quantity: Int): ContainerTradeResult {
+        if (quantity <= 0) return logFail(playerUuid, shop.id, "buy", "invalid quantity")
         if (shop.frozen) return logFail(playerUuid, shop.id, "buy", "frozen")
         if (shop.sellAmount <= 0 || shop.costAmount <= 0) return logFail(playerUuid, shop.id, "buy", "invalid amounts")
         val preconditions = buyPreconditions(shop, playerUuid)
         if (preconditions.result != null) return logFail(playerUuid, shop.id, "buy", preconditions.result!!.reason)
-        val (effectiveCost, policyFailure) = resolveEffectiveCost(shop, playerUuid, shop.costAmount.toLong(), preconditions.ctx!!.guildId)
+        val scaledCost = try {
+            Math.multiplyExact(shop.costAmount.toLong(), quantity.toLong())
+        } catch (_: ArithmeticException) {
+            return logFail(playerUuid, shop.id, "buy", "trade overflow")
+        }
+        val (effectiveCost, policyFailure) = resolveEffectiveCost(shop, playerUuid, scaledCost, preconditions.ctx!!.guildId)
         if (policyFailure != null) return policyFailure
         if (!canAffordShopCost(preconditions.ctx!!.guildId, shop.owner, effectiveCost)) {
             return guildPaymentFailure(preconditions.ctx!!.guildId, "Shop can't afford this")
         }
-        return executeBuyTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, effectiveCost)
+        return executeBuyTransaction(shop, preconditions.ctx!!, preconditions.sellStack!!, effectiveCost, quantity)
             .logFail(playerUuid, shop.id, "buy")
     }
 
@@ -100,19 +110,26 @@ open class ContainerTradeService(
         ctx: TradeContext,
         sellStack: ItemStack,
         effectiveCost: Long,
+        quantity: Int = 1,
     ): ContainerTradeResult {
-        val result = transferSimilar(ctx.player.inventory, ctx.containerInv, sellStack, sellStack.amount)
+        val totalAmount = try {
+            Math.multiplyExact(shop.sellAmount, quantity)
+        } catch (_: ArithmeticException) {
+            return ContainerTradeResult.Failure("Trade quantity overflow")
+        }
+        val scaledStack = sellStack.clone().apply { amount = totalAmount }
+        val result = transferSimilar(ctx.player.inventory, ctx.containerInv, sellStack, totalAmount)
         when (result) {
             is TransferResult.Success -> {}
             is TransferResult.SourceFailure -> return ContainerTradeResult.Failure("Not enough items in inventory")
             is TransferResult.DestFull -> return ContainerTradeResult.Failure("Container is full")
         }
 
-        return processBuyPayment(shop, ctx, sellStack, effectiveCost)
+        return processBuyPayment(shop, ctx, scaledStack, effectiveCost, quantity)
     }
 
     /** Handles payment flow: withdraw from shop owner → deposit to player. */
-    private fun processBuyPayment(shop: Shop, ctx: TradeContext, sellStack: ItemStack, cost: Long): ContainerTradeResult {
+    private fun processBuyPayment(shop: Shop, ctx: TradeContext, sellStack: ItemStack, cost: Long, quantity: Int = 1): ContainerTradeResult {
         val guildId = ctx.guildId
         if (cost > 0L) {
             if (!withdrawFromShop(guildId, ctx.ownerUuid, cost)) {
@@ -122,8 +139,8 @@ open class ContainerTradeService(
                 return buyPaymentDepositFailed(ctx, sellStack, guildId, cost)
             }
         }
-        fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction))
-        return ContainerTradeResult.Success("Sold ${shop.sellAmount}x for $cost")
+        fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, sellStack.amount, cost, shop.id, shop.direction))
+        return ContainerTradeResult.Success("Sold ${sellStack.amount}x for $cost")
     }
 
     private fun buyPaymentWithdrawFailed(ctx: TradeContext, sellStack: ItemStack, guildId: UUID?): ContainerTradeResult {
@@ -143,12 +160,17 @@ open class ContainerTradeService(
         )
     }
 
-    fun executeSell(shop: Shop, playerUuid: UUID): ContainerTradeResult {
+    fun executeSell(shop: Shop, playerUuid: UUID): ContainerTradeResult =
+        executeSellBatch(shop, playerUuid, 1)
+
+    /** Batch variant: executes [quantity] sell trades in a single atomic operation. */
+    fun executeSellBatch(shop: Shop, playerUuid: UUID, quantity: Int): ContainerTradeResult {
+        if (quantity <= 0) return logFail(playerUuid, shop.id, "sell", "invalid quantity")
         if (shop.frozen) return logFail(playerUuid, shop.id, "sell", "frozen")
         if (shop.sellAmount <= 0 || shop.costAmount <= 0) return logFail(playerUuid, shop.id, "sell", "invalid amounts")
         val preconditions = sellPreconditions(shop, playerUuid)
         if (preconditions.result != null) return logFail(playerUuid, shop.id, "sell", preconditions.result!!.reason)
-        return executeSellTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!)
+        return executeSellTransaction(shop, playerUuid, preconditions.ctx!!, preconditions.sellStack!!, quantity)
             .logFail(playerUuid, shop.id, "sell")
     }
 
@@ -191,12 +213,22 @@ open class ContainerTradeService(
 
     @Suppress("ReturnCount", "CyclomaticComplexMethod")
     private fun executeSellTransaction(
-        shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack
+        shop: Shop, playerUuid: UUID, ctx: TradeContext, sellStack: ItemStack, quantity: Int = 1
     ): ContainerTradeResult {
-        val (cost, policyFailure) = resolveEffectiveCost(shop, playerUuid, shop.costAmount.toLong(), ctx.guildId)
+        val scaledSell = try {
+            Math.multiplyExact(shop.sellAmount, quantity)
+        } catch (_: ArithmeticException) {
+            return ContainerTradeResult.Failure("Trade quantity overflow")
+        }
+        val scaledCost = try {
+            Math.multiplyExact(shop.costAmount.toLong(), quantity.toLong())
+        } catch (_: ArithmeticException) {
+            return ContainerTradeResult.Failure("Trade cost overflow")
+        }
+        val (cost, policyFailure) = resolveEffectiveCost(shop, playerUuid, scaledCost, ctx.guildId)
         if (policyFailure != null) return policyFailure
 
-        if (!inventoryCanFit(ctx.player.inventory, sellStack, shop.sellAmount)) {
+        if (!inventoryCanFit(ctx.player.inventory, sellStack, scaledSell)) {
             return ContainerTradeResult.Failure("Inventory full")
         }
         if (economy.balance(playerUuid) < cost) return ContainerTradeResult.Failure("Insufficient funds")
@@ -205,7 +237,7 @@ open class ContainerTradeService(
         // is a snapshot; the container could change in the meantime.
         // REQ-301: collect the actual container items so they can be delivered
         // to the player instead of the deserialized template.
-        val (collectedItems, removalResult) = removeAndCollectSimilar(ctx.containerInv, sellStack, sellStack.amount)
+        val (collectedItems, removalResult) = removeAndCollectSimilar(ctx.containerInv, sellStack, scaledSell)
         if (removalResult.isNotEmpty()) {
             // Restore any partially-removed items
             for (item in collectedItems) ctx.containerInv.addItem(item)
@@ -259,8 +291,8 @@ open class ContainerTradeService(
             )
         }
 
-        fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, shop.sellAmount, cost, shop.id, shop.direction))
-        return ContainerTradeResult.Success("Bought ${shop.sellAmount}x for $cost")
+        fireTransactionEvent(TransactionEventData(ctx.player, ctx.ownerUuid, sellStack, scaledSell, cost, shop.id, shop.direction))
+        return ContainerTradeResult.Success("Bought ${scaledSell}x for $cost")
     }
 
     private fun rollbackContainerAndPlayer(containerInv: Inventory, player: Player, stack: ItemStack) {
