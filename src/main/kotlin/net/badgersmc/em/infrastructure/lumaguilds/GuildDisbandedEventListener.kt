@@ -8,8 +8,8 @@ import org.bukkit.event.Listener
 /**
  * Bukkit [Listener] that observes [GuildDisbandedEvent] from LumaGuilds
  * and forwards notifications to [LumaGuildsGuildProvider]'s dissolve handlers.
+ * Registration is owned by [LumaGuildsListenerRegistration].
  */
-@net.badgersmc.nexus.paper.listeners.Listener
 @Component
 class GuildDisbandedEventListener(
     private val provider: LumaGuildsGuildProvider,
