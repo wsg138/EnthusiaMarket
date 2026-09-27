@@ -10,9 +10,13 @@ permissions:
 
 jobs:
   diagnose:
-    if: github.event.head_commit.message == 'Capture LumaGuilds build failure'
+    if: github.event.head_commit.message == 'Reproduce LumaGuilds dependency bootstrap'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      ROSECHAT_PREHOOK_REF: 3fe078a
+      PLAYTIME_API_REF: 2a5b57d
+      COMBATLOGX_API_REF: 4812e85af1264ebb27da481b9d9cbf8de0956e53
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,9 +28,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a
         with:
           gradle-version: '8.10.2'
+
       - name: Build RoseChat bootstrap
-        env:
-          ROSECHAT_PREHOOK_REF: 3fe078a
         run: |
           set -euo pipefail
           git clone -q https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-prehook"
@@ -35,8 +38,39 @@ jobs:
           chmod +x gradlew
           ./gradlew shadowJar --no-daemon >/tmp/rosechat-prehook.log 2>&1
           ROSE_JAR=$(ls build/libs/RoseChat-RC-2*.jar | grep -v '\-sources\|-javadoc' | head -1)
-          mkdir -p "$RUNNER_TEMP/rosechat-out"
-          cp "$ROSE_JAR" "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar"
+          mkdir -p "$RUNNER_TEMP/lumaguilds-deps"
+          cp "$ROSE_JAR" "$RUNNER_TEMP/lumaguilds-deps/RoseChat-RC-2.jar"
+
+      - name: Build EnthusiaPlaytime API dependency
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/wsg138/PlayTimePlugin.git "$RUNNER_TEMP/playtime"
+          cd "$RUNNER_TEMP/playtime"
+          git checkout -q "$PLAYTIME_API_REF"
+          mkdir -p "$RUNNER_TEMP/playtime-classes" "$RUNNER_TEMP/lumaguilds-deps"
+          javac -d "$RUNNER_TEMP/playtime-classes" \
+            src/main/java/org/enthusia/playtime/api/PlaytimeService.java \
+            src/main/java/org/enthusia/playtime/api/PlaytimeRange.java \
+            src/main/java/org/enthusia/playtime/api/PlaytimeMetric.java \
+            src/main/java/org/enthusia/playtime/activity/ActivityState.java \
+            src/main/java/org/enthusia/playtime/data/model/PlaytimeSnapshot.java \
+            src/main/java/org/enthusia/playtime/data/model/RangeTotals.java
+          jar cf "$RUNNER_TEMP/lumaguilds-deps/EnthusiaPlaytime-api.jar" \
+            -C "$RUNNER_TEMP/playtime-classes" .
+
+      - name: Build CombatLogX API dependency
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/SirBlobman/CombatLogX.git "$RUNNER_TEMP/combatlogx"
+          cd "$RUNNER_TEMP/combatlogx"
+          git checkout -q "$COMBATLOGX_API_REF"
+          chmod +x gradlew
+          ./gradlew :api:jar --no-daemon >/tmp/combatlogx.log 2>&1
+          COMBATLOGX_JAR=$(find api/build/libs -maxdepth 1 -name '*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -1)
+          test -n "$COMBATLOGX_JAR"
+          cp "$COMBATLOGX_JAR" "$RUNNER_TEMP/lumaguilds-deps/CombatLogX-api.jar"
+
       - name: Capture LumaGuilds build
         id: lg
         shell: bash
@@ -45,11 +79,14 @@ jobs:
           mkdir -p /tmp/muse-market-diagnostic
           git clone -q --depth 1 https://github.com/BadgersMC/LumaGuilds.git "$RUNNER_TEMP/lumaguilds"
           mkdir -p "$RUNNER_TEMP/lumaguilds/libs"
-          cp "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar" "$RUNNER_TEMP/lumaguilds/libs/RoseChat-RC-2.jar"
+          cp "$RUNNER_TEMP/lumaguilds-deps/RoseChat-RC-2.jar" "$RUNNER_TEMP/lumaguilds/libs/RoseChat-RC-2.jar"
+          cp "$RUNNER_TEMP/lumaguilds-deps/EnthusiaPlaytime-api.jar" "$RUNNER_TEMP/lumaguilds/libs/EnthusiaPlaytime-api.jar"
+          cp "$RUNNER_TEMP/lumaguilds-deps/CombatLogX-api.jar" "$RUNNER_TEMP/lumaguilds/libs/CombatLogX-api.jar"
           cd "$RUNNER_TEMP/lumaguilds"
           chmod +x gradlew
           set +e
-          ./gradlew shadowJar --no-daemon --stacktrace --console=plain 2>&1 | tee /tmp/muse-market-diagnostic/lumaguilds-build.log
+          ./gradlew shadowJar --no-daemon --stacktrace --console=plain 2>&1 \
+            | tee /tmp/muse-market-diagnostic/lumaguilds-build.log
           status=${PIPESTATUS[0]}
           set -e
           echo "$status" > /tmp/muse-market-diagnostic/lumaguilds-build.status
@@ -60,6 +97,7 @@ jobs:
           JAR=$(ls build/libs/LumaGuilds-*.jar | grep -v '\-sources\|-javadoc' | head -1)
           echo "failed=false" >> "$GITHUB_OUTPUT"
           echo "jar=$JAR" >> "$GITHUB_OUTPUT"
+
       - name: Capture Market build
         if: steps.lg.outputs.failed == 'false'
         env:
@@ -67,18 +105,21 @@ jobs:
         shell: bash
         run: |
           set +e
-          ./gradlew test shadowJar jacocoTestReport --no-daemon --stacktrace --console=plain 2>&1 | tee /tmp/muse-market-diagnostic/market-build.log
+          ./gradlew test shadowJar jacocoTestReport --no-daemon --stacktrace --console=plain 2>&1 \
+            | tee /tmp/muse-market-diagnostic/market-build.log
           status=${PIPESTATUS[0]}
           echo "$status" > /tmp/muse-market-diagnostic/market-build.status
           exit 0
-      - name: Collect Market reports
+
+      - name: Collect reports
         if: always()
         shell: bash
         run: |
           mkdir -p /tmp/muse-market-diagnostic
-          cp /tmp/rosechat-prehook.log /tmp/muse-market-diagnostic/ 2>/dev/null || true
+          cp /tmp/rosechat-prehook.log /tmp/combatlogx.log /tmp/muse-market-diagnostic/ 2>/dev/null || true
           if [ -d build/reports/tests/test ]; then cp -R build/reports/tests/test /tmp/muse-market-diagnostic/test-report; fi
           if [ -d build/test-results/test ]; then cp -R build/test-results/test /tmp/muse-market-diagnostic/test-results; fi
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
