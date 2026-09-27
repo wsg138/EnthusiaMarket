@@ -1,22 +1,15 @@
 package net.badgersmc.em.infrastructure.lumaguilds
 
 import net.badgersmc.nexus.annotations.Component
-import net.lumalyte.lg.api.events.GuildDisbandedEvent
-import org.bukkit.event.EventHandler
-import org.bukkit.event.Listener
+import org.bukkit.event.Event
 
-/**
- * Bukkit [Listener] that observes [GuildDisbandedEvent] from LumaGuilds
- * and forwards notifications to [LumaGuildsGuildProvider]'s dissolve handlers.
- * Registration is owned by [LumaGuildsListenerRegistration].
- */
+/** Forwards LumaGuilds disband events without binding to one event package version. */
 @Component
 class GuildDisbandedEventListener(
     private val provider: LumaGuildsGuildProvider,
-) : Listener {
-
-    @EventHandler
-    fun onGuildDisbanded(event: GuildDisbandedEvent) {
-        provider.handleDisbanded(event.guild.id.toString())
+) {
+    fun onGuildDisbanded(event: Event) {
+        val guildId = LumaGuildsEventAccess.guildId(event) ?: return
+        provider.handleDisbanded(guildId.toString())
     }
 }
