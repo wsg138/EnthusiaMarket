@@ -9,6 +9,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      ROSECHAT_PREHOOK_REF: 3fe078a
+      PLAYTIME_API_REF: 2a5b57d
+      COMBATLOGX_API_REF: 4812e85af1264ebb27da481b9d9cbf8de0956e53
     steps:
       - uses: actions/checkout@v4
 
@@ -28,38 +32,61 @@ jobs:
       # RoseChat <-> LumaGuilds is a circular compile dependency:
       #   - RoseChat master has the LumaGuilds channel hook  (needs LumaGuilds jar)
       #   - LumaGuilds needs the RoseChat jar to compile its chat listeners
-      # Both resolve the other via compileOnly files('libs/...') and libs/ is
-      # gitignored, so a single clone of either can't compile. We break the cycle
-      # with a two-pass bootstrap:
-      #   Pass 1: build RoseChat at the last PRE-HOOK commit. That hook-free build
-      #           still exposes every API LumaGuilds uses (RoseChatAPI, Channel,
-      #           RosePlayer), so it's enough to compile LumaGuilds.
-      #   Pass 2: build RoseChat master against the LumaGuilds jar from pass 1.
-      #           This validates the hook actually compiles (so we don't silently
-      #           ship a hook-less RoseChat — the exact regression that broke
-      #           guild/ally chat). EnthusiaMarket itself only needs the
-      #           LumaGuilds jar, but pass 2 keeps the full graph honest.
-      # If RoseChat history changes, update ROSECHAT_PREHOOK_REF below.
+      # LumaGuilds also expects local PlayTime and CombatLogX API jars. These refs
+      # intentionally mirror LumaGuilds' own CI so Market cannot silently validate
+      # against a different dependency graph.
       # ---------------------------------------------------------------------
       - name: Build RoseChat (pre-hook) for LumaGuilds bootstrap
-        env:
-          ROSECHAT_PREHOOK_REF: 3fe078a   # last RoseChat commit before the LumaGuilds hook
         run: |
+          set -euo pipefail
           git clone https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-prehook"
           cd "$RUNNER_TEMP/rosechat-prehook"
           git checkout "$ROSECHAT_PREHOOK_REF"
           chmod +x gradlew
           ./gradlew shadowJar --no-daemon
           ROSE_JAR=$(ls "$RUNNER_TEMP/rosechat-prehook/build/libs/"RoseChat-RC-2*.jar | grep -v '\-sources\|-javadoc' | head -1)
-          mkdir -p "$RUNNER_TEMP/rosechat-out"
-          cp "$ROSE_JAR" "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar"
+          mkdir -p "$RUNNER_TEMP/lumaguilds-deps"
+          cp "$ROSE_JAR" "$RUNNER_TEMP/lumaguilds-deps/RoseChat-RC-2.jar"
+
+      - name: Build EnthusiaPlaytime API for LumaGuilds bootstrap
+        run: |
+          set -euo pipefail
+          git clone https://github.com/wsg138/PlayTimePlugin.git "$RUNNER_TEMP/playtime"
+          cd "$RUNNER_TEMP/playtime"
+          git checkout "$PLAYTIME_API_REF"
+          mkdir -p "$RUNNER_TEMP/playtime-classes" "$RUNNER_TEMP/lumaguilds-deps"
+          javac -d "$RUNNER_TEMP/playtime-classes" \
+            src/main/java/org/enthusia/playtime/api/PlaytimeService.java \
+            src/main/java/org/enthusia/playtime/api/PlaytimeRange.java \
+            src/main/java/org/enthusia/playtime/api/PlaytimeMetric.java \
+            src/main/java/org/enthusia/playtime/activity/ActivityState.java \
+            src/main/java/org/enthusia/playtime/data/model/PlaytimeSnapshot.java \
+            src/main/java/org/enthusia/playtime/data/model/RangeTotals.java
+          jar cf "$RUNNER_TEMP/lumaguilds-deps/EnthusiaPlaytime-api.jar" \
+            -C "$RUNNER_TEMP/playtime-classes" .
+
+      - name: Build CombatLogX API for LumaGuilds bootstrap
+        run: |
+          set -euo pipefail
+          git clone https://github.com/SirBlobman/CombatLogX.git "$RUNNER_TEMP/combatlogx"
+          cd "$RUNNER_TEMP/combatlogx"
+          git checkout "$COMBATLOGX_API_REF"
+          chmod +x gradlew
+          ./gradlew :api:jar --no-daemon
+          COMBATLOGX_JAR=$(find api/build/libs -maxdepth 1 -name '*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -1)
+          test -n "$COMBATLOGX_JAR"
+          cp "$COMBATLOGX_JAR" "$RUNNER_TEMP/lumaguilds-deps/CombatLogX-api.jar"
 
       - name: Build LumaGuilds shadowJar
         id: lg
         run: |
+          set -euo pipefail
           git clone --depth 1 https://github.com/BadgersMC/LumaGuilds.git "$RUNNER_TEMP/lumaguilds"
           mkdir -p "$RUNNER_TEMP/lumaguilds/libs"
-          cp "$RUNNER_TEMP/rosechat-out/RoseChat-RC-2.jar" "$RUNNER_TEMP/lumaguilds/libs/RoseChat-RC-2.jar"
+          cp "$RUNNER_TEMP/lumaguilds-deps/RoseChat-RC-2.jar" "$RUNNER_TEMP/lumaguilds/libs/RoseChat-RC-2.jar"
+          cp "$RUNNER_TEMP/lumaguilds-deps/EnthusiaPlaytime-api.jar" "$RUNNER_TEMP/lumaguilds/libs/EnthusiaPlaytime-api.jar"
+          cp "$RUNNER_TEMP/lumaguilds-deps/CombatLogX-api.jar" "$RUNNER_TEMP/lumaguilds/libs/CombatLogX-api.jar"
           cd "$RUNNER_TEMP/lumaguilds"
           chmod +x gradlew
           ./gradlew shadowJar --no-daemon
@@ -71,6 +98,7 @@ jobs:
 
       - name: Build RoseChat (master, with hook) — validates the cycle closes
         run: |
+          set -euo pipefail
           git clone --depth 1 --branch master https://github.com/BadgersMC/Enthusia-RoseChat.git "$RUNNER_TEMP/rosechat-master"
           mkdir -p "$RUNNER_TEMP/rosechat-master/libs"
           cp "$RUNNER_TEMP/lumaguilds-out/LumaGuilds-2.1.0.jar" "$RUNNER_TEMP/rosechat-master/libs/LumaGuilds-2.1.0.jar"
