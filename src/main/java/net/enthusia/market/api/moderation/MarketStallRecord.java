@@ -25,4 +25,21 @@ public record MarketStallRecord(
         }
         reviewDueAt = Objects.requireNonNull(reviewDueAt, "reviewDueAt");
     }
+
+    /** Bean-style aliases retained for reflection-based Staff integrations. */
+    public String getId() {
+        return id;
+    }
+
+    public String getWorld() {
+        return world;
+    }
+
+    public String getState() {
+        return state;
+    }
+
+    public MarketOwnership getOwnership() {
+        return ownership;
+    }
 }

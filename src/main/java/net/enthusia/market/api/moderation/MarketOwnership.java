@@ -18,6 +18,15 @@ public record MarketOwnership(Type type, Optional<String> id) {
         }
     }
 
+    /** Bean-style aliases use nullable values expected by older Staff reflection. */
+    public Type getType() {
+        return type;
+    }
+
+    public String getId() {
+        return id.orElse(null);
+    }
+
     public enum Type {
         NONE,
         SOLO,

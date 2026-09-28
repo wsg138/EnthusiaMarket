@@ -28,6 +28,19 @@ public record StallBlacklistState(
         updatedAt = Objects.requireNonNull(updatedAt, "updatedAt");
     }
 
+    /** Bean-style aliases retained for reflection-based Staff integrations. */
+    public Status getStatus() {
+        return status;
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt.orElse(null);
+    }
+
+    public String getCaseId() {
+        return caseId;
+    }
+
     public boolean activeAt(Instant now) {
         Objects.requireNonNull(now, "now");
         return status == Status.ACTIVE && expiresAt.map(value -> now.isBefore(value)).orElse(true);
