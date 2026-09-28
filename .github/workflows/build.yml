@@ -80,6 +80,29 @@ jobs:
               raise SystemExit("MariaDB moderation tests did not execute cleanly")
           PY
 
+      - name: Record staging artifact provenance
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          JAR=$(find build/libs -maxdepth 1 -type f -name '*.jar' \
+            ! -name '*-sources.jar' ! -name '*-javadoc.jar' | head -1)
+          test -n "$JAR"
+          printf 'source_sha=%s\n' "$SOURCE_SHA" > build/libs/enthusia-market-staging-source.txt
+          sha256sum "$JAR" > build/libs/enthusia-market-staging.sha256
+          cat build/libs/enthusia-market-staging-source.txt
+          cat build/libs/enthusia-market-staging.sha256
+
+      - name: Upload staging jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: EnthusiaMarket-staging
+          path: |
+            build/libs/*.jar
+            build/libs/enthusia-market-staging-source.txt
+            build/libs/enthusia-market-staging.sha256
+          retention-days: 30
+          if-no-files-found: error
+
       - name: Upload coverage to Codacy
         uses: codacy/codacy-coverage-reporter-action@89d6c85cfafaec52c72b6c5e8b2878d33104c699 # v1.3.0
         with:
