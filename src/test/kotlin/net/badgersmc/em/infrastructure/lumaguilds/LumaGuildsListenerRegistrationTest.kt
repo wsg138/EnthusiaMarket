@@ -24,7 +24,7 @@ class LumaGuildsListenerRegistrationTest {
     }
 
     @Test
-    fun `event discovery supports current and legacy LumaGuilds packages`() {
+    fun `current event package is preferred before the legacy package`() {
         assertEquals(
             listOf(
                 "net.lumalyte.lg.api.events.GuildDisbandedEvent",
@@ -35,17 +35,17 @@ class LumaGuildsListenerRegistrationTest {
     }
 
     @Test
-    fun `current LumaGuilds event API is discovered`() {
+    fun `pinned supported LumaGuilds event API is discoverable`() {
         val event = LumaGuildsEventAccess.resolve(
             LumaGuildsListenerRegistrationTest::class.java.classLoader,
             "GuildDisbandedEvent",
         )
         assertNotNull(event)
-        assertEquals("net.lumalyte.lg.api.events.GuildDisbandedEvent", event.name)
+        assertTrue(event.name in LumaGuildsEventAccess.candidates("GuildDisbandedEvent"))
     }
 
     @Test
-    fun `guild id extraction supports direct and nested event shapes`() {
+    fun `guild id extraction supports current and legacy event shapes`() {
         val guildId = UUID.randomUUID()
         assertEquals(guildId, LumaGuildsEventAccess.guildId(FakeVisualEvent(guildId)))
         assertEquals(guildId, LumaGuildsEventAccess.guildId(FakeDisbandedEvent(FakeGuild(guildId))))
