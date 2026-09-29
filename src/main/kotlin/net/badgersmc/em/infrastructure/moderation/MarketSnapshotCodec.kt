@@ -216,17 +216,19 @@ internal class MarketSnapshotCodec(
             statement.setString(1, targetId.toString())
             statement.executeQuery().use { result ->
                 if (!result.next()) return null
-                ModeratedBlacklistSnapshot(
-                    playerId = result.getString("player_uuid"),
-                    status = result.getString("status"),
-                    expiresAt = nullableLong(result, "expires_at"),
-                    caseId = result.getString("case_id"),
-                    operationId = result.getString("operation_id"),
-                    revision = result.getLong("revision"),
-                    updatedAt = result.getLong("updated_at"),
-                )
+                readBlacklistRow(result)
             }
         }
+
+    private fun readBlacklistRow(result: ResultSet): ModeratedBlacklistSnapshot = ModeratedBlacklistSnapshot(
+        playerId = result.getString("player_uuid"),
+        status = result.getString("status"),
+        expiresAt = nullableLong(result, "expires_at"),
+        caseId = result.getString("case_id"),
+        operationId = result.getString("operation_id"),
+        revision = result.getLong("revision"),
+        updatedAt = result.getLong("updated_at"),
+    )
 
     private fun normalizedList(raw: String?): List<String> = raw.orEmpty()
         .split(',')
@@ -255,17 +257,29 @@ internal class MarketSnapshotCodec(
     }
 
     private fun validateSnapshotShape(snapshot: JsonObject) {
-        val shops = snapshot["shops"]
-        val blacklist = snapshot["blacklist"]
-        val problem = when {
-            snapshot["stall"]?.isJsonObject != true -> "Stored market snapshot has no stall object"
-            shops?.isJsonArray != true || shops.asJsonArray.any { !it.isJsonObject } ->
-                "Stored market snapshot has an invalid shops array"
-            blacklist != null && !blacklist.isJsonNull && !blacklist.isJsonObject ->
-                "Stored market snapshot has an invalid blacklist object"
-            else -> null
+        validateStallShape(snapshot)
+        validateShopsShape(snapshot)
+        validateBlacklistShape(snapshot)
+    }
+
+    private fun validateStallShape(snapshot: JsonObject) {
+        if (snapshot["stall"]?.isJsonObject != true) {
+            throw MarketModerationConflict("Stored market snapshot has no stall object")
         }
-        if (problem != null) throw MarketModerationConflict(problem)
+    }
+
+    private fun validateShopsShape(snapshot: JsonObject) {
+        val shops = snapshot["shops"]
+        if (shops?.isJsonArray != true || shops.asJsonArray.any { !it.isJsonObject }) {
+            throw MarketModerationConflict("Stored market snapshot has an invalid shops array")
+        }
+    }
+
+    private fun validateBlacklistShape(snapshot: JsonObject) {
+        val blacklist = snapshot["blacklist"] ?: return
+        if (!blacklist.isJsonNull && !blacklist.isJsonObject) {
+            throw MarketModerationConflict("Stored market snapshot has an invalid blacklist object")
+        }
     }
 
     private fun nullableLong(result: ResultSet, column: String): Long? {
