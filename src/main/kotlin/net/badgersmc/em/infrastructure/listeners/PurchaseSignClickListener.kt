@@ -97,33 +97,37 @@ open class PurchaseSignClickListener(
         stall: Stall,
     ) {
         when (stall.state) {
-            StallState.UNOWNED -> {
-                if (!player.hasPermission("enthusiamarket.stall.buyout")) {
-                    player.sendMessage(lang.msg("purchase_sign.msg.buy_no_permission"))
-                    return
-                }
-                handleBuy(sign.stallId, sign.price, player)
-            }
-            StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING -> {
-                player.sendMessage(
-                    lang.msg("purchase_sign.msg.auction_live", "stall" to sign.stallId.value)
-                )
-                val auction = auctions.findOpenByStall(sign.stallId)
-                if (auction != null) {
-                    val cmd = "/em bid ${auction.id} "
-                    player.sendMessage(
-                        AdventureComponent.text("  /em bid ", NamedTextColor.GRAY)
-                            .append(AdventureComponent.text(auction.id.value, NamedTextColor.YELLOW)
-                                .clickEvent(ClickEvent.suggestCommand(cmd)))
-                            .append(AdventureComponent.text(" <amount>", NamedTextColor.GRAY))
-                    )
-                }
-            }
+            StallState.UNOWNED -> routeUnowned(player, sign)
+            StallState.AUCTIONING,
+            StallState.RE_AUCTIONING,
+            StallState.EMERGENCY_AUCTIONING -> routeAuction(player, sign)
             StallState.OWNED, StallState.GRACE ->
                 handleExtension(player.uniqueId, sign.stallId, sign.locationKey, player)
             StallState.MODERATION_HOLD ->
                 player.sendMessage(lang.msg("purchase_sign.msg.moderation_hold"))
         }
+    }
+
+    private fun routeUnowned(player: org.bukkit.entity.Player, sign: PurchaseSign) {
+        if (!player.hasPermission("enthusiamarket.stall.buyout")) {
+            player.sendMessage(lang.msg("purchase_sign.msg.buy_no_permission"))
+            return
+        }
+        handleBuy(sign.stallId, sign.price, player)
+    }
+
+    private fun routeAuction(player: org.bukkit.entity.Player, sign: PurchaseSign) {
+        player.sendMessage(lang.msg("purchase_sign.msg.auction_live", "stall" to sign.stallId.value))
+        val auction = auctions.findOpenByStall(sign.stallId) ?: return
+        val cmd = "/em bid ${auction.id} "
+        player.sendMessage(
+            AdventureComponent.text("  /em bid ", NamedTextColor.GRAY)
+                .append(
+                    AdventureComponent.text(auction.id.value, NamedTextColor.YELLOW)
+                        .clickEvent(ClickEvent.suggestCommand(cmd))
+                )
+                .append(AdventureComponent.text(" <amount>", NamedTextColor.GRAY))
+        )
     }
 
     private fun handleBuy(stallId: net.badgersmc.em.domain.stall.StallId, price: Long, player: org.bukkit.entity.Player) {
