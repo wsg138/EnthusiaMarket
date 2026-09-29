@@ -6,23 +6,19 @@ import net.enthusia.market.api.moderation.MarketBlacklistResult
 import net.enthusia.market.api.moderation.MarketOperationRequest
 import net.enthusia.market.api.moderation.StallBlacklistState
 import java.sql.Connection
-import java.sql.ResultSet
 import java.sql.SQLException
-import java.sql.Types
-import java.time.Clock
-import java.time.Instant
 import java.util.Optional
 import java.util.UUID
 import javax.sql.DataSource
 
-/** Owns player acquisition fences and case-linked Market blacklist rows. */
+/** Owns player acquisition fences and case-linked Market blacklist policy. */
 @Suppress("TooManyFunctions")
 internal class MarketRestrictionJournal(
     private val dataSource: DataSource,
-    private val clock: Clock,
+    private val clock: java.time.Clock,
 ) {
     fun getBlacklist(playerId: UUID): Optional<StallBlacklistState> = dataSource.connection.use { connection ->
-        Optional.ofNullable(readBlacklist(connection, playerId))
+        Optional.ofNullable(MarketRestrictionBlacklistSql.read(connection, playerId))
     }
 
     fun canAcquire(playerId: UUID): Boolean = dataSource.connection.use { connection ->
@@ -36,7 +32,7 @@ internal class MarketRestrictionJournal(
 
     fun remove(removal: MarketBlacklistRemoval): MarketBlacklistResult = blacklistTransaction { connection ->
         claimRestrictionMutation(connection, removal.targetId())
-        val current = readBlacklist(connection, removal.targetId())
+        val current = MarketRestrictionBlacklistSql.read(connection, removal.targetId())
             ?: return@blacklistTransaction result(
                 MarketBlacklistResult.Status.REJECTED,
                 null,
@@ -71,12 +67,12 @@ internal class MarketRestrictionJournal(
             if (statement.executeUpdate() != 1) {
                 return@blacklistTransaction result(
                     MarketBlacklistResult.Status.CONFLICT,
-                    readBlacklist(connection, removal.targetId()),
+                    MarketRestrictionBlacklistSql.read(connection, removal.targetId()),
                     "Market blacklist changed concurrently",
                 )
             }
         }
-        val removed = checkNotNull(readBlacklist(connection, removal.targetId()))
+        val removed = checkNotNull(MarketRestrictionBlacklistSql.read(connection, removal.targetId()))
         result(MarketBlacklistResult.Status.REMOVED, removed, "Market blacklist removed")
     }
 
@@ -88,9 +84,9 @@ internal class MarketRestrictionJournal(
     }
 
     fun applyPreparedBlacklist(connection: Connection, request: MarketOperationRequest) {
-        val current = readBlacklist(connection, request.targetId())
+        val current = MarketRestrictionBlacklistSql.read(connection, request.targetId())
         if (current?.activeAt(clock.instant()) == true) return
-        writeBlacklist(
+        MarketRestrictionBlacklistSql.write(
             connection,
             BlacklistWrite(
                 request.operationId(),
@@ -108,17 +104,15 @@ internal class MarketRestrictionJournal(
         operation: MarketOperationRow,
         original: ModeratedBlacklistSnapshot?,
     ) {
-        val current = readBlacklist(connection, operation.targetId)
+        val current = MarketRestrictionBlacklistSql.read(connection, operation.targetId)
         if (original == null) {
             restoreAbsentBlacklist(connection, operation, current)
             return
         }
-        if (current == null) {
-            throw MarketModerationConflict("Market blacklist is missing during restoration")
-        }
+        if (current == null) throw MarketModerationConflict("Market blacklist is missing during restoration")
         if (current.matches(original)) return
         requireCurrentBlacklistOperation(current, operation.operationId)
-        writeBlacklistSnapshot(connection, original, current.revision())
+        MarketRestrictionBlacklistSql.writeSnapshot(connection, original, current.revision())
     }
 
     fun releasePlayerReservation(connection: Connection, operation: MarketOperationRow) {
@@ -165,25 +159,27 @@ internal class MarketRestrictionJournal(
 
     private fun apply(connection: Connection, request: MarketBlacklistRequest): MarketBlacklistResult {
         claimRestrictionMutation(connection, request.targetId())
-        val current = readBlacklist(connection, request.targetId())
+        val current = MarketRestrictionBlacklistSql.read(connection, request.targetId())
         replay(current, request)?.let { return it }
         if (current?.activeAt(clock.instant()) == true) {
             throw MarketModerationConflict("Player already has an active market blacklist")
         }
-        writeBlacklist(
-            connection,
-            BlacklistWrite(
-                request.operationId(),
-                request.targetId(),
-                request.caseId(),
-                request.expiresAt().orElse(null)?.toEpochMilli(),
-                (current?.revision() ?: 0L) + 1L,
-                clock.millis(),
-            ),
-        )
-        val applied = checkNotNull(readBlacklist(connection, request.targetId()))
+        MarketRestrictionBlacklistSql.write(connection, blacklistWrite(request, current))
+        val applied = checkNotNull(MarketRestrictionBlacklistSql.read(connection, request.targetId()))
         return result(MarketBlacklistResult.Status.APPLIED, applied, "Market blacklist applied")
     }
+
+    private fun blacklistWrite(
+        request: MarketBlacklistRequest,
+        current: StallBlacklistState?,
+    ): BlacklistWrite = BlacklistWrite(
+        request.operationId(),
+        request.targetId(),
+        request.caseId(),
+        request.expiresAt().orElse(null)?.toEpochMilli(),
+        (current?.revision() ?: 0L) + 1L,
+        clock.millis(),
+    )
 
     private fun replay(
         current: StallBlacklistState?,
@@ -221,23 +217,6 @@ internal class MarketRestrictionJournal(
         throw failure
     }
 
-    private fun readBlacklist(connection: Connection, playerId: UUID): StallBlacklistState? =
-        connection.prepareStatement("SELECT * FROM market_stall_blacklists WHERE player_uuid = ?").use { statement ->
-            statement.setString(1, playerId.toString())
-            statement.executeQuery().use { result ->
-                if (!result.next()) return null
-                StallBlacklistState(
-                    UUID.fromString(result.getString("player_uuid")),
-                    StallBlacklistState.Status.valueOf(result.getString("status")),
-                    Optional.ofNullable(result.nullableLong("expires_at")?.let(Instant::ofEpochMilli)),
-                    result.getString("case_id"),
-                    UUID.fromString(result.getString("operation_id")),
-                    result.getLong("revision"),
-                    Instant.ofEpochMilli(result.getLong("updated_at")),
-                )
-            }
-        }
-
     private fun hasActiveBlacklist(connection: Connection, playerId: UUID, now: Long): Boolean =
         connection.prepareStatement(
             """SELECT 1 FROM market_stall_blacklists
@@ -246,7 +225,7 @@ internal class MarketRestrictionJournal(
         ).use { statement ->
             statement.setString(1, playerId.toString())
             statement.setLong(2, now)
-            statement.executeQuery().use(ResultSet::next)
+            statement.executeQuery().use { it.next() }
         }
 
     private fun hasActivePlayerFence(connection: Connection, playerId: UUID, now: Long): Boolean =
@@ -259,108 +238,14 @@ internal class MarketRestrictionJournal(
                 if (!result.next()) return null
                 PlayerFence(
                     result.getString("active_acquisition_id"),
-                    result.nullableLong("acquisition_until"),
+                    nullableLong(result, "acquisition_until"),
                 )
             }
         }
 
-    private fun writeBlacklist(
-        connection: Connection,
-        write: BlacklistWrite,
-    ) {
-        val existing = readBlacklist(connection, write.playerId)
-        val sql = if (existing == null) {
-            """INSERT INTO market_stall_blacklists
-               (player_uuid, status, expires_at, case_id, operation_id, revision, updated_at)
-               VALUES (?, 'ACTIVE', ?, ?, ?, ?, ?)"""
-        } else {
-            """UPDATE market_stall_blacklists
-               SET status = 'ACTIVE', expires_at = ?, case_id = ?, operation_id = ?,
-                   revision = ?, updated_at = ?
-               WHERE player_uuid = ? AND revision = ?"""
-        }
-        connection.prepareStatement(sql).use { statement ->
-            if (existing == null) {
-                bindBlacklistInsert(statement, write)
-            } else {
-                bindBlacklistUpdate(statement, write, existing.revision())
-            }
-            executeBlacklistWrite(statement)
-        }
-    }
-
-    private fun bindBlacklistInsert(
-        statement: java.sql.PreparedStatement,
-        write: BlacklistWrite,
-    ) {
-        statement.setString(1, write.playerId.toString())
-        statement.setNullableLong(2, write.expiresAt)
-        statement.setString(3, write.caseId)
-        statement.setString(4, write.operationId.toString())
-        statement.setLong(5, write.revision)
-        statement.setLong(6, write.updatedAt)
-    }
-
-    private fun bindBlacklistUpdate(
-        statement: java.sql.PreparedStatement,
-        write: BlacklistWrite,
-        expectedRevision: Long,
-    ) {
-        statement.setNullableLong(1, write.expiresAt)
-        statement.setString(2, write.caseId)
-        statement.setString(3, write.operationId.toString())
-        statement.setLong(4, write.revision)
-        statement.setLong(5, write.updatedAt)
-        statement.setString(6, write.playerId.toString())
-        statement.setLong(7, expectedRevision)
-    }
-
-    private fun executeBlacklistWrite(statement: java.sql.PreparedStatement) {
-        try {
-            if (statement.executeUpdate() != 1) {
-                throw MarketModerationConflict("Market blacklist changed concurrently")
-            }
-        } catch (failure: SQLException) {
-            throw failure.asBlacklistWriteFailure()
-        }
-    }
-
-    private fun SQLException.asBlacklistWriteFailure(): Exception =
-        if (isDuplicateKeyViolation() || isTransactionContention()) {
-            MarketModerationConflict("Market blacklist changed concurrently")
-        } else {
-            this
-        }
-
-    private fun writeBlacklistSnapshot(
-        connection: Connection,
-        snapshot: ModeratedBlacklistSnapshot,
-        expectedRevision: Long,
-    ) {
-        connection.prepareStatement(
-            """UPDATE market_stall_blacklists
-               SET status = ?, expires_at = ?, case_id = ?, operation_id = ?,
-                   revision = ?, updated_at = ?
-               WHERE player_uuid = ? AND revision = ?""",
-        ).use { statement ->
-            bindSnapshotUpdate(statement, snapshot, expectedRevision)
-            executeBlacklistWrite(statement)
-        }
-    }
-
-    private fun bindSnapshotUpdate(
-        statement: java.sql.PreparedStatement,
-        snapshot: ModeratedBlacklistSnapshot,
-        expectedRevision: Long,
-    ) {
-        statement.setString(1, snapshot.status)
-        statement.setNullableLong(2, snapshot.expiresAt)
-        statement.setString(3, snapshot.caseId)
-        statement.setString(4, snapshot.operationId)
-        statement.setLong(5, snapshot.revision)
-        statement.setLong(6, snapshot.updatedAt)
-        statement.setString(7, snapshot.playerId)
-        statement.setLong(8, expectedRevision)
+    private fun nullableLong(result: java.sql.ResultSet, column: String): Long? {
+        val value = result.getLong(column)
+        return if (result.wasNull()) null else value
     }
 
     private fun StallBlacklistState.matches(snapshot: ModeratedBlacklistSnapshot): Boolean =
@@ -389,27 +274,9 @@ internal class MarketRestrictionJournal(
         result(MarketBlacklistResult.Status.CONFLICT, null, "Market blacklist changed concurrently")
     }
 
-    private fun java.sql.PreparedStatement.setNullableLong(index: Int, value: Long?) {
-        if (value == null) setNull(index, Types.BIGINT) else setLong(index, value)
-    }
-
-    private fun ResultSet.nullableLong(column: String): Long? {
-        val value = getLong(column)
-        return if (wasNull()) null else value
-    }
-
     private fun moderationFence(operationId: UUID): String = "moderation:$operationId"
 
     private data class PlayerFence(val activeId: String?, val until: Long?) {
         fun activeAt(now: Long): Boolean = activeId != null && (until == null || until > now)
     }
-
-    private data class BlacklistWrite(
-        val operationId: UUID,
-        val playerId: UUID,
-        val caseId: String,
-        val expiresAt: Long?,
-        val revision: Long,
-        val updatedAt: Long,
-    )
 }
