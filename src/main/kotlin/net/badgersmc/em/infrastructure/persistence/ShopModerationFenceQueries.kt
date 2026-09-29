@@ -5,7 +5,7 @@ import java.util.UUID
 
 /** Distinguishes a missing shop from a mutation rejected by a moderation fence. */
 internal object ShopModerationFenceQueries {
-    private data class ContainerPosition(val world: String, val x: Int, val y: Int, val z: Int)
+    data class ContainerPosition(val world: String, val x: Int, val y: Int, val z: Int)
 
     fun lockShopForMutation(connection: Connection, shopId: Long) {
         connection.prepareStatement(
@@ -90,7 +90,7 @@ internal object ShopModerationFenceQueries {
         }
     }
 
-    private fun rejectLockedContainer(connection: Connection, position: ContainerPosition) {
+    fun rejectLockedContainer(connection: Connection, position: ContainerPosition) {
         connection.prepareStatement(
             """SELECT 1 FROM shop_items s
                JOIN market_moderation_locks l ON l.stall_id = s.stall_id
