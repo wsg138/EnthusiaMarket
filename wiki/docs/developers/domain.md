@@ -7,6 +7,7 @@ keywords: [domain, model, entities, enums, ports, repository, ddd]
 related: [architecture, application]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Domain model
 

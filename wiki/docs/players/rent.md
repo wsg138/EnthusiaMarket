@@ -9,6 +9,7 @@ keywords: [rent, emergency-auction, grace, extension, formula, flat]
 related: [stalls, shop-creation]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Rent
 

@@ -1,4 +1,5 @@
 # Hermes Execution Handoff — Admin Tooling (ItemShops Parity SP5)
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Executor model:** DeepSeek V4 Flash (OpenRouter) **Mode:** Subagent-driven,
 one task at a time, gated. **Branch:** `feat/admin-tooling` **Plan:**

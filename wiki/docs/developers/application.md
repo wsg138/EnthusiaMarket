@@ -9,6 +9,7 @@ keywords: [application, services, use-cases, workflow]
 related: [architecture, domain, infrastructure]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Application layer
 

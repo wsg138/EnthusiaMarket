@@ -1,4 +1,5 @@
 # EnthusiaMarket v0.1.0 — Release Notes
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Audience:** BadgersMC dev team **Status:** Release-ready (all money-safety /
 item-dupe / corruption / auth blockers closed)

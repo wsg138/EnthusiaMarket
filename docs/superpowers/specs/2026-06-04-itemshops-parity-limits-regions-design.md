@@ -1,4 +1,5 @@
 # ItemShops Parity — Sub-project 4: Limits + Market Regions
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-06-04 **Status:** Approved (brainstorming complete) **Owner:**
 BadgersMC **Plugin:** EnthusiaMarket (EM)

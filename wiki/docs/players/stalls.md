@@ -8,6 +8,7 @@ keywords: [stalls, buy, sell, auction, sellback, lifecycle, purchase sign]
 related: [rent, shop-creation, guild-stalls]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Stalls
 

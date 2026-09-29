@@ -1,4 +1,5 @@
 # EM-AUDIT-2026-07-18: Bedrock and trade integrity
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 ## Executive summary
 

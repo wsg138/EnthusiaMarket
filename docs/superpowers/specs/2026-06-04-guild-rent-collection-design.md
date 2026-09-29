@@ -1,4 +1,5 @@
 # Guild Rent Collection (audit M11)
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-06-04 **Status:** Approved (brainstorming complete) **Owner:**
 BadgersMC **Plugin:** EnthusiaMarket (EM)

@@ -1,4 +1,5 @@
 # EM Release Readiness — Design
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-06-01 **Status:** Approved (brainstorming complete) **Owner:**
 BadgersMC **Target:** Next-week production release on BadgersMC network

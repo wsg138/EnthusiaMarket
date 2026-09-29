@@ -1,4 +1,5 @@
 # Implementation — EnthusiaMarket
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-05-24 **Status:** Bootstrap (emitted by `/spear:init`; extend as
 components land) **Owner:** BadgersMC

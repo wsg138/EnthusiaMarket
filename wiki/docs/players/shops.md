@@ -9,6 +9,7 @@ keywords: [shops, sign shop, sell, buy, barter, vault, trust, search]
 related: [stalls, rent]
 updated: 2026-06-06
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Shops
 

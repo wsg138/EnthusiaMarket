@@ -1,4 +1,5 @@
 # Hermes Execution Handoff — Shop Management Commands (ItemShops Parity SP1)
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Executor model:** DeepSeek V4 Flash (OpenRouter) **Mode:** Subagent-driven,
 one task at a time, gated. **Branch:** `feat/shop-management-commands` **Plan:**

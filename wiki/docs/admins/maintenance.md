@@ -9,6 +9,7 @@ keywords: [maintenance, freeze, rent, auction, timers, shutdown]
 related: [config, troubleshooting, release-checklist]
 updated: 2026-08-01
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Maintenance Freeze
 

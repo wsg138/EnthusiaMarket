@@ -7,6 +7,7 @@ keywords: [shop, management, edit, trust, delete, list, commands]
 related: [shop-creation, guild-stalls]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Shop management
 

@@ -1,4 +1,5 @@
 # WorldGuard 7.0.9 — API Snapshot
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Source:** enginehub/worldguarddocs (context7) + enginehub/worldguard 7.0.9
 **Pinned version:** `com.sk89q.worldguard:worldguard-bukkit:7.0.9` **Snapshot

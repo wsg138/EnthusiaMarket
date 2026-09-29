@@ -1,4 +1,5 @@
 # Misc / Integration Implementation Plan (ItemShops Parity SP6)
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development or superpowers:executing-plans. Steps

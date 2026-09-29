@@ -1,4 +1,5 @@
 # Config — EnthusiaMarket
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-05-24 **Status:** Spec (canonical; the
 `@ConfigFile("enthusiamarket")` annotated `EnthusiaMarketConfig` class in

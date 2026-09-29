@@ -7,6 +7,7 @@ keywords: [config, reference, yaml, settings]
 related: [installation, permissions, integration, release-checklist]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Config reference
 

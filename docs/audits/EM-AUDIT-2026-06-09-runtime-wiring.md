@@ -1,4 +1,5 @@
 # EnthusiaMarket — Fresh Audit (runtime wiring + money paths)
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 > **Status update (same day):** W-1, W-2, W-3, M-2, M-3, M-4, and N-1 are FIXED
 > on branch `fix/runtime-wiring` (TDD; guarded by

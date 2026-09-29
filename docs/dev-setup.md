@@ -1,4 +1,5 @@
 # Dev Setup — EnthusiaMarket
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-05-24 **Owner:** BadgersMC
 

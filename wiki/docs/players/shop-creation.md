@@ -9,6 +9,7 @@ keywords: [shop, create, sign, buy, sell, trade, barter, gui, shift-click]
 related: [buy-sell-trade, barter-vault, shop-management, guild-stalls]
 updated: 2026-06-29
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Creating shops
 

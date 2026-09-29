@@ -1,4 +1,5 @@
 # Tech Stack — EnthusiaMarket
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-05-24 **Status:** Bootstrap (emitted by `/spear:init` — fill
 placeholders, commit, then revise as the project evolves) **Owner:** BadgersMC

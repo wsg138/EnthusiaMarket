@@ -7,6 +7,7 @@ keywords: [geyser, floodgate, bedrock, cumulus, forms]
 related: [installation, integration, bedrock]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Geyser & Bedrock setup
 

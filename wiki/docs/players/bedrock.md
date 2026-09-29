@@ -7,6 +7,7 @@ keywords: [bedrock, geyser, floodgate, cumulus, forms, crossplay]
 related: [shop-creation, buy-sell-trade, shop-management]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Bedrock differences
 

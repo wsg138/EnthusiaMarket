@@ -9,6 +9,7 @@ keywords: [welcome, new player, onboarding, enthusiasmp]
 related: [walkthrough, faq]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Welcome to EnthusiaSMP
 

@@ -1,4 +1,5 @@
 # Hermes Execution Handoff — Misc / Integration (ItemShops Parity SP6)
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Executor model:** DeepSeek V4 Flash (OpenRouter) **Mode:** Subagent-driven,
 one task at a time, gated. **Branch:** `feat/misc-integration` **Plan:**

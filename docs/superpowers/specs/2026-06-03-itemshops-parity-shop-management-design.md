@@ -1,4 +1,5 @@
 # ItemShops Parity — Sub-project 1: Shop Management Commands
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-06-03 **Status:** Approved (brainstorming complete) **Owner:**
 BadgersMC **Plugin:** EnthusiaMarket (EM)

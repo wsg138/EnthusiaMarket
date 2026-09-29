@@ -9,6 +9,7 @@ keywords: [potion, splash, lingering, effect, exploit, protection, entity-limit]
 related: [maintenance, config, troubleshooting]
 updated: 2026-08-02
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Market Protection
 

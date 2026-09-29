@@ -1,4 +1,5 @@
 # Vault Economy 1.7 — API Snapshot
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Source:** milkbowl/vaultapi (context7) + VaultAPI 1.7 **Pinned version:**
 `com.github.MilkBowl:VaultAPI:1.7` **Snapshot date:** 2026-05-24

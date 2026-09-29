@@ -9,6 +9,7 @@ keywords: [guild, stall, shop, tariff, embargo, lumaguilds, policy]
 related: [stalls, shop-creation, buy-sell-trade]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Guild stalls
 

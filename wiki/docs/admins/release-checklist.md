@@ -9,6 +9,7 @@ keywords: [release, checklist, deployment, admin, permissions, config, setup]
 related: [installation, permissions, config, troubleshooting]
 updated: 2026-06-30
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Release Checklist
 

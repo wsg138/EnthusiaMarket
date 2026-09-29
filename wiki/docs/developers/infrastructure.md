@@ -9,6 +9,7 @@ keywords: [infrastructure, adapters, persistence, commands, listeners, di]
 related: [architecture, domain, application]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Infrastructure layer
 

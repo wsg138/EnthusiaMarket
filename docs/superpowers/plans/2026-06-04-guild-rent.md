@@ -1,4 +1,5 @@
 # Guild Rent Collection Implementation Plan (audit M11)
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development or superpowers:executing-plans. Steps

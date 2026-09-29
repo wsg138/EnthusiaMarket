@@ -1,4 +1,5 @@
 # EnthusiaMarket — Final Hardening Audit
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-06-09 **Branch:** fix/em-audit **Scope:** Full `src/main/kotlin`
 tree + `src/main/resources/migrations/*` (148 .kt files, 19 migrations)

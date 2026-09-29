@@ -7,6 +7,7 @@ keywords: [permissions, nodes, admin, user]
 related: [installation, config, release-checklist]
 updated: 2026-06-25
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Permissions
 

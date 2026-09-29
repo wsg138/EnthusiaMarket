@@ -1,4 +1,5 @@
 # Staff Moderation Provider
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 EnthusiaMarket owns all stall, shop, blacklist, and ownership mutations. It
 publishes `MarketModerationApi` version 1 as a Bukkit service so EnthusiaStaff

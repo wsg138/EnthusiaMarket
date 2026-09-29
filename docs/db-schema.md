@@ -1,4 +1,5 @@
 # Database Schema — EnthusiaMarket
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Date:** 2026-05-24 **Status:** Living reference; mirrors
 `src/main/resources/migrations/` **Owner:** BadgersMC

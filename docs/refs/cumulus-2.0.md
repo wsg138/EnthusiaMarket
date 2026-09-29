@@ -1,4 +1,5 @@
 # Cumulus 2.0 — API Snapshot
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Source:** geysermc/cumulus (context7) **Pinned version:**
 `org.geysermc.cumulus:cumulus:2.0.0-SNAPSHOT` **Snapshot date:** 2026-05-24

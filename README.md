@@ -1,4 +1,5 @@
 # EnthusiaMarket
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 [![build](https://github.com/BadgersMC/EnthusiaMarket/actions/workflows/build.yml/badge.svg)](https://github.com/BadgersMC/EnthusiaMarket/actions/workflows/build.yml)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/f9477623e26341ad9ea58c04fd174815)](https://app.codacy.com/gh/BadgersMC/EnthusiaMarket/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)

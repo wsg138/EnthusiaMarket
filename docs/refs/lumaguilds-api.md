@@ -1,4 +1,5 @@
 # LumaGuilds Public API — Snapshot
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 **Source:** LumaGuilds plugin source (BadgersMC/LumaGuilds, local build)
 **Status:** Stub — `LumaGuildsGuildProvider` returns `TODO()` for all methods

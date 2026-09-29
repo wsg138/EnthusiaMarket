@@ -9,6 +9,7 @@ keywords: [guild, tariff, embargo, trade policy, economy, sanctions]
 related: [shops, stalls]
 updated: 2026-06-08
 ---
+<!-- markdownlint-configure-file {"MD013": false} -->
 
 # Guild Economy — Tariffs & Embargoes
 
