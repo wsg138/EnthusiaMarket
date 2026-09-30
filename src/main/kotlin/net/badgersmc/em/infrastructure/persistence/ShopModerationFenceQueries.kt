@@ -91,11 +91,15 @@ internal object ShopModerationFenceQueries {
     fun rejectLockedContainer(
         connection: Connection,
         world: String,
-        x: Int,
-        y: Int,
-        z: Int,
+        vararg coordinates: Int,
     ) {
-        rejectLockedContainer(connection, ContainerAddress(world, x, y, z))
+        require(coordinates.size == CONTAINER_COORDINATE_COUNT) {
+            "Container coordinates must contain x, y, and z"
+        }
+        rejectLockedContainer(
+            connection,
+            ContainerAddress(world, coordinates[0], coordinates[1], coordinates[2]),
+        )
     }
 
     private fun rejectLockedContainer(connection: Connection, container: ContainerAddress) {
@@ -133,4 +137,6 @@ internal object ShopModerationFenceQueries {
     }
 
     private data class ContainerAddress(val world: String, val x: Int, val y: Int, val z: Int)
+
+    private const val CONTAINER_COORDINATE_COUNT = 3
 }

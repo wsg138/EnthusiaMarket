@@ -1,8 +1,10 @@
 package net.badgersmc.em.infrastructure.moderation
 
 import com.google.gson.Gson
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import net.enthusia.market.api.moderation.StallBlacklistState
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.sql.Connection
@@ -190,23 +192,17 @@ internal class MarketSnapshotCodec(
     )
 
     private fun readBlacklist(connection: Connection, targetId: UUID): ModeratedBlacklistSnapshot? =
-        connection.prepareStatement(
-            "SELECT * FROM market_stall_blacklists WHERE player_uuid = ?",
-        ).use { statement ->
-            statement.setString(1, targetId.toString())
-            statement.executeQuery().use { result ->
-                if (!result.next()) return null
-                ModeratedBlacklistSnapshot(
-                    playerId = result.getString("player_uuid"),
-                    status = result.getString("status"),
-                    expiresAt = nullableLong(result, "expires_at"),
-                    caseId = result.getString("case_id"),
-                    operationId = result.getString("operation_id"),
-                    revision = result.getLong("revision"),
-                    updatedAt = result.getLong("updated_at"),
-                )
-            }
-        }
+        connection.readMarketBlacklist(targetId)?.toSnapshot()
+
+    private fun StallBlacklistState.toSnapshot(): ModeratedBlacklistSnapshot = ModeratedBlacklistSnapshot(
+        playerId = playerId().toString(),
+        status = status().name,
+        expiresAt = expiresAt().orElse(null)?.toEpochMilli(),
+        caseId = caseId(),
+        operationId = operationId().toString(),
+        revision = revision(),
+        updatedAt = updatedAt().toEpochMilli(),
+    )
 
     private fun normalizedList(raw: String?): List<String> = raw.orEmpty()
         .split(',')
@@ -235,17 +231,27 @@ internal class MarketSnapshotCodec(
     }
 
     private fun validateSnapshotShape(snapshot: JsonObject) {
-        val shops = snapshot["shops"]
-        val blacklist = snapshot["blacklist"]
-        val problem = when {
-            snapshot["stall"]?.isJsonObject != true -> "Stored market snapshot has no stall object"
-            shops?.isJsonArray != true || shops.asJsonArray.any { !it.isJsonObject } ->
-                "Stored market snapshot has an invalid shops array"
-            blacklist != null && !blacklist.isJsonNull && !blacklist.isJsonObject ->
-                "Stored market snapshot has an invalid blacklist object"
-            else -> null
+        requireStallObject(snapshot["stall"])
+        requireShopsArray(snapshot["shops"])
+        requireBlacklistObject(snapshot["blacklist"])
+    }
+
+    private fun requireStallObject(stall: JsonElement?) {
+        if (stall?.isJsonObject != true) {
+            throw MarketModerationConflict("Stored market snapshot has no stall object")
         }
-        if (problem != null) throw MarketModerationConflict(problem)
+    }
+
+    private fun requireShopsArray(shops: JsonElement?) {
+        if (shops?.isJsonArray != true || shops.asJsonArray.any { !it.isJsonObject }) {
+            throw MarketModerationConflict("Stored market snapshot has an invalid shops array")
+        }
+    }
+
+    private fun requireBlacklistObject(blacklist: JsonElement?) {
+        if (blacklist != null && !blacklist.isJsonNull && !blacklist.isJsonObject) {
+            throw MarketModerationConflict("Stored market snapshot has an invalid blacklist object")
+        }
     }
 
     private fun nullableLong(result: ResultSet, column: String): Long? {

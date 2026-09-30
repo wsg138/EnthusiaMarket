@@ -122,25 +122,26 @@ class SellOfferService(
 
     private fun validatePurchase(stallId: StallId, buyer: UUID): PurchaseValidation {
         if (mutationGate.isStallLocked(stallId.value)) {
-            return PurchaseValidation.Rejected(Result.Rejected("This stall is temporarily unavailable"))
+            return rejectedPurchase("This stall is temporarily unavailable")
         }
-        val offer = offers.findByStall(stallId)
+        val (offer, stall) = loadPurchaseInputs(stallId)
             ?: return PurchaseValidation.Rejected(Result.NotFound)
-        val stall = stalls.findById(stallId)
-            ?: return PurchaseValidation.Rejected(Result.NotFound)
-        purchaseRejection(offer, stall, buyer)?.let {
-            return PurchaseValidation.Rejected(Result.Rejected(it))
-        }
+        purchaseRejection(offer, stall, buyer)?.let { return rejectedPurchase(it) }
         val taxPct = config.shop.taxPct
-        if (taxPct !in 0.0..1.0) {
-            return PurchaseValidation.Rejected(Result.Rejected("Invalid tax percentage: $taxPct"))
-        }
-        ownershipLimitRejection(buyer, stall)?.let {
-            return PurchaseValidation.Rejected(Result.Rejected(it))
-        }
+        if (taxPct !in 0.0..1.0) return rejectedPurchase("Invalid tax percentage: $taxPct")
+        ownershipLimitRejection(buyer, stall)?.let { return rejectedPurchase(it) }
         val tax = (offer.price * taxPct).toLong()
         return PurchaseValidation.Ready(PurchaseContext(offer, stall, tax, offer.price + tax))
     }
+
+    private fun loadPurchaseInputs(stallId: StallId): Pair<SellOffer, Stall>? {
+        val offer = offers.findByStall(stallId) ?: return null
+        val stall = stalls.findById(stallId) ?: return null
+        return offer to stall
+    }
+
+    private fun rejectedPurchase(reason: String): PurchaseValidation.Rejected =
+        PurchaseValidation.Rejected(Result.Rejected(reason))
 
     private fun purchaseRejection(offer: SellOffer, stall: Stall, buyer: UUID): String? = when {
         buyer == offer.sellerUuid -> "You cannot buy your own stall"
@@ -248,15 +249,8 @@ class SellOfferService(
 
     private fun paySeller(context: PurchaseContext, buyer: UUID) {
         val sellerIsGuild = context.stall.owner.type == OwnerType.GUILD
-        val guildId = context.stall.owner.id
-        val paid = if (sellerIsGuild) {
-            guildProvider.bankDeposit(guildId, context.offer.price)
-        } else {
-            economy.deposit(context.offer.sellerUuid, context.offer.price)
-        }
-        if (paid) return
-
-        val recipient = if (sellerIsGuild) "guild $guildId" else "seller ${context.offer.sellerUuid}"
+        val recipient = sellerRecipient(context, sellerIsGuild)
+        if (depositSeller(context, sellerIsGuild)) return
         log.warning(
             "SellOfferService.purchase: proceeds deposit failed for $recipient " +
                 "(price=${context.offer.price}); stall transfer already committed.",
@@ -268,6 +262,16 @@ class SellOfferService(
             amount = context.offer.price,
         )
     }
+
+    private fun depositSeller(context: PurchaseContext, sellerIsGuild: Boolean): Boolean =
+        if (sellerIsGuild) {
+            guildProvider.bankDeposit(context.stall.owner.id, context.offer.price)
+        } else {
+            economy.deposit(context.offer.sellerUuid, context.offer.price)
+        }
+
+    private fun sellerRecipient(context: PurchaseContext, sellerIsGuild: Boolean): String =
+        if (sellerIsGuild) "guild ${context.stall.owner.id}" else "seller ${context.offer.sellerUuid}"
 
     private fun payTax(tax: Long) {
         val destination = parseTaxDestination(config.shop.taxDestination) ?: return
@@ -301,29 +305,34 @@ class SellOfferService(
         total: Long,
         failure: Exception,
     ): Result.Rejected {
-        val refunded = try {
-            economy.deposit(buyer, total)
-        } catch (refundFailure: Exception) {
-            log.severe(
-                "SellOfferService.purchase: refund of $total to $buyer threw after stall " +
-                    "${stallId.value} transfer failed: ${refundFailure.message}",
-            )
-            false
-        }
-        if (refunded) {
+        if (refundBuyer(stallId, buyer, total)) {
             log.warning(
                 "SellOfferService.purchase: transfer failed for ${stallId.value}; " +
                     "buyer $buyer was refunded $total. cause=${failure.message}",
             )
             return Result.Rejected("The stall changed before the purchase completed. Your payment was refunded.")
         }
+        alertRefundFailure(stallId, buyer, total)
+        return Result.Rejected("The purchase could not be completed. Staff have been alerted.")
+    }
+
+    private fun refundBuyer(stallId: StallId, buyer: UUID, total: Long): Boolean = try {
+        economy.deposit(buyer, total)
+    } catch (refundFailure: Exception) {
+        log.severe(
+            "SellOfferService.purchase: refund of $total to $buyer threw after stall " +
+                "${stallId.value} transfer failed: ${refundFailure.message}",
+        )
+        false
+    }
+
+    private fun alertRefundFailure(stallId: StallId, buyer: UUID, total: Long) {
         alerter.alert(
             context = "sell-offer:buyer-refund",
             detail = "stall ${stallId.value} was not transferred and buyer $buyer could not be refunded",
             affected = buyer,
             amount = total,
         )
-        return Result.Rejected("The purchase could not be completed. Staff have been alerted.")
     }
 
     private fun parseTaxDestination(raw: String): UUID? = try {
