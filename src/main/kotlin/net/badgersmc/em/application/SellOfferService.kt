@@ -10,6 +10,7 @@ import net.badgersmc.em.domain.ports.MarketAcquisitionBlockedException
 import net.badgersmc.em.domain.ports.MarketModerationPolicy
 import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -62,6 +63,12 @@ class SellOfferService(
         val stall: Stall,
         val tax: Long,
         val total: Long,
+    )
+
+    private data class SellerPayment(
+        val paid: Boolean,
+        val recipient: String,
+        val affected: UUID?,
     )
 
     private sealed interface PurchaseValidation {
@@ -124,17 +131,13 @@ class SellOfferService(
         if (mutationGate.isStallLocked(stallId.value)) {
             return PurchaseValidation.Rejected(Result.Rejected("This stall is temporarily unavailable"))
         }
-        val offer = offers.findByStall(stallId)
-            ?: return PurchaseValidation.Rejected(Result.NotFound)
-        val stall = stalls.findById(stallId)
-            ?: return PurchaseValidation.Rejected(Result.NotFound)
+        val offer = offers.findByStall(stallId) ?: return PurchaseValidation.Rejected(Result.NotFound)
+        val stall = stalls.findById(stallId) ?: return PurchaseValidation.Rejected(Result.NotFound)
         purchaseRejection(offer, stall, buyer)?.let {
             return PurchaseValidation.Rejected(Result.Rejected(it))
         }
         val taxPct = config.shop.taxPct
-        if (taxPct !in 0.0..1.0) {
-            return PurchaseValidation.Rejected(Result.Rejected("Invalid tax percentage: $taxPct"))
-        }
+        if (taxPct !in 0.0..1.0) return PurchaseValidation.Rejected(Result.Rejected("Invalid tax percentage: $taxPct"))
         ownershipLimitRejection(buyer, stall)?.let {
             return PurchaseValidation.Rejected(Result.Rejected(it))
         }
@@ -172,37 +175,51 @@ class SellOfferService(
     }
 
     private fun cleanupPreviousOwnership(context: PurchaseContext, buyer: UUID) {
+        cleanupPreviousShops(context, buyer)
+        syncRegionOwner(context, buyer)
+    }
+
+    private fun cleanupPreviousShops(context: PurchaseContext, buyer: UUID) {
+        val previousShops = try {
+            shops.findByStall(context.stall.id.value)
+        } catch (failure: Exception) {
+            alertShopEnumerationFailure(context, buyer, failure)
+            return
+        }
+        previousShops.filterNot(Shop::adminShop).forEach { deletePreviousShop(it, context, buyer) }
+    }
+
+    private fun deletePreviousShop(shop: Shop, context: PurchaseContext, buyer: UUID) {
         try {
-            for (shop in shops.findByStall(context.stall.id.value)) {
-                if (shop.adminShop) continue
-                try {
-                    shops.delete(shop.id)
-                } catch (failure: Exception) {
-                    log.warning(
-                        "SellOfferService.purchase: failed to remove previous shop ${shop.id} from " +
-                            "stall ${context.stall.id.value} after transfer to $buyer. cause=${failure.message}",
-                    )
-                    alerter.alert(
-                        context = "sell-offer:shop-cleanup",
-                        detail = "stall ${context.stall.id.value} transferred to $buyer but shop ${shop.id} remains",
-                        affected = buyer,
-                        amount = context.offer.price,
-                    )
-                }
-            }
+            shops.delete(shop.id)
         } catch (failure: Exception) {
             log.warning(
-                "SellOfferService.purchase: failed to enumerate previous shops for stall " +
-                    "${context.stall.id.value} after transfer to $buyer. cause=${failure.message}",
+                "SellOfferService.purchase: failed to remove previous shop ${shop.id} from " +
+                    "stall ${context.stall.id.value} after transfer to $buyer. cause=${failure.message}",
             )
             alerter.alert(
                 context = "sell-offer:shop-cleanup",
-                detail = "stall ${context.stall.id.value} transferred to $buyer but shop cleanup could not be completed",
+                detail = "stall ${context.stall.id.value} transferred to $buyer but shop ${shop.id} remains",
                 affected = buyer,
                 amount = context.offer.price,
             )
         }
+    }
 
+    private fun alertShopEnumerationFailure(context: PurchaseContext, buyer: UUID, failure: Exception) {
+        log.warning(
+            "SellOfferService.purchase: failed to enumerate previous shops for stall " +
+                "${context.stall.id.value} after transfer to $buyer. cause=${failure.message}",
+        )
+        alerter.alert(
+            context = "sell-offer:shop-cleanup",
+            detail = "stall ${context.stall.id.value} transferred to $buyer but shop cleanup could not be completed",
+            affected = buyer,
+            amount = context.offer.price,
+        )
+    }
+
+    private fun syncRegionOwner(context: PurchaseContext, buyer: UUID) {
         try {
             regionMembers.setOwner(context.stall.world, context.stall.regionId, buyer)
         } catch (failure: Exception) {
@@ -247,26 +264,33 @@ class SellOfferService(
     }
 
     private fun paySeller(context: PurchaseContext, buyer: UUID) {
-        val sellerIsGuild = context.stall.owner.type == OwnerType.GUILD
-        val guildId = context.stall.owner.id
-        val paid = if (sellerIsGuild) {
-            guildProvider.bankDeposit(guildId, context.offer.price)
-        } else {
-            economy.deposit(context.offer.sellerUuid, context.offer.price)
-        }
-        if (paid) return
-
-        val recipient = if (sellerIsGuild) "guild $guildId" else "seller ${context.offer.sellerUuid}"
+        val payment = sellerPayment(context)
+        if (payment.paid) return
         log.warning(
-            "SellOfferService.purchase: proceeds deposit failed for $recipient " +
+            "SellOfferService.purchase: proceeds deposit failed for ${payment.recipient} " +
                 "(price=${context.offer.price}); stall transfer already committed.",
         )
         alerter.alert(
             context = "sell-offer:proceeds",
-            detail = "stall ${context.stall.id.value} transferred to buyer $buyer but proceeds payout failed to $recipient",
-            affected = if (sellerIsGuild) null else context.offer.sellerUuid,
+            detail = "stall ${context.stall.id.value} transferred to buyer $buyer but proceeds payout failed " +
+                "to ${payment.recipient}",
+            affected = payment.affected,
             amount = context.offer.price,
         )
+    }
+
+    private fun sellerPayment(context: PurchaseContext): SellerPayment {
+        val guildSale = context.stall.owner.type == OwnerType.GUILD
+        val guildId = context.stall.owner.id
+        return if (guildSale) {
+            SellerPayment(guildProvider.bankDeposit(guildId, context.offer.price), "guild $guildId", null)
+        } else {
+            SellerPayment(
+                economy.deposit(context.offer.sellerUuid, context.offer.price),
+                "seller ${context.offer.sellerUuid}",
+                context.offer.sellerUuid,
+            )
+        }
     }
 
     private fun payTax(tax: Long) {
@@ -301,29 +325,34 @@ class SellOfferService(
         total: Long,
         failure: Exception,
     ): Result.Rejected {
-        val refunded = try {
-            economy.deposit(buyer, total)
-        } catch (refundFailure: Exception) {
-            log.severe(
-                "SellOfferService.purchase: refund of $total to $buyer threw after stall " +
-                    "${stallId.value} transfer failed: ${refundFailure.message}",
-            )
-            false
-        }
-        if (refunded) {
+        if (refundBuyer(stallId, buyer, total)) {
             log.warning(
                 "SellOfferService.purchase: transfer failed for ${stallId.value}; " +
                     "buyer $buyer was refunded $total. cause=${failure.message}",
             )
             return Result.Rejected("The stall changed before the purchase completed. Your payment was refunded.")
         }
+        alertFailedBuyerRefund(stallId, buyer, total)
+        return Result.Rejected("The purchase could not be completed. Staff have been alerted.")
+    }
+
+    private fun refundBuyer(stallId: StallId, buyer: UUID, total: Long): Boolean = try {
+        economy.deposit(buyer, total)
+    } catch (refundFailure: Exception) {
+        log.severe(
+            "SellOfferService.purchase: refund of $total to $buyer threw after stall " +
+                "${stallId.value} transfer failed: ${refundFailure.message}",
+        )
+        false
+    }
+
+    private fun alertFailedBuyerRefund(stallId: StallId, buyer: UUID, total: Long) {
         alerter.alert(
             context = "sell-offer:buyer-refund",
             detail = "stall ${stallId.value} was not transferred and buyer $buyer could not be refunded",
             affected = buyer,
             amount = total,
         )
-        return Result.Rejected("The purchase could not be completed. Staff have been alerted.")
     }
 
     private fun parseTaxDestination(raw: String): UUID? = try {
