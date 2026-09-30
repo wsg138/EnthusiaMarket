@@ -91,25 +91,28 @@ class StallBuyoutService(
     }
 
     private fun refundAfterFailedAward(request: BuyRequest, cause: Exception) {
-        val refunded = try {
-            economy.deposit(request.payer, request.price)
-        } catch (refund: Exception) {
-            log.severe("StallBuyoutService: refund of ${request.price} to ${request.payer} threw: ${refund.message}")
-            false
-        }
+        val refunded = refundPayer(request)
+        logFailedAward(request, cause, refunded)
+    }
+
+    private fun refundPayer(request: BuyRequest): Boolean = try {
+        economy.deposit(request.payer, request.price)
+    } catch (refund: Exception) {
+        log.severe("StallBuyoutService: refund of ${request.price} to ${request.payer} threw: ${refund.message}")
+        false
+    }
+
+    private fun logFailedAward(request: BuyRequest, cause: Exception, refunded: Boolean) {
         val stallId = request.stallId.value
-        if (refunded) {
-            log.severe(
-                "StallBuyoutService: ownership transfer failed for stall $stallId after charging " +
-                    "payer ${request.payer} price=${request.price} (owner=${request.owner}). " +
-                    "Payer has been refunded. cause=${cause.message}",
-            )
+        val message = if (refunded) {
+            "StallBuyoutService: ownership transfer failed for stall $stallId after charging " +
+                "payer ${request.payer} price=${request.price} (owner=${request.owner}). " +
+                "Payer has been refunded. cause=${cause.message}"
         } else {
-            log.severe(
-                "StallBuyoutService: ownership transfer failed for stall $stallId AND the refund of " +
-                    "${request.price} to ${request.payer} failed — manual refund required. cause=${cause.message}",
-            )
+            "StallBuyoutService: ownership transfer failed for stall $stallId AND the refund of " +
+                "${request.price} to ${request.payer} failed — manual refund required. cause=${cause.message}"
         }
+        log.severe(message)
     }
 
     private fun isAuctionLive(stall: Stall, stallId: StallId): Boolean =

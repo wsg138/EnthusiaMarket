@@ -148,14 +148,22 @@ internal class MarketSnapshotCodec(
     }
 
     private fun readStallRow(result: ResultSet): ModeratedStallSnapshot = ModeratedStallSnapshot(
-        id = result.getString("id"), regionId = result.getString("region_id"),
-        world = result.getString("world"), state = result.getString("state"),
-        ownerType = result.getString("owner_type"), ownerId = result.getString("owner_id"),
-        ownerSince = nullableLong(result, "owner_since"), winningBid = result.getLong("winning_bid"),
-        rentMode = result.getString("rent_mode"), rentPct = result.getDouble("rent_pct"),
-        rentFlat = result.getLong("rent_flat"), members = normalizedList(result.getString("members")),
-        maxMembers = result.getInt("max_members"), nextRentAt = nullableLong(result, "next_rent_at"),
-        kind = result.getString("kind"), extraEntities = normalizedEntityMap(result.getString("extra_entities")),
+        id = result.getString("id"),
+        regionId = result.getString("region_id"),
+        world = result.getString("world"),
+        state = result.getString("state"),
+        ownerType = result.getString("owner_type"),
+        ownerId = result.getString("owner_id"),
+        ownerSince = nullableLong(result, "owner_since"),
+        winningBid = result.getLong("winning_bid"),
+        rentMode = result.getString("rent_mode"),
+        rentPct = result.getDouble("rent_pct"),
+        rentFlat = result.getLong("rent_flat"),
+        members = normalizedList(result.getString("members")),
+        maxMembers = result.getInt("max_members"),
+        nextRentAt = nullableLong(result, "next_rent_at"),
+        kind = result.getString("kind"),
+        extraEntities = normalizedEntityMap(result.getString("extra_entities")),
         extraTotal = result.getInt("extra_total"),
     )
 
@@ -175,17 +183,29 @@ internal class MarketSnapshotCodec(
         }
 
     private fun readShopRow(result: ResultSet): ModeratedShopSnapshot = ModeratedShopSnapshot(
-        id = result.getLong("id"), stallId = result.getString("stall_id"), owner = result.getString("owner"),
-        signWorld = result.getString("sign_world"), signX = result.getInt("sign_x"),
-        signY = result.getInt("sign_y"), signZ = result.getInt("sign_z"),
-        containerWorld = result.getString("container_world"), containerX = result.getInt("container_x"),
-        containerY = result.getInt("container_y"), containerZ = result.getInt("container_z"),
-        sellItem = result.getString("sell_item"), sellAmount = result.getInt("sell_amount"),
-        costItem = result.getString("cost_item"), costAmount = result.getInt("cost_amount"),
-        trusted = normalizedList(result.getString("trusted")), hopperAllowIn = result.getBoolean("hopper_allow_in"),
-        hopperAllowOut = result.getBoolean("hopper_allow_out"), frozen = result.getBoolean("frozen"),
-        adminShop = result.getBoolean("admin_shop"), direction = result.getString("direction"),
-        searchEnabled = result.getBoolean("search_enabled"), sellMaterial = result.getString("sell_material"),
+        id = result.getLong("id"),
+        stallId = result.getString("stall_id"),
+        owner = result.getString("owner"),
+        signWorld = result.getString("sign_world"),
+        signX = result.getInt("sign_x"),
+        signY = result.getInt("sign_y"),
+        signZ = result.getInt("sign_z"),
+        containerWorld = result.getString("container_world"),
+        containerX = result.getInt("container_x"),
+        containerY = result.getInt("container_y"),
+        containerZ = result.getInt("container_z"),
+        sellItem = result.getString("sell_item"),
+        sellAmount = result.getInt("sell_amount"),
+        costItem = result.getString("cost_item"),
+        costAmount = result.getInt("cost_amount"),
+        trusted = normalizedList(result.getString("trusted")),
+        hopperAllowIn = result.getBoolean("hopper_allow_in"),
+        hopperAllowOut = result.getBoolean("hopper_allow_out"),
+        frozen = result.getBoolean("frozen"),
+        adminShop = result.getBoolean("admin_shop"),
+        direction = result.getString("direction"),
+        searchEnabled = result.getBoolean("search_enabled"),
+        sellMaterial = result.getString("sell_material"),
         stockCount = result.getInt("stock_count"),
     )
 
@@ -196,17 +216,19 @@ internal class MarketSnapshotCodec(
             statement.setString(1, targetId.toString())
             statement.executeQuery().use { result ->
                 if (!result.next()) return null
-                ModeratedBlacklistSnapshot(
-                    playerId = result.getString("player_uuid"),
-                    status = result.getString("status"),
-                    expiresAt = nullableLong(result, "expires_at"),
-                    caseId = result.getString("case_id"),
-                    operationId = result.getString("operation_id"),
-                    revision = result.getLong("revision"),
-                    updatedAt = result.getLong("updated_at"),
-                )
+                readBlacklistRow(result)
             }
         }
+
+    private fun readBlacklistRow(result: ResultSet): ModeratedBlacklistSnapshot = ModeratedBlacklistSnapshot(
+        playerId = result.getString("player_uuid"),
+        status = result.getString("status"),
+        expiresAt = nullableLong(result, "expires_at"),
+        caseId = result.getString("case_id"),
+        operationId = result.getString("operation_id"),
+        revision = result.getLong("revision"),
+        updatedAt = result.getLong("updated_at"),
+    )
 
     private fun normalizedList(raw: String?): List<String> = raw.orEmpty()
         .split(',')
@@ -235,17 +257,29 @@ internal class MarketSnapshotCodec(
     }
 
     private fun validateSnapshotShape(snapshot: JsonObject) {
-        val shops = snapshot["shops"]
-        val blacklist = snapshot["blacklist"]
-        val problem = when {
-            snapshot["stall"]?.isJsonObject != true -> "Stored market snapshot has no stall object"
-            shops?.isJsonArray != true || shops.asJsonArray.any { !it.isJsonObject } ->
-                "Stored market snapshot has an invalid shops array"
-            blacklist != null && !blacklist.isJsonNull && !blacklist.isJsonObject ->
-                "Stored market snapshot has an invalid blacklist object"
-            else -> null
+        validateStallShape(snapshot)
+        validateShopsShape(snapshot)
+        validateBlacklistShape(snapshot)
+    }
+
+    private fun validateStallShape(snapshot: JsonObject) {
+        if (snapshot["stall"]?.isJsonObject != true) {
+            throw MarketModerationConflict("Stored market snapshot has no stall object")
         }
-        if (problem != null) throw MarketModerationConflict(problem)
+    }
+
+    private fun validateShopsShape(snapshot: JsonObject) {
+        val shops = snapshot["shops"]
+        if (shops?.isJsonArray != true || shops.asJsonArray.any { !it.isJsonObject }) {
+            throw MarketModerationConflict("Stored market snapshot has an invalid shops array")
+        }
+    }
+
+    private fun validateBlacklistShape(snapshot: JsonObject) {
+        val blacklist = snapshot["blacklist"] ?: return
+        if (!blacklist.isJsonNull && !blacklist.isJsonObject) {
+            throw MarketModerationConflict("Stored market snapshot has an invalid blacklist object")
+        }
     }
 
     private fun nullableLong(result: ResultSet, column: String): Long? {

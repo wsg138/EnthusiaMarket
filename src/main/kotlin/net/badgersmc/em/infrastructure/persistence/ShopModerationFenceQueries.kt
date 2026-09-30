@@ -5,6 +5,8 @@ import java.util.UUID
 
 /** Distinguishes a missing shop from a mutation rejected by a moderation fence. */
 internal object ShopModerationFenceQueries {
+    data class ContainerPosition(val world: String, val x: Int, val y: Int, val z: Int)
+
     fun lockShopForMutation(connection: Connection, shopId: Long) {
         connection.prepareStatement(
             """UPDATE shop_items SET id = id WHERE id = ?
@@ -26,7 +28,7 @@ internal object ShopModerationFenceQueries {
         y: Int,
         z: Int,
     ) {
-        val container = ContainerAddress(world, x, y, z)
+        val position = ContainerPosition(world, x, y, z)
         connection.prepareStatement(
             """UPDATE shop_items SET id = id
                WHERE container_world = ? AND container_x = ?
@@ -36,13 +38,13 @@ internal object ShopModerationFenceQueries {
                      WHERE l.stall_id = shop_items.stall_id
                  )""",
         ).use { statement ->
-            statement.setString(1, container.world)
-            statement.setInt(2, container.x)
-            statement.setInt(3, container.y)
-            statement.setInt(4, container.z)
+            statement.setString(1, position.world)
+            statement.setInt(2, position.x)
+            statement.setInt(3, position.y)
+            statement.setInt(4, position.z)
             statement.executeUpdate()
         }
-        rejectLockedContainer(connection, container)
+        rejectLockedContainer(connection, position)
     }
 
     fun lockOwnerForMutation(connection: Connection, owner: UUID) {
@@ -88,27 +90,25 @@ internal object ShopModerationFenceQueries {
         }
     }
 
-    fun rejectLockedContainer(
-        connection: Connection,
-        world: String,
-        x: Int,
-        y: Int,
-        z: Int,
-    ) {
-        rejectLockedContainer(connection, ContainerAddress(world, x, y, z))
+    fun rejectLockedContainer(connection: Connection, world: String, vararg coordinates: Int) {
+        require(coordinates.size == 3) { "Container position requires x, y, and z" }
+        rejectLockedContainer(
+            connection,
+            ContainerPosition(world, coordinates[0], coordinates[1], coordinates[2]),
+        )
     }
 
-    private fun rejectLockedContainer(connection: Connection, container: ContainerAddress) {
+    fun rejectLockedContainer(connection: Connection, position: ContainerPosition) {
         connection.prepareStatement(
             """SELECT 1 FROM shop_items s
                JOIN market_moderation_locks l ON l.stall_id = s.stall_id
                WHERE s.container_world = ? AND s.container_x = ?
                  AND s.container_y = ? AND s.container_z = ?""",
         ).use { statement ->
-            statement.setString(1, container.world)
-            statement.setInt(2, container.x)
-            statement.setInt(3, container.y)
-            statement.setInt(4, container.z)
+            statement.setString(1, position.world)
+            statement.setInt(2, position.x)
+            statement.setInt(3, position.y)
+            statement.setInt(4, position.z)
             statement.executeQuery().use { result ->
                 if (result.next()) {
                     throw MarketModerationConflictException("Container shop is reserved for moderation")
@@ -131,6 +131,4 @@ internal object ShopModerationFenceQueries {
             }
         }
     }
-
-    private data class ContainerAddress(val world: String, val x: Int, val y: Int, val z: Int)
 }
