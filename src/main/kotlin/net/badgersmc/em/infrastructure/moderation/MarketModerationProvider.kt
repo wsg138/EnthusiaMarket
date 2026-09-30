@@ -24,7 +24,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Bounded asynchronous Bukkit service facade over the durable JDBC store. */
-@Suppress("TooManyFunctions")
 internal class MarketModerationProvider(
     private val store: JdbcMarketModerationStore,
     private val gate: DurableMarketMutationGate,
@@ -136,13 +135,6 @@ internal class MarketModerationProvider(
         }
     }
 
-    private fun MarketOperationRecord.canClearRegionFor(approval: MarketConfiscationApproval): Boolean =
-        snapshotChecksum() == approval.expectedSnapshotChecksum() &&
-            state() in setOf(
-                MarketOperationRecord.State.PREPARED,
-                MarketOperationRecord.State.MODERATION_HOLD,
-            )
-
     private fun persistConfiscation(
         approval: MarketConfiscationApproval,
         snapshot: MarketRegionAccessSnapshot,
@@ -187,20 +179,6 @@ internal class MarketModerationProvider(
         return result
     }
 
-    private fun MarketOperationResult.isHeldOrReplay(): Boolean =
-        status() == MarketOperationResult.Status.HELD ||
-            operation().map { it.state() == MarketOperationRecord.State.MODERATION_HOLD }.orElse(false)
-
-    private fun MarketOperationRecord.State.keepsReservation(): Boolean = when (this) {
-        MarketOperationRecord.State.PREPARED,
-        MarketOperationRecord.State.MODERATION_HOLD,
-        MarketOperationRecord.State.QUARANTINED,
-        -> true
-        MarketOperationRecord.State.RESTORED,
-        MarketOperationRecord.State.RELEASED,
-        -> false
-    }
-
     private companion object {
         const val SHUTDOWN_SECONDS = 5L
         const val WORKER_COUNT = 2
@@ -224,4 +202,25 @@ internal class MarketModerationProvider(
             )
         }
     }
+}
+
+private fun MarketOperationRecord.canClearRegionFor(approval: MarketConfiscationApproval): Boolean =
+    snapshotChecksum() == approval.expectedSnapshotChecksum() &&
+        state() in setOf(
+            MarketOperationRecord.State.PREPARED,
+            MarketOperationRecord.State.MODERATION_HOLD,
+        )
+
+private fun MarketOperationResult.isHeldOrReplay(): Boolean =
+    status() == MarketOperationResult.Status.HELD ||
+        operation().map { it.state() == MarketOperationRecord.State.MODERATION_HOLD }.orElse(false)
+
+private fun MarketOperationRecord.State.keepsReservation(): Boolean = when (this) {
+    MarketOperationRecord.State.PREPARED,
+    MarketOperationRecord.State.MODERATION_HOLD,
+    MarketOperationRecord.State.QUARANTINED,
+    -> true
+    MarketOperationRecord.State.RESTORED,
+    MarketOperationRecord.State.RELEASED,
+    -> false
 }
