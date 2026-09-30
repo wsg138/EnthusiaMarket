@@ -1,0 +1,98 @@
+name: static-remediation-validation
+
+on:
+  push:
+    branches: [upstream/codacy-static-remediation]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      NEXUS_REF: 057836befb9e35aa252cf90104030ec86f28b33f
+      LUMAGUILDS_VERSION: 3.0.0
+      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-3.0.0.jar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Publish Nexus dependency locally
+        run: |
+          git clone https://github.com/BadgersMC/Nexus.git "$RUNNER_TEMP/nexus"
+          cd "$RUNNER_TEMP/nexus"
+          git checkout "$NEXUS_REF"
+          chmod +x gradlew
+          ./gradlew publishToMavenLocal --no-daemon --console=plain
+      - name: Download LumaGuilds dependency
+        run: |
+          mkdir -p libs
+          curl --fail --location --silent --show-error \
+            -o "$LUMAGUILDS_JAR" \
+            "https://github.com/BadgersMC/LumaGuilds/releases/download/v${LUMAGUILDS_VERSION}/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
+          test -s "$LUMAGUILDS_JAR"
+      - name: Test and shadowJar
+        run: ./gradlew clean test shadowJar jacocoTestReport -PuseMavenLocal=true --no-daemon --console=plain
+      - name: Verify MariaDB moderation tests executed
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+          report = Path("build/test-results/test/TEST-net.badgersmc.em.infrastructure.moderation.JdbcMarketModerationMariaDbTest.xml")
+          suite = ElementTree.parse(report).getroot()
+          counts = {name: int(suite.attrib.get(name, "0")) for name in ("tests", "skipped", "failures", "errors")}
+          print("MariaDB moderation tests:", counts)
+          if counts["tests"] < 1 or any(counts[name] for name in ("skipped", "failures", "errors")):
+              raise SystemExit("MariaDB moderation tests did not execute cleanly")
+          PY
+
+  detekt:
+    runs-on: ubuntu-latest
+    env:
+      NEXUS_REF: 057836befb9e35aa252cf90104030ec86f28b33f
+      LUMAGUILDS_VERSION: 3.0.0
+      LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-3.0.0.jar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Publish Nexus dependency locally
+        run: |
+          git clone https://github.com/BadgersMC/Nexus.git "$RUNNER_TEMP/nexus"
+          cd "$RUNNER_TEMP/nexus"
+          git checkout "$NEXUS_REF"
+          chmod +x gradlew
+          ./gradlew publishToMavenLocal --no-daemon --console=plain
+      - name: Download LumaGuilds dependency
+        run: |
+          mkdir -p libs
+          curl --fail --location --silent --show-error \
+            -o "$LUMAGUILDS_JAR" \
+            "https://github.com/BadgersMC/LumaGuilds/releases/download/v${LUMAGUILDS_VERSION}/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
+          test -s "$LUMAGUILDS_JAR"
+      - name: Run Detekt
+        run: ./gradlew detekt -PuseMavenLocal=true --no-daemon --console=plain
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@713efdd345f3035192eaa63f56867b88e63e4e5d
+        with:
+          config: >
+            p/kotlin
+            p/java
+            p/secrets
+            p/sql-injection
+      - name: Run Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          exit-code: '1'
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
