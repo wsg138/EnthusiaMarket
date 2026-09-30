@@ -17,7 +17,8 @@ updated: 2026-06-25
 Check:
 
 1. Paper 1.21.11 or later — run `/version`.
-2. All hard dependencies installed: WorldGuard, Vault, EnthusiaCurrency, LumaGuilds.
+2. All hard dependencies installed: WorldGuard, Vault, EnthusiaCurrency,
+   LumaGuilds.
 3. Console error messages — they name the missing dependency.
 
 Enable debug logging:
@@ -35,7 +36,8 @@ debug:
 Run `/em import` to register WorldGuard regions. Check:
 
 1. `market.world` matches your world name.
-2. `market.regionPrefix` matches your region naming (e.g. `stall` for `stall1`).
+2. `market.regionPrefix` matches your region naming (e.g. `stall` for
+   `stall1`).
 3. WorldGuard regions exist and are loaded.
 
 ## Rent collecting too fast / stalls going to emergency auction
@@ -65,7 +67,8 @@ Check:
 1. Player owns the stall or has member access.
 2. For guild stalls: player has `MANAGE_SHOPS` guild permission.
 3. Economy plugin (EnthusiaCurrency) is loaded — check `/plugins`.
-4. The container has items (for SELL shops) or the owner has money (for BUY shops).
+4. The container has items (for SELL shops) or the owner has money (for BUY
+   shops).
 
 ## Bedrock forms not opening
 
@@ -75,25 +78,30 @@ See [Geyser & Bedrock setup](geyser.md).
 
 **Symptom:** SQL errors in console.
 
-- SQLite: check `plugins/EnthusiaMarket/enthusiamarket.db` exists and is writable.
+- SQLite: check `plugins/EnthusiaMarket/enthusiamarket.db` exists and is
+  writable.
 - MariaDB: verify host, port, credentials in `database.mariadb.*`.
 - Connection pool: increase `database.pool.maxSize` for many concurrent stalls.
 
 ## Staff moderation operation is stuck
 
-Do not retry with a new operation ID and do not edit Market ownership, lock, blacklist,
-or snapshot rows directly.
+Do not retry with a new operation ID and do not edit Market ownership, lock,
+blacklist, or snapshot rows directly.
 
-1. Record the existing operation ID, case ID, stall ID, state, revision, and checksums.
+1. Record the existing operation ID, case ID, stall ID, state, revision, and
+   checksums.
 2. Confirm EnthusiaStaff and EnthusiaMarket are using moderation API version 1.
 3. Confirm MariaDB is available and migration V028 is applied exactly once.
-4. For `PREPARED`, choose explicit approval or release after reviewing the case.
-5. For `MODERATION_HOLD`, restore only through the supported API with the exact current
-   checksum.
-6. For `QUARANTINED`, preserve the reservation and escalate for manual investigation;
-   quarantine means the provider detected ambiguous or changed state and refused to guess.
+4. For `PREPARED`, choose explicit approval or release after reviewing the
+   case.
+5. For `MODERATION_HOLD`, restore only through the supported API with the exact
+   current checksum.
+6. For `QUARANTINED`, preserve the reservation and escalate for manual
+   investigation; quarantine means the provider detected ambiguous or changed
+   state and refused to guess.
 
-Restart recovery replays the same operation ID. A deadline does not auto-confiscate.
+Restart recovery replays the same operation ID. A deadline does not
+auto-confiscate.
 
 ## Debug mode
 
@@ -105,4 +113,5 @@ debug:
   logMigrations: true
 ```
 
-Run `/em reload` after changes. Check console for `[EnthusiaMarket]` tagged messages.
+Run `/em reload` after changes. Check console for `[EnthusiaMarket]` tagged
+messages.
