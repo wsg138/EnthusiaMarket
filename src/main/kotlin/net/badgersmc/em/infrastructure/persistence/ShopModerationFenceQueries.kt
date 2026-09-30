@@ -90,6 +90,14 @@ internal object ShopModerationFenceQueries {
         }
     }
 
+    fun rejectLockedContainer(connection: Connection, world: String, vararg coordinates: Int) {
+        require(coordinates.size == 3) { "Container position requires x, y, and z" }
+        rejectLockedContainer(
+            connection,
+            ContainerPosition(world, coordinates[0], coordinates[1], coordinates[2]),
+        )
+    }
+
     fun rejectLockedContainer(connection: Connection, position: ContainerPosition) {
         connection.prepareStatement(
             """SELECT 1 FROM shop_items s
