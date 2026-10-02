@@ -13,6 +13,7 @@ jobs:
       NEXUS_REF: 057836befb9e35aa252cf90104030ec86f28b33f
       LUMAGUILDS_VERSION: 3.0.0
       LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds-3.0.0.jar
+      CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
@@ -74,14 +75,14 @@ jobs:
           PY
 
       - name: Upload coverage to Codacy
-        if: ${{ secrets.CODACY_PROJECT_TOKEN != '' }}
+        if: ${{ env.CODACY_PROJECT_TOKEN != '' }}
         uses: codacy/codacy-coverage-reporter-action@89d6c85cfafaec52c72b6c5e8b2878d33104c699 # v1.3.0
         with:
-          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          project-token: ${{ env.CODACY_PROJECT_TOKEN }}
           coverage-reports: build/reports/jacoco/test/jacocoTestReport.xml
 
       - name: Note missing Codacy coverage token
-        if: ${{ secrets.CODACY_PROJECT_TOKEN == '' }}
+        if: ${{ env.CODACY_PROJECT_TOKEN == '' }}
         run: echo "CODACY_PROJECT_TOKEN is unavailable; hosted static analysis remains authoritative."
 
   detekt:
