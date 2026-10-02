@@ -54,8 +54,14 @@ class GuildDissolutionService(
                 // Only count stalls actually freed. A guild stall in a non-OWNED/GRACE
                 // state (e.g. mid-auction) returns NotOwned and is left as-is, so it must
                 // not inflate the summary count.
-                if (eviction.evict(stall.id) == StallEvictionService.Result.Evicted) {
-                    stallsEvicted++
+                when (eviction.evict(stall.id)) {
+                    StallEvictionService.Result.Evicted -> stallsEvicted++
+                    StallEvictionService.Result.Blocked -> log.warning(
+                        "GuildDissolution: stall ${stall.id.value} is moderation-locked; " +
+                            "eviction skipped (guild=$guildId)"
+                    )
+                    StallEvictionService.Result.NotFound,
+                    StallEvictionService.Result.NotOwned -> Unit
                 }
             } catch (e: Exception) {
                 stallsFailed++

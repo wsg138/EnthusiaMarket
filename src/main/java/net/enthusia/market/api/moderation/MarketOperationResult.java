@@ -14,6 +14,7 @@ public record MarketOperationResult(
         detail = MarketApiValidation.text(detail, "detail", 512);
     }
 
+    /** Outcome returned by a durable moderation operation. */
     public enum Status {
         PREPARED,
         REPLAYED,

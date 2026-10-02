@@ -1,0 +1,114 @@
+name: PR quality diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  checks: read
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Collect changed source files
+        shell: bash
+        run: |
+          git fetch origin main --depth=1
+          git diff --name-only origin/main...HEAD \
+            | grep -E '^src/(main|test)/.*\.(kt|java)$' \
+            > "$RUNNER_TEMP/changed-source-files.txt" || true
+          echo "Changed source files:"
+          cat "$RUNNER_TEMP/changed-source-files.txt"
+
+      - name: Compare Lizard findings with upstream main
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check lizard==1.22.2
+          if [[ ! -s "$RUNNER_TEMP/changed-source-files.txt" ]]; then
+            exit 0
+          fi
+
+          xargs -a "$RUNNER_TEMP/changed-source-files.txt" \
+            lizard -C 10 -T nloc=20 -a 4 -w 2>&1 \
+            | grep 'warning:' \
+            | sed -E 's#([^:]+):[0-9]+: warning:#\1: warning:#' \
+            | sort -u > "$RUNNER_TEMP/head-lizard.txt" || true
+
+          git worktree add --detach "$RUNNER_TEMP/base" origin/main
+          while IFS= read -r path; do
+            if [[ -f "$RUNNER_TEMP/base/$path" ]]; then
+              printf '%s\n' "$RUNNER_TEMP/base/$path"
+            fi
+          done < "$RUNNER_TEMP/changed-source-files.txt" > "$RUNNER_TEMP/base-source-files.txt"
+
+          if [[ -s "$RUNNER_TEMP/base-source-files.txt" ]]; then
+            xargs -a "$RUNNER_TEMP/base-source-files.txt" \
+              lizard -C 10 -T nloc=20 -a 4 -w 2>&1 \
+              | grep 'warning:' \
+              | sed "s#$RUNNER_TEMP/base/##g" \
+              | sed -E 's#([^:]+):[0-9]+: warning:#\1: warning:#' \
+              | sort -u > "$RUNNER_TEMP/base-lizard.txt" || true
+          else
+            : > "$RUNNER_TEMP/base-lizard.txt"
+          fi
+
+          echo '=== PR HEAD LIZARD WARNINGS ==='
+          cat "$RUNNER_TEMP/head-lizard.txt"
+          echo '=== NEW OR CHANGED VS MAIN ==='
+          comm -13 "$RUNNER_TEMP/base-lizard.txt" "$RUNNER_TEMP/head-lizard.txt" || true
+
+      - name: Report PMD findings on changed Java files
+        shell: bash
+        run: |
+          grep -E '\.java$' "$RUNNER_TEMP/changed-source-files.txt" \
+            > "$RUNNER_TEMP/changed-java-files.txt" || true
+          if [[ ! -s "$RUNNER_TEMP/changed-java-files.txt" ]]; then
+            exit 0
+          fi
+          curl --fail --location --retry 3 --retry-all-errors \
+            --output "$RUNNER_TEMP/pmd.zip" \
+            "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.11.0/pmd-dist-7.11.0-bin.zip"
+          unzip -q "$RUNNER_TEMP/pmd.zip" -d "$RUNNER_TEMP"
+          paste -sd, "$RUNNER_TEMP/changed-java-files.txt" > "$RUNNER_TEMP/pmd-paths.txt"
+          "$RUNNER_TEMP/pmd-bin-7.11.0/bin/pmd" check \
+            -d "$(cat "$RUNNER_TEMP/pmd-paths.txt")" \
+            -R category/java/bestpractices.xml,category/java/codestyle.xml,category/java/design.xml,category/java/documentation.xml,category/java/errorprone.xml,category/java/multithreading.xml,category/java/performance.xml,category/java/security.xml \
+            -f text || true
+
+      - name: Report exact Codacy annotations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          for attempt in {1..24}; do
+            CHECK_ID=$(gh api "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
+              --jq '.check_runs[] | select(.name == "Codacy Static Code Analysis") | .id' \
+              | head -1)
+            if [[ -n "$CHECK_ID" ]]; then
+              STATUS=$(gh api "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID" --jq '.status')
+              if [[ "$STATUS" == "completed" ]]; then
+                echo "=== CODACY ANNOTATIONS ==="
+                gh api --paginate "repos/$GITHUB_REPOSITORY/check-runs/$CHECK_ID/annotations" \
+                  --jq '.[] | [.annotation_level, .path, .start_line, .title, .message] | @tsv'
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "Codacy check did not complete during diagnostics; inspect the hosted check separately."

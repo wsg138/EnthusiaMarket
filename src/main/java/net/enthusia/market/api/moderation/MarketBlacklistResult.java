@@ -14,6 +14,7 @@ public record MarketBlacklistResult(
         detail = MarketApiValidation.text(detail, "detail", 512);
     }
 
+    /** Outcome of applying or removing a player market blacklist. */
     public enum Status {
         APPLIED,
         REMOVED,

@@ -9,6 +9,7 @@ public record MarketBlacklistRemoval(
         String caseId,
         long expectedRevision
 ) {
+    /** Smallest valid persisted blacklist revision. */
     private static final long MINIMUM_REVISION = 1L;
 
     public MarketBlacklistRemoval {

@@ -6,17 +6,17 @@
 
 ## 1. What this project is
 
-EnthusiaMarket is a Paper plugin (shaded JAR, target `plugins/`) that turns WorldGuard regions into rentable/ownable player- and guild-operated market stalls with sign shops and timed item auctions. Consumed by survival-economy players on a Paper 1.21.x server, including Bedrock clients via Floodgate. Deployment target: BadgersMC production network.
+EnthusiaMarket is a Paper plugin (shaded JAR, target `plugins/`) that turns WorldGuard regions into rentable/ownable player- and guild-operated market stalls with sign shops and timed item auctions. Consumed by survival-economy players on a Paper 26.2 server, including Bedrock clients via Floodgate. Deployment target: BadgersMC production network.
 
 ## 2. Runtimes & languages
 
 | Layer | Language / Tool | Min version | Reason |
 |---|---|---|---|---|
-| Plugin | Kotlin | 2.0.0 | Concise domain model, null safety, coroutine-ready |
-| Build tool | Gradle (Kotlin DSL) + Shadow | 8.x / 8.3.6 | Standard for Paper plugins; Shadow relocates Nexus + ClassGraph |
-| Test framework | JUnit 5 + MockK + MockBukkit | 5.8.1 / 1.13.11 / 4.107.0 | Idiomatic Kotlin tests + Bukkit-API simulation |
-| DI + Config + Commands | **Nexus** (nexus-core + nexus-paper) | 1.6.0 | Internal BadgersMC framework: classpath-scanning DI, @ConfigFile YAML config, Paper Brigadier @Command/@Subcommand |
-| JVM | JDK 21 | — | Paper 1.21.x minimum |
+| Plugin | Kotlin | 2.3.20 | Concise domain model, null safety, coroutine-ready |
+| Build tool | Gradle (Kotlin DSL) + Shadow | 9.1.0 / 8.3.11 | Standard for Paper plugins; Shadow relocates Nexus + ClassGraph |
+| Test framework | JUnit 5 + MockK + MockBukkit | 5.8.1 / 1.13.11 / 4.116.1 | Idiomatic Kotlin tests + Bukkit-API simulation |
+| DI + Config + Commands | **Nexus** (nexus-core + nexus-paper) | 2.3.0 | Internal BadgersMC framework: classpath-scanning DI, @ConfigFile YAML config, Paper Brigadier @Command/@Subcommand |
+| JVM | JDK 25 | — | Paper 26.2 runtime |
 | CI runner | GitHub Actions (planned) | — | Single workflow per project standard |
 
 Detected by `/spear:init` from `build.gradle.kts` (Gradle Kotlin DSL).
@@ -27,16 +27,16 @@ Top-level direct dependencies with pinned versions. Transitive pins live in the 
 
 | Package | Version | Why |
 |---|---|---|
-| io.papermc.paper:paper-api | 1.21.11-R0.1-SNAPSHOT | Server API (compileOnly) |
+| io.papermc.paper:paper-api | 26.2.build.129-stable | Server API (compileOnly) |
 | com.github.MilkBowl:VaultAPI | 1.7 | Economy abstraction (compileOnly) |
 | com.sk89q.worldguard:worldguard-bukkit | 7.0.9 | Region source for stalls (compileOnly) |
 | com.sk89q.worldedit:worldedit-bukkit | 7.3.0 | Schematic capture/restore of stall geometry (compileOnly, softdepend; REQ-270..274) |
 | com.fastasyncworldedit:FastAsyncWorldEdit-Bukkit | 2.11.0 | Async paste path preferred when present (compileOnly, softdepend; REQ-272) |
 | org.geysermc.floodgate:api | 2.2.5-SNAPSHOT | Detect Bedrock players (compileOnly) |
 | org.geysermc.cumulus:cumulus | 2.0.0-SNAPSHOT | Bedrock UI forms (compileOnly) |
-| com.github.BadgersMC.Nexus:nexus-core | v2.2.1 | DI container, @ConfigFile YAML config, coroutines (shaded, relocated) |
-| com.github.BadgersMC.Nexus:nexus-paper | v2.2.1 | Paper Brigadier @Command/@Subcommand system, BukkitDispatcher (shaded, relocated) |
-| com.github.BadgersMC.Nexus:nexus-worldedit | v2.2.1 | WE/FAWE facade (WorldEditAdapter save/load + isFawePresent) behind the SchematicService port (shaded, relocated) |
+| net.badgersmc:nexus-core | 2.3.0 (pinned source `057836b`, Maven Local until tagged) | DI container, @ConfigFile YAML config, coroutines (shaded, relocated) |
+| net.badgersmc:nexus-paper | 2.3.0 (pinned source `057836b`, Maven Local until tagged) | Paper Brigadier @Command/@Subcommand system, BukkitDispatcher (shaded, relocated) |
+| net.badgersmc:nexus-worldedit | 2.3.0 (pinned source `057836b`, Maven Local until tagged) | WE/FAWE facade (WorldEditAdapter save/load + isFawePresent) behind the SchematicService port (shaded, relocated) |
 | com.zaxxer:HikariCP | 5.1.0 | Connection pool |
 | org.xerial:sqlite-jdbc | 3.45.1.0 | Default embedded DB |
 | org.mariadb.jdbc:mariadb-java-client | 3.3.2 | Production DB option |

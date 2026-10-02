@@ -5,6 +5,7 @@ import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.domain.shop.Shop
 import net.badgersmc.em.domain.shop.ShopRepository
 import net.badgersmc.nexus.i18n.LangService
@@ -76,7 +77,7 @@ class TrustManageMenu(
             player.sendMessage(lang.msg("shop.trust.open_chat_prompt"))
         }, 4, controlRowY)
 
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
         gui.blockItemTheft()
         gui.show(player)
     }

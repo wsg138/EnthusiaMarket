@@ -1,20 +1,28 @@
 import net.badgersmc.nexus.permissions.Default
 
 buildscript {
+    val useLocalNexus = gradle.startParameter.projectProperties["useMavenLocal"] == "true" ||
+        System.getenv("USE_MAVEN_LOCAL_NEXUS").equals("true", ignoreCase = true)
+    val nexusGroup = if (useLocalNexus) "net.badgersmc" else "com.github.BadgersMC.Nexus"
+    val nexusVersion = if (useLocalNexus) "2.3.0" else "057836b"
+
     repositories {
+        if (useLocalNexus) mavenLocal()
         maven("https://plugins.gradle.org/m2/")
         mavenCentral()
-        maven("https://jitpack.io")
+        maven("https://jitpack.io") {
+            content { includeGroupByRegex("com\\.github\\..*") }
+        }
     }
     dependencies {
         classpath("io.gitlab.arturbosch.detekt:detekt-gradle-plugin:1.23.8")
-        classpath("com.github.BadgersMC.Nexus:nexus-permissions-gradle:v2.2.1")
+        classpath("$nexusGroup:nexus-permissions-gradle:$nexusVersion")
     }
 }
 
 plugins {
-    kotlin("jvm") version "2.0.0"
-    id("com.gradleup.shadow") version "8.3.6"
+    kotlin("jvm") version "2.3.20"
+    id("com.gradleup.shadow") version "8.3.11"
     jacoco
     idea
 }
@@ -23,18 +31,26 @@ apply(plugin = "io.gitlab.arturbosch.detekt")
 apply(plugin = "net.badgersmc.nexus.permissions")
 
 jacoco {
-    toolVersion = "0.8.12"
+    toolVersion = "0.8.15"
 }
 
 group = "net.badgersmc.em"
 version = findProperty("releaseVersion")?.toString() ?: "1.0.0"
 System.getenv("EM_BUILD_DIR")?.let { layout.buildDirectory.set(file(it)) }
 
+val useLocalNexus = providers.gradleProperty("useMavenLocal").orNull == "true" ||
+    System.getenv("USE_MAVEN_LOCAL_NEXUS").equals("true", ignoreCase = true)
+val nexusGroup = if (useLocalNexus) "net.badgersmc" else "com.github.BadgersMC.Nexus"
+val nexusVersion = if (useLocalNexus) "2.3.0" else "057836b"
+
 repositories {
+    if (useLocalNexus) mavenLocal()
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://oss.sonatype.org/content/repositories/snapshots")
-    maven("https://jitpack.io")
+    maven("https://jitpack.io") {
+        content { includeGroupByRegex("com\\.github\\..*") }
+    }
     maven("https://maven.enginehub.org/repo/") // WorldGuard + WorldEdit
     maven("https://repo.fastasyncworldedit.com/releases") // FastAsyncWorldEdit
     maven("https://repo.opencollab.dev/main/")  // Floodgate / Cumulus
@@ -52,7 +68,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:26.2.build.129-stable")
     compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }
@@ -71,34 +87,34 @@ dependencies {
     testImplementation("org.geysermc.floodgate:api:2.2.5-SNAPSHOT")
 
     // IFramework for Java GUIs
-    compileOnly("com.github.stefvanschie.inventoryframework:IF:0.11.6")
-    testImplementation("com.github.stefvanschie.inventoryframework:IF:0.11.6")
+    compileOnly("com.github.stefvanschie.inventoryframework:IF:0.12.2-SNAPSHOT")
+    testImplementation("com.github.stefvanschie.inventoryframework:IF:0.12.2-SNAPSHOT")
     testImplementation("commons-lang:commons-lang:2.6")
 
     // Nexus DI + config + coroutines — SHADED (not on Maven Central, so can't use
     // Paper's runtime library loader). Transitive kotlin-reflect, coroutines, and
     // kaml come along on compile/test classpath but are excluded from the shadowJar
     // below (Paper downloads them at runtime via the libraries: block in plugin.yml).
-    implementation("com.github.BadgersMC.Nexus:nexus-core:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-resources:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-i18n:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-persistence:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-scheduler:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-gui:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-bedrock:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-listeners:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-vault:v2.2.1")
-    implementation("com.github.BadgersMC.Nexus:nexus-paper-loader:v2.2.1")
+    implementation("$nexusGroup:nexus-core:$nexusVersion")
+    implementation("$nexusGroup:nexus-paper:$nexusVersion")
+    implementation("$nexusGroup:nexus-resources:$nexusVersion")
+    implementation("$nexusGroup:nexus-i18n:$nexusVersion")
+    implementation("$nexusGroup:nexus-persistence:$nexusVersion")
+    implementation("$nexusGroup:nexus-scheduler:$nexusVersion")
+    implementation("$nexusGroup:nexus-paper-gui:$nexusVersion")
+    implementation("$nexusGroup:nexus-paper-bedrock:$nexusVersion")
+    implementation("$nexusGroup:nexus-paper-listeners:$nexusVersion")
+    implementation("$nexusGroup:nexus-vault:$nexusVersion")
+    implementation("$nexusGroup:nexus-paper-loader:$nexusVersion")
     // WorldEdit / FAWE facade + SchematicService — backs stall schematic
     // capture/restore (REQ-270..272). WE/FAWE themselves stay compileOnly
     // below; this module only adds the thin Kotlin facade over them.
-    implementation("com.github.BadgersMC.Nexus:nexus-worldedit:v2.2.1")
+    implementation("$nexusGroup:nexus-worldedit:$nexusVersion")
     implementation("com.google.code.gson:gson:2.11.0")
 
     // PlaceholderAPI expansion — provide-side only; registerNexusExpansions no-ops without PAPI.
     compileOnly("me.clip:placeholderapi:2.11.6")
-    implementation("com.github.BadgersMC.Nexus:nexus-papi:v2.2.1")
+    implementation("$nexusGroup:nexus-papi:$nexusVersion")
 
     // Runtime-downloaded by Paper via plugin.yml `libraries:` — kept on compile +
     // test classpath but excluded from the shaded jar to shrink it from ~27 MB
@@ -114,14 +130,14 @@ dependencies {
 
     // Kotlin stdlib — runtime-downloaded by Paper (see plugin.yml libraries:).
     // Auto-add disabled via kotlin.stdlib.default.dependency=false in gradle.properties.
-    compileOnly("org.jetbrains.kotlin:kotlin-stdlib:2.0.0")
-    testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.0.0")
+    compileOnly("org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
+    testImplementation("org.jetbrains.kotlin:kotlin-stdlib:2.3.20")
 
     // Testing
     testImplementation(kotlin("test"))
-    testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
+    testImplementation("io.papermc.paper:paper-api:26.2.build.129-stable")
     testImplementation("io.mockk:mockk:1.13.11")
-    testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v1.21:4.107.0")
+    testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v26.2:4.116.1")
     testImplementation("org.junit.jupiter:junit-jupiter:5.8.1")
     testImplementation(platform("org.testcontainers:testcontainers-bom:1.21.4"))
     testImplementation("org.testcontainers:mariadb")
@@ -131,21 +147,34 @@ dependencies {
     }
     testImplementation("com.lemonappdev:konsist:0.17.3")
 
-    // LumaGuilds API for real GuildProvider implementation
-    // Path can be overridden via -Plumaguilds.jar=... or LUMAGUILDS_JAR env var
-    val lumaguildsJar = System.getenv("LUMAGUILDS_JAR") ?: project.findProperty("lumaguilds.jar")?.toString()
-        ?: "/opt/data/LumaGuilds/build/libs/LumaGuilds-2.1.0.jar"
-    compileOnly(files(lumaguildsJar))
-    testImplementation(files(lumaguildsJar))
+    // LumaGuilds API for the real GuildProvider implementation.
+    // CI/release should pass LUMAGUILDS_JAR explicitly. For local development,
+    // fall back to any current LumaGuilds jar staged in ./libs instead of a
+    // machine-specific /opt/data path or a version-pinned filename.
+    val lumaguildsJar = System.getenv("LUMAGUILDS_JAR")
+        ?: project.findProperty("lumaguilds.jar")?.toString()
+    val lumaguildsClasspath = if (lumaguildsJar != null) {
+        files(lumaguildsJar)
+    } else {
+        fileTree("libs") { include("LumaGuilds-*.jar") }
+    }
+    compileOnly(lumaguildsClasspath)
+    testImplementation(lumaguildsClasspath)
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(25)
 }
 
 configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
     config.setFrom(file("config/detekt/detekt.yml"))
     buildUponDefaultConfig = true
+}
+
+// Detekt 1.23.8 analyzes source only and does not support JVM target 25.
+// Production Kotlin/Java bytecode is still compiled for Java 25.
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "22"
 }
 
 // Expand ${version} in paper-plugin.yml so the descriptor reports the real

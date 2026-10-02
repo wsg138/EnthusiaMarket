@@ -33,12 +33,14 @@ Each requirement carries a stable ID. Tasks reference requirements by ID. New re
 
 ### REQ-005 — Sign shop creation (superseded 2026-05-24 by REQ-012)
 
-~~**Event-driven.** WHEN a player places a shop sign inside a stall they own or rent THE SYSTEM SHALL register the sign as a buy or sell endpoint scoped to that stall region.~~
+**Event-driven.** WHEN a player places a shop sign inside a stall they own or rent THE SYSTEM SHALL register the sign as a buy or sell endpoint scoped to that stall region.
+**Status:** Deprecated/superseded 2026-05-24 by REQ-012.
 **Note:** Replaced by container-linked wall sign creation (REQ-012).
 
 ### REQ-006 — Shop sign transaction (superseded 2026-05-24 by REQ-013)
 
-~~**Event-driven.** WHEN a player interacts with a registered shop sign with a valid item and balance THE SYSTEM SHALL transfer the item and the price atomically between buyer and seller.~~
+**Event-driven.** WHEN a player interacts with a registered shop sign with a valid item and balance THE SYSTEM SHALL transfer the item and the price atomically between buyer and seller.
+**Status:** Deprecated/superseded 2026-05-24 by REQ-013.
 **Note:** Replaced by GUI-based shop trade with container inventory (REQ-013).
 
 ### REQ-007 — Auction creation
@@ -474,6 +476,46 @@ return the stall to UNOWNED.
 #### REQ-313 — Moderation service lifecycle
 
 **Event-driven.** WHEN the plugin enables or disables THE SYSTEM SHALL register or unregister exactly one moderation service, start or stop its bounded workers, reject new work during shutdown, and preserve every uncompleted operation durably for retry after restart.
+
+### Ownership integrity hardening — 26.2
+
+#### REQ-314 — Active ownership counting
+
+**State-driven.** WHILE enforcing a player's stall ownership limit THE SYSTEM SHALL count only SOLO stalls in `OWNED` or `GRACE` whose current owner matches that player and SHALL exclude `UNOWNED`, `AUCTIONING`, `RE_AUCTIONING`, `EMERGENCY_AUCTIONING`, and `MODERATION_HOLD`.
+
+#### REQ-315 — New ownership clears delegated members
+
+**Event-driven.** WHEN a stall is awarded to a different owner THE SYSTEM SHALL clear the previous ownership context's delegated stall-member set before the new owner becomes authoritative.
+
+#### REQ-316 — Ownership transfer removes prior non-admin shops
+
+**Event-driven.** WHEN ownership of a stall transfers to a different player or guild THE SYSTEM SHALL remove non-admin shops bound to the previous ownership context before the new owner can manage or trade in the stall while preserving explicitly administrative shops.
+
+#### REQ-317 — Every ownership award replaces region access
+
+**Event-driven.** WHEN an ownership award or direct sale succeeds THE SYSTEM SHALL synchronize the stall's WorldGuard access through `RegionMemberSync` so the previous ownership context retains no owner or member access and the new ownership context receives only its intended access.
+
+#### REQ-318 — Canonical release to UNOWNED
+
+**Event-driven.** WHEN a stall returns to `UNOWNED` outside a moderation restoration THE SYSTEM SHALL clear owner identity, owner-since time, winning bid, delegated members, next-rent deadline, previous-owner non-admin shops, and WorldGuard access before the stall becomes acquirable again.
+
+#### REQ-319 — Emergency auctions forfeit active ownership cleanly
+
+**Event-driven.** WHEN grace expiry creates an `EMERGENCY_AUCTIONING` stall THE SYSTEM SHALL remove the defaulter's delegated access and non-admin shops, restore the stall schematic when enabled, stop treating the stall as actively owned, and retain former-owner identity only where required for settlement provenance or recovery.
+
+**Note:** This promotes and supersedes the cleanup intent recorded in draft REQ-280: emergency-auction stalls are auctioned clean rather than transferring the defaulter's live shop configuration to the winner.
+
+#### REQ-320 — Ownership hardening preserves moderation semantics
+
+**State-driven.** WHILE a stall has a live moderation reservation or is in `MODERATION_HOLD` THE SYSTEM SHALL preserve the snapshots, shop-freeze state, optimistic revision fencing, recovery data, and provider-owned locks required by REQ-306 through REQ-313 and SHALL reject generic ownership cleanup that would invalidate exact restoration.
+
+#### REQ-321 — Legacy ownership reconciliation is conservative and idempotent
+
+**Event-driven.** WHEN the 26.2 ownership-integrity reconciliation runs THE SYSTEM SHALL repair only ownership, shop, member, and access records that can be proven stale from authoritative stall state, SHALL preserve guild, admin-shop, and moderation data when staleness is ambiguous, and SHALL produce the same result when safely repeated.
+
+#### REQ-322 — Bulk administrative rent extension
+
+**Event-driven.** WHEN an authorized administrator executes `/em rent extendall <duration>` THE SYSTEM SHALL add a positive duration to every actively held `OWNED` or `GRACE` stall without charging owners, SHALL leave unowned, auction, and moderation states unchanged, and SHALL report updated, recovered-from-grace, skipped, and failed counts.
 
 ---
 

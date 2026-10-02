@@ -5,6 +5,7 @@ import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.ShopVaultService
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
@@ -35,7 +36,7 @@ class ShopVaultMenu(
 
         val gui = ChestGui(6, ComponentHolder.of(lang.msg("gui.vault.title")))
         val pane = StaticPane(9, 6)
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
 
         for ((idx, itemAndAmt) in slice.withIndex()) {
             val (item, total) = itemAndAmt

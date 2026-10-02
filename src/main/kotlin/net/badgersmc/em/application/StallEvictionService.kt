@@ -1,6 +1,7 @@
 package net.badgersmc.em.application
 
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.stall.OwnerRef
@@ -28,6 +29,7 @@ class StallEvictionService(
     private val config: EnthusiaMarketConfig,
     private val schematics: SchematicService = SchematicService.Disabled,
     private val ipLimiter: IpLimiter,
+    private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
 ) {
     private val log = Logger.getLogger(StallEvictionService::class.java.name)
 
@@ -35,12 +37,15 @@ class StallEvictionService(
         /** Stall was owned and is now UNOWNED. */
         data object Evicted : Result
         data object NotFound : Result
+        /** Stall is reserved by the moderation provider and cannot be mutated. */
+        data object Blocked : Result
         /** Stall was not in an owned state (already UNOWNED / auctioning). */
         data object NotOwned : Result
     }
 
     @Suppress("TooGenericExceptionCaught")
     fun evict(stallId: StallId): Result {
+        if (mutationGate.isStallLocked(stallId.value)) return Result.Blocked
         val stall = stalls.findById(stallId) ?: return Result.NotFound
         if (stall.state != StallState.OWNED && stall.state != StallState.GRACE) {
             return Result.NotOwned

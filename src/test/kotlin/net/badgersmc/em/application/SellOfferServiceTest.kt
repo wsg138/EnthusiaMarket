@@ -91,7 +91,9 @@ class SellOfferServiceTest {
             offers, stalls, mockk(relaxed = true), economy,
             config(taxPct = 0.10, taxDestination = "system"),
             guildProvider, limits, ownership, alerter,
-        )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         return AlertProbe(svc, alerter)
     }
 
@@ -115,7 +117,9 @@ class SellOfferServiceTest {
         every { auctions.findOpenByStall(stallId) } returns null
         every { offers.findByStall(any()) } returns null
 
-        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<CompensationAlertService>(relaxed = true))
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<CompensationAlertService>(relaxed = true),
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.create(stallId, seller, price = 500L)
 
         val ok = assertIs<Result.Created>(r)
@@ -129,7 +133,9 @@ class SellOfferServiceTest {
         val auctions = mockk<AuctionRepository>()
         every { stalls.findById(stallId) } returns ownedStall(owner = UUID.randomUUID())
 
-        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<CompensationAlertService>(relaxed = true))
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<CompensationAlertService>(relaxed = true),
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.create(stallId, seller, price = 500L)
 
         assertEquals(Result.NotAuthorised, r)
@@ -144,7 +150,9 @@ class SellOfferServiceTest {
         every { auctions.findOpenByStall(stallId) } returns mockk(relaxed = true)
         every { offers.findByStall(any()) } returns null
 
-        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<CompensationAlertService>(relaxed = true))
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<CompensationAlertService>(relaxed = true),
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.create(stallId, seller, price = 500L)
 
         assertEquals(Result.AuctionOpen, r)
@@ -158,7 +166,9 @@ class SellOfferServiceTest {
         every { stalls.findById(stallId) } returns ownedStall()
         every { offers.findByStall(stallId) } returns mockk(relaxed = true)
 
-        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<CompensationAlertService>(relaxed = true))
+        val svc = SellOfferService(offers, stalls, auctions, mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<CompensationAlertService>(relaxed = true),
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.create(stallId, seller, price = 500L)
 
         assertEquals(Result.OfferOpen, r)
@@ -173,7 +183,9 @@ class SellOfferServiceTest {
             mockk(relaxed = true), stalls, mockk(relaxed = true),
             mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
             mockk<CompensationAlertService>(relaxed = true),
- )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         assertEquals(Result.NotFound, svc.create(stallId, seller, 500L))
     }
 
@@ -182,7 +194,9 @@ class SellOfferServiceTest {
             mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
             mockk<CompensationAlertService>(relaxed = true),
- )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         assertIs<Result.Rejected>(svc.create(stallId, seller, 0L))
         assertIs<Result.Rejected>(svc.create(stallId, seller, -5L))
     }
@@ -198,7 +212,9 @@ class SellOfferServiceTest {
             offers, mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
             mockk<CompensationAlertService>(relaxed = true),
- )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.cancel(stallId, seller)
 
         assertIs<Result.Cancelled>(r)
@@ -217,7 +233,9 @@ class SellOfferServiceTest {
             offers, stalls, mockk(relaxed = true),
             mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
             mockk<CompensationAlertService>(relaxed = true),
- )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.cancel(stallId, intruder)
 
         assertEquals(Result.NotAuthorised, r)
@@ -231,7 +249,9 @@ class SellOfferServiceTest {
             offers, mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
             mockk<CompensationAlertService>(relaxed = true),
- )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         assertEquals(Result.NotFound, svc.cancel(stallId, seller))
     }
 
@@ -256,7 +276,9 @@ class SellOfferServiceTest {
             mockk(relaxed = true),
             limits, ownership,
             mockk<CompensationAlertService>(relaxed = true),
-        )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.purchase(stallId, buyer)
 
         val ok = assertIs<Result.Purchased>(r)
@@ -266,12 +288,136 @@ class SellOfferServiceTest {
         verify { economy.withdraw(buyer, 1100L) }
         // Seller paid price.
         verify { economy.deposit(seller, 1000L) }
-        // System sink — no tax deposit.
+        // System sink â€” no tax deposit.
         verify(exactly = 0) { economy.deposit(taxAccount, any()) }
         // Ownership transferred.
         verify { stalls.save(match { it.owner == OwnerRef.solo(buyer) && it.nextRentAt != null }) }
         // Offer closed.
         verify { offers.delete(stallId) }
+    }
+
+    @Test fun `purchase removes previous non-admin shops and replaces region owner`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val economy = mockk<EconomyProvider>()
+        val limits = mockk<LimitResolutionService>(relaxed = true)
+        val ownership = mockk<StallOwnershipCounter>(relaxed = true)
+        val shops = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        val regions = mockk<net.badgersmc.em.domain.ports.RegionMemberSync>(relaxed = true)
+        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { economy.withdraw(buyer, 1100L) } returns true
+        every { economy.deposit(any(), any()) } returns true
+
+        val normalShop = net.badgersmc.em.domain.shop.Shop(
+            id = 7L,
+            stallId = stallId.value,
+            owner = seller,
+            signWorld = "world",
+            signX = 1,
+            signY = 64,
+            signZ = 1,
+            containerWorld = "world",
+            containerX = 1,
+            containerY = 63,
+            containerZ = 1,
+            sellItem = "item",
+            sellAmount = 1,
+            costItem = "item",
+            costAmount = 1,
+        )
+        val adminShop = normalShop.copy(id = 8L, adminShop = true)
+        every { shops.findByStall(stallId.value) } returns listOf(normalShop, adminShop)
+
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true), economy,
+            config(taxPct = 0.10, taxDestination = "system"),
+            mockk(relaxed = true),
+            limits, ownership,
+            mockk<CompensationAlertService>(relaxed = true),
+            shops = shops,
+            regionMembers = regions,
+        )
+
+        val result = svc.purchase(stallId, buyer)
+
+        assertIs<Result.Purchased>(result)
+        verify { stalls.save(match { it.owner == OwnerRef.solo(buyer) }) }
+        verify(exactly = 1) { shops.delete(7L) }
+        verify(exactly = 0) { shops.delete(8L) }
+        verify(exactly = 1) { regions.setOwner("world", "s1", buyer) }
+    }
+
+    @Suppress("LongMethod")
+    @Test fun `purchase completes and alerts when committed transfer cleanup fails`() {
+        val offers = mockk<SellOfferRepository>(relaxed = true)
+        val stalls = mockk<StallRepository>(relaxed = true)
+        val economy = mockk<EconomyProvider>()
+        val limits = mockk<LimitResolutionService>(relaxed = true)
+        val ownership = mockk<StallOwnershipCounter>(relaxed = true)
+        val alerter = mockk<CompensationAlertService>(relaxed = true)
+        val shops = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        val regions = mockk<net.badgersmc.em.domain.ports.RegionMemberSync>(relaxed = true)
+        every { limits.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed
+        every { ownership.counts(any()) } returns StallOwnershipCounter.OwnedCounts(total = 0, byKind = emptyMap())
+        every { offers.findByStall(stallId) } returns SellOffer(stallId, seller, 1000L, Instant.now())
+        every { stalls.findById(stallId) } returns ownedStall()
+        every { economy.withdraw(buyer, 1100L) } returns true
+        every { economy.deposit(any(), any()) } returns true
+        val normalShop = net.badgersmc.em.domain.shop.Shop(
+            id = 7L,
+            stallId = stallId.value,
+            owner = seller,
+            signWorld = "world",
+            signX = 1,
+            signY = 64,
+            signZ = 1,
+            containerWorld = "world",
+            containerX = 1,
+            containerY = 63,
+            containerZ = 1,
+            sellItem = "item",
+            sellAmount = 1,
+            costItem = "item",
+            costAmount = 1,
+        )
+        every { shops.findByStall(stallId.value) } returns listOf(normalShop)
+        every { shops.delete(7L) } throws IllegalStateException("shop delete failed")
+        every { regions.setOwner("world", "s1", buyer) } throws IllegalStateException("wg sync failed")
+
+        val svc = SellOfferService(
+            offers, stalls, mockk(relaxed = true), economy,
+            config(taxPct = 0.10, taxDestination = "system"),
+            mockk(relaxed = true),
+            limits, ownership,
+            alerter,
+            shops = shops,
+            regionMembers = regions,
+        )
+
+        val result = svc.purchase(stallId, buyer)
+
+        assertIs<Result.Purchased>(result)
+        verify { economy.deposit(seller, 1000L) }
+        verify { offers.delete(stallId) }
+        verify {
+            alerter.alert(
+                context = match { it.contains("shop-cleanup") },
+                detail = any(),
+                affected = buyer,
+                amount = 1000L,
+            )
+        }
+        verify {
+            alerter.alert(
+                context = match { it.contains("region-sync") },
+                detail = any(),
+                affected = buyer,
+                amount = 1000L,
+            )
+        }
     }
 
     @Test fun `purchase routes tax to configured destination UUID`() {
@@ -293,7 +439,9 @@ class SellOfferServiceTest {
             mockk(relaxed = true),
             limits, ownership,
             mockk<CompensationAlertService>(relaxed = true),
-        )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         svc.purchase(stallId, buyer)
 
         // Tax routed to the configured account.
@@ -318,7 +466,9 @@ class SellOfferServiceTest {
                 config(taxPct = 0.10), mockk(relaxed = true),
                 limits, ownership,
             mockk<CompensationAlertService>(relaxed = true),
-            )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.purchase(stallId, buyer)
 
         assertIs<Result.Rejected>(r)
@@ -343,7 +493,9 @@ class SellOfferServiceTest {
             mockk(relaxed = true),
             mockk(relaxed = true),
             mutationGate = gate,
-        )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
 
         val result = svc.purchase(stallId, buyer)
 
@@ -374,7 +526,9 @@ class SellOfferServiceTest {
             limits,
             ownership,
             mockk(relaxed = true),
-        )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
 
         val result = svc.purchase(stallId, buyer)
 
@@ -424,7 +578,9 @@ class SellOfferServiceTest {
             guildProvider,
             limits, ownership,
             mockk<CompensationAlertService>(relaxed = true),
-        )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.purchase(stallId, buyer)
 
         val ok = assertIs<Result.Purchased>(r)
@@ -435,7 +591,7 @@ class SellOfferServiceTest {
         // Proceeds go to the guild bank, not the seller's personal balance.
         verify(exactly = 1) { guildProvider.bankDeposit(guildId, 1000L) }
         verify(exactly = 0) { economy.deposit(memberSeller, 1000L) }
-        // System sink — no tax deposit.
+        // System sink â€” no tax deposit.
         verify(exactly = 0) { economy.deposit(taxAccount, any()) }
         // Buyer owns the stall personally now, even though it was guild-owned before.
         verify { stalls.save(match { it.owner == OwnerRef.solo(buyer) }) }
@@ -454,7 +610,9 @@ class SellOfferServiceTest {
             offers, stalls, mockk(relaxed = true), economy,
             config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
             mockk<CompensationAlertService>(relaxed = true),
- )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         val r = svc.purchase(stallId, seller)
 
         assertIs<Result.Rejected>(r)
@@ -469,7 +627,9 @@ class SellOfferServiceTest {
             offers, mockk(relaxed = true), mockk(relaxed = true),
             mockk(relaxed = true), config(), mockk(relaxed = true), mockk<LimitResolutionService>(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true),
             mockk<CompensationAlertService>(relaxed = true),
- )
+
+            shops = mockk(relaxed = true),
+            regionMembers = mockk(relaxed = true),)
         assertEquals(Result.NotFound, svc.purchase(stallId, buyer))
     }
 

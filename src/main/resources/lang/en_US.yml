@@ -16,6 +16,10 @@ admin:
   rent:
     resync:
       result: "<prefix><shadow:#000000:1>rent resync: <green><count></green> <gray>stall(s) updated to the current default rent terms</shadow>"
+    extendall:
+      result: "<prefix><shadow:#000000:1>rent extendall <aqua><duration></aqua>: updated=<green><updated></green> recovered=<green><recovered></green> skipped=<yellow><skipped></yellow> failed=<red><failed></red></shadow>"
+      invalid_duration: "<prefix><shadow:#000000:1><red>Invalid duration:</red> <duration> <gray>(use a positive whole number followed by m, h, or d; e.g. 30m, 12h, 7d)</gray></shadow>"
+      unavailable: "<prefix><shadow:#000000:1><red>Bulk rent extension service is unavailable.</red></shadow>"
   pricing:
     preview:
       empty: "<prefix><shadow:#000000:1><yellow>No pricing rows found — no stalls with resolvable region geometry for world=<world> prefix=<region_prefix>. Check the regions or run <white>/em import</white> first.</shadow>"
@@ -59,6 +63,7 @@ admin:
     success: "<prefix><shadow:#000000:1><green>Evicted</green> <aqua><stall></aqua> <green>— reset to unowned and WG cleared.</shadow>"
     not_found: "<prefix><shadow:#000000:1><red>Stall not found:</red> <stall></shadow>"
     not_owned: "<prefix><shadow:#000000:1><yellow>Stall</yellow> <aqua><stall></aqua> <yellow>is not currently owned.</shadow>"
+    blocked: "<prefix><shadow:#000000:1><yellow>Stall</yellow> <aqua><stall></aqua> <yellow>is temporarily unavailable while moderation is active.</shadow>"
   maintenance:
     freeze:
       activated: "<prefix><shadow:#000000:1><green>Maintenance freeze ACTIVE</green> — all rent and auction timers are paused. Run <white>/em maintenance unfreeze</white> when the server is back.</shadow>"

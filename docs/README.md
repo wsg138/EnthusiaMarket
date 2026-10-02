@@ -4,7 +4,7 @@
 **Owner before handoff:** BadgersMC (blrusso18@gmail.com)
 **Receiving agent:** `owl-alpha`
 **Handoff date:** 2026-05-24
-**Build status:** `./gradlew test shadowJar` green; Konsist layer rules pass; plugin compiles and enables on Paper 1.21.11.
+**Build status:** `./gradlew test shadowJar` green; Konsist layer rules pass; plugin compiles for Paper 26.2.
 
 This project follows **SPEAR** (Spec-Proven Engineering with Architectural Requirements). Read `~/.claude/CLAUDE.md` for the methodology summary before touching code.
 

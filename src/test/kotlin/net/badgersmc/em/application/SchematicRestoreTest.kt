@@ -57,22 +57,35 @@ class SchematicRestoreTest {
     )
 
     @Test
-    fun `grace expiry starts emergency auction, does NOT restore schematic`() {
+    fun `grace expiry restores schematic before emergency auction`() {
         val stallRepo = mockk<StallRepository>(relaxUnitFun = true)
         every { stallRepo.all() } returns listOf(graceStall)
         val auctionRepo = mockk<AuctionRepository>(relaxed = true)
         val shopRepo = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        every { shopRepo.findByStall(any()) } returns emptyList()
+        val schematics = mockk<SchematicService>()
+        every {
+            schematics.restore(graceStall.id.value, graceStall.world, graceStall.regionId)
+        } returns SchematicService.Result.Success
 
         val service = RentCollectionService(
             stallRepo, shopRepo, config(), auctionRepo, mockk(),
+            mockk(relaxed = true), mockk(relaxed = true),
+            schematics = schematics,
         )
 
         val report = service.tick(now)
 
-        // Emergency auction triggered, not eviction
         require(report.evictions == 1)
+        verify(exactly = 1) {
+            schematics.restore(graceStall.id.value, graceStall.world, graceStall.regionId)
+        }
         verify { auctionRepo.create(any()) }
-        verify { stallRepo.save(match { it.state == StallState.EMERGENCY_AUCTIONING }) }
+        verify {
+            stallRepo.save(match {
+                it.state == StallState.EMERGENCY_AUCTIONING && it.members.isEmpty()
+            })
+        }
     }
 
     // --- Voluntary sellback restores geometry ---------------------------

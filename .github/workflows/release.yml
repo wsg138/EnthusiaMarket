@@ -10,6 +10,7 @@ jobs:
     permissions:
       contents: write
     env:
+      NEXUS_REF: 057836befb9e35aa252cf90104030ec86f28b33f
       LUMAGUILDS_JAR: ${{ github.workspace }}/libs/LumaGuilds.jar
 
     steps:
@@ -21,7 +22,7 @@ jobs:
       - uses: actions/setup-java@3a4f6e1af504cf6a31855fa899c6aa5355ba6c12  # v4.7.1
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 25
 
       - name: Bump version
         id: bump
@@ -41,6 +42,14 @@ jobs:
           NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
           echo "Latest tag: ${LATEST:-none}, bumping to v$NEXT"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Nexus 2.3.0 dependency locally
+        run: |
+          git clone https://github.com/BadgersMC/Nexus.git "$RUNNER_TEMP/nexus"
+          cd "$RUNNER_TEMP/nexus"
+          git checkout "$NEXUS_REF"
+          chmod +x gradlew
+          ./gradlew publishToMavenLocal --no-daemon --console=plain
 
       - name: Download latest LumaGuilds release
         env:
@@ -64,7 +73,7 @@ jobs:
       - name: Build shadowJar
         env:
           RELEASE_VERSION: ${{ steps.bump.outputs.version }}
-        run: ./gradlew shadowJar --no-daemon -PreleaseVersion="$RELEASE_VERSION"
+        run: ./gradlew shadowJar --no-daemon -PuseMavenLocal=true -PreleaseVersion="$RELEASE_VERSION"
 
       - name: Create Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2

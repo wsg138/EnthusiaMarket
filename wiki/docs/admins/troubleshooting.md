@@ -16,7 +16,7 @@ updated: 2026-06-25
 
 Check:
 
-1. Paper 1.21.11 or later — run `/version`.
+1. Paper 26.2 — run `/version`.
 2. All hard dependencies installed: WorldGuard, Vault, EnthusiaCurrency, LumaGuilds.
 3. Console error messages — they name the missing dependency.
 

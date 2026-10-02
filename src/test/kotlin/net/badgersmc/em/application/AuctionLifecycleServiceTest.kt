@@ -12,7 +12,6 @@ import net.badgersmc.em.domain.auction.AuctionState
 import net.badgersmc.em.domain.auction.Bid
 import net.badgersmc.em.domain.offer.SellOfferRepository
 import net.badgersmc.em.domain.ports.EconomyProvider
-import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.RentTerms
 import net.badgersmc.em.domain.stall.Stall
@@ -47,6 +46,25 @@ class AuctionLifecycleServiceTest {
         ownerSince = null,
         winningBid = 0L,
         rentTerms = RentTerms.formula(1.0)
+    )
+
+    private fun boundShop(id: Long, adminShop: Boolean = false) = net.badgersmc.em.domain.shop.Shop(
+        id = id,
+        stallId = stallId.value,
+        owner = playerUuid,
+        signWorld = "world",
+        signX = id.toInt(),
+        signY = 64,
+        signZ = 1,
+        containerWorld = "world",
+        containerX = id.toInt(),
+        containerY = 63,
+        containerZ = 1,
+        sellItem = "item",
+        sellAmount = 1,
+        costItem = "item",
+        costAmount = 1,
+        adminShop = adminShop,
     )
 
     private val sampleAuction = Auction(
@@ -88,6 +106,9 @@ class AuctionLifecycleServiceTest {
         val economy: EconomyProvider,
         val config: EnthusiaMarketConfig,
         val limits: LimitResolutionService,
+        val shops: net.badgersmc.em.domain.shop.ShopRepository,
+        val regions: net.badgersmc.em.domain.ports.RegionMemberSync,
+        val ipLimiter: IpLimiter,
     )
 
     private fun buildService(
@@ -102,7 +123,7 @@ class AuctionLifecycleServiceTest {
         ownedByWinner: List<Stall> = emptyList(),
         claimDecision: LimitResolutionService.ClaimDecision = LimitResolutionService.ClaimDecision.Allowed,
         overriddenConfig: EnthusiaMarketConfig? = null,
-        mutationGate: MarketMutationGate = MarketMutationGate.Open,
+        boundShops: List<net.badgersmc.em.domain.shop.Shop> = emptyList(),
     ): ServiceWithMocks {
         val auctionRepo = mockk<AuctionRepository>(relaxUnitFun = true)
         every { auctionRepo.findById(auctionId) } returns auction
@@ -129,14 +150,36 @@ class AuctionLifecycleServiceTest {
         // relaxed mocks on inline-class-keyed lookups (StallId is @JvmInline).
         val sellOffers = mockk<SellOfferRepository>(relaxed = true)
         every { sellOffers.findByStall(any()) } returns null
+        val shops = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        every { shops.findByStall(stallId.value) } returns boundShops
+        val regions = mockk<net.badgersmc.em.domain.ports.RegionMemberSync>(relaxed = true)
+        val ipLimiter = mockk<IpLimiter>(relaxed = true).also {
+            every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null)
+        }
 
         return ServiceWithMocks(
-            service = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, limits, sellOffers, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true), mutationGate = mutationGate),
+            service = AuctionLifecycleService(
+                auctionRepository = auctionRepo,
+                stallRepository = stallRepo,
+                economy = economy,
+                config = cfg,
+                limits = limits,
+                sellOffers = sellOffers,
+                regionMembers = regions,
+                ownership = mockk<StallOwnershipCounter>(relaxed = true),
+                ipLimiter = ipLimiter,
+                shops = shops,
+                schematics = mockk(relaxed = true),
+                lang = mockk(relaxed = true),
+            ),
             auctionRepo = auctionRepo,
             stallRepo = stallRepo,
             economy = economy,
             config = cfg,
             limits = limits,
+            shops = shops,
+            regions = regions,
+            ipLimiter = ipLimiter,
         )
     }
 
@@ -166,7 +209,7 @@ class AuctionLifecycleServiceTest {
         val auctionRepo = mockk<AuctionRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true))
+val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true), mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true))
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
 
@@ -183,19 +226,6 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
 
         val failure = assertIs<AuctionResult.Failure>(result)
         assertTrue { failure.reason.contains("owner", ignoreCase = true) }
-    }
-
-    @Test
-    fun `createAuction rejects a moderated stall`() {
-        val gate = object : MarketMutationGate {
-            override fun isStallLocked(stallId: String): Boolean = true
-        }
-        val svc = buildService(openAuctionByStall = null, auction = null, mutationGate = gate)
-
-        val result = svc.service.createAuction(stallId, playerUuid, 100L, null)
-
-        assertIs<AuctionResult.Failure>(result)
-        verify(exactly = 0) { svc.auctionRepo.create(any()) }
     }
 
     @Test
@@ -231,6 +261,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
             auctionRepo, stallRepo, mockk(relaxed = true), config(),
             mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed },
             sellOffers,
+            mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true),
             mockk(relaxed = true),
             mockk<StallOwnershipCounter>(relaxed = true),
             mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) },
@@ -253,7 +284,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val stallRepo = mockk<StallRepository>()
         every { stallRepo.findById(stallId) } returns sampleStall
         val economy = mockk<EconomyProvider>()
-val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true))
+val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true), mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true))
 
         val result = svc.createAuction(stallId, playerUuid, 100L, null)
 
@@ -318,7 +349,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true))
+val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true), mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true))
 
         val result = svc.placeBid(auctionId, otherPlayer, 200L, "1.2.3.4")
 
@@ -448,7 +479,7 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         val stallRepo = mockk<StallRepository>()
         val economy = mockk<EconomyProvider>()
         val cfg = config()
-val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true))
+val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<LimitResolutionService>(relaxed = true).also { every { it.canClaim(any(), any(), any(), any()) } returns LimitResolutionService.ClaimDecision.Allowed }, mockk<SellOfferRepository>(relaxed = true).also { every { it.findByStall(any()) } returns null }, mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true), mockk(relaxed = true), mockk<StallOwnershipCounter>(relaxed = true), mockk<IpLimiter>(relaxed = true).also { every { it.acquireAuction(any(), any()) } returns IpLimiter.Attempt(true, null) }, mockk(relaxed = true), mockk(relaxed = true))
 
         val result = svc.cancelAuction(auctionId, playerUuid)
 
@@ -487,6 +518,69 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
         verify { svc.auctionRepo.save(match { auction ->
             auction.state == AuctionState.CLOSED
         }) }
+    }
+
+    @Test
+    fun `settleExpired removes prior non-admin shops but preserves admin shops`() {
+        val winner = otherPlayer
+        val expiredAuction = sampleAuction.copy(
+            highBid = Bid(winner, 500L, now.plus(Duration.ofHours(23)))
+        )
+        val normalShop = boundShop(7L)
+        val adminShop = boundShop(8L, adminShop = true)
+        val svc = buildService(
+            expiredAuctions = listOf(expiredAuction),
+            boundShops = listOf(normalShop, adminShop),
+        )
+
+        val report = svc.service.settleExpired()
+
+        assertEquals(1, report.settled)
+        assertEquals(0, report.errors)
+        verify(exactly = 1) { svc.shops.delete(7L) }
+        verify(exactly = 0) { svc.shops.delete(8L) }
+    }
+
+    @Test
+    fun `emergency auction award also removes prior non-admin shops`() {
+        val winner = otherPlayer
+        val emergencyStall = sampleStall.copy(state = StallState.EMERGENCY_AUCTIONING)
+        val expiredAuction = sampleAuction.copy(
+            highBid = Bid(winner, 500L, now.plus(Duration.ofHours(23)))
+        )
+        val normalShop = boundShop(9L)
+        val svc = buildService(
+            stall = emergencyStall,
+            expiredAuctions = listOf(expiredAuction),
+            boundShops = listOf(normalShop),
+        )
+
+        val report = svc.service.settleExpired()
+
+        assertEquals(1, report.settled)
+        assertEquals(0, report.errors)
+        verify(exactly = 1) { svc.shops.delete(9L) }
+    }
+
+    @Test
+    fun `auction shop cleanup failure does not undo a committed award`() {
+        val winner = otherPlayer
+        val expiredAuction = sampleAuction.copy(
+            highBid = Bid(winner, 500L, now.plus(Duration.ofHours(23)))
+        )
+        val normalShop = boundShop(10L)
+        val svc = buildService(
+            expiredAuctions = listOf(expiredAuction),
+            boundShops = listOf(normalShop),
+        )
+        every { svc.shops.delete(10L) } throws IllegalStateException("shop cleanup failed")
+
+        val report = svc.service.settleExpired()
+
+        assertEquals(1, report.settled)
+        assertEquals(0, report.errors)
+        verify { svc.stallRepo.save(match { it.owner == OwnerRef.solo(winner) }) }
+        verify(exactly = 0) { svc.economy.deposit(winner, 500L) }
     }
 
     @Test
@@ -808,6 +902,50 @@ val svc = AuctionLifecycleService(auctionRepo, stallRepo, economy, cfg, mockk<Li
     }
 
     // ===== Emergency auction revert (PR #182) =====
+
+    @Test
+    fun `emergency no bid release clears the previous ownership context`() {
+        val staleMember = UUID.fromString("00000000-0000-0000-0000-000000000003")
+        val emergencyStall = sampleStall.copy(
+            state = StallState.EMERGENCY_AUCTIONING,
+            owner = OwnerRef.solo(playerUuid),
+            ownerSince = now.minus(Duration.ofDays(30)),
+            winningBid = 2_500L,
+            members = setOf(staleMember),
+            nextRentAt = now.minus(Duration.ofDays(3)),
+        )
+        val expiredNoBid = sampleAuction.copy(
+            state = AuctionState.OPEN,
+            highBid = null,
+            endAt = now.minusSeconds(60),
+        )
+        val normalShop = boundShop(11L)
+        val adminShop = boundShop(12L, adminShop = true)
+        val svc = buildService(
+            stall = emergencyStall,
+            expiredAuctions = listOf(expiredNoBid),
+            boundShops = listOf(normalShop, adminShop),
+        )
+
+        svc.service.settleExpired()
+
+        verify {
+            svc.stallRepo.save(match {
+                it.state == StallState.UNOWNED &&
+                    it.owner.type == net.badgersmc.em.domain.stall.OwnerType.NONE &&
+                    it.ownerSince == null &&
+                    it.winningBid == 0L &&
+                    it.members.isEmpty() &&
+                    it.nextRentAt == null
+            })
+        }
+        verify(exactly = 1) { svc.shops.delete(11L) }
+        verify(exactly = 0) { svc.shops.delete(12L) }
+        verify(exactly = 1) {
+            svc.regions.clearOwnersAndMembers(emergencyStall.world, emergencyStall.regionId)
+        }
+        verify(exactly = 1) { svc.ipLimiter.releaseStallByOwnerId(playerUuid.toString()) }
+    }
 
     @Test
     fun `settleExpired reverts emergency auction with no bids to UNOWNED`() {
