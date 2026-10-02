@@ -335,9 +335,10 @@ class SellOfferService(
         )
     }
 
-    private fun parseTaxDestination(raw: String): UUID? = try {
-        UUID.fromString(raw.trim())
-    } catch (_: IllegalArgumentException) {
-        null
-    }
+}
+
+private fun parseTaxDestination(raw: String): UUID? = try {
+    UUID.fromString(raw.trim())
+} catch (_: IllegalArgumentException) {
+    null
 }
