@@ -18,23 +18,10 @@ import net.badgersmc.em.events.StallStateChangedEvent
 import net.badgersmc.nexus.annotations.Service
 import org.bukkit.Bukkit
 import java.time.Clock
-import java.time.Instant
 import java.util.UUID
 import java.util.logging.Logger
 
-/**
- * Orchestrates outright "click-the-sign-to-buy" stall purchases (REQ-250).
- *
- * Used by [net.badgersmc.em.infrastructure.listeners.PurchaseSignClickListener]
- * to convert a buyer + price + UNOWNED stall into ownership. Designed
- * for the post-initial-auction lifecycle: once the one-shot mass
- * auction has run, every remaining or evicted stall becomes buyable
- * via its purchase sign at the price written on line 3.
- *
- * Compensation order matches `AuctionLifecycleService.settleWithWinner`
- * and `SellOfferService.purchase`: withdraw → persist → fire event.
- * If withdraw fails the buyer is untouched and no state moves.
- */
+/** Orchestrates outright click-to-buy stall purchases (REQ-250). */
 @Service
 @Suppress("LongParameterList")
 class StallBuyoutService(
@@ -51,10 +38,8 @@ class StallBuyoutService(
     private val moderationPolicy: MarketModerationPolicy = MarketModerationPolicy.AllowAll,
     private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
 ) {
-
     private val log = Logger.getLogger(StallBuyoutService::class.java.name)
 
-    /** Injectable clock for deterministic time-travel in tests. */
     internal var clock: Clock = Clock.systemUTC()
 
     sealed interface Result {
@@ -67,44 +52,36 @@ class StallBuyoutService(
         data class Rejected(val reason: String) : Result
     }
 
-    /**
-     * Buy the stall for [buyer] personally. Charges + awards to a SOLO
-     * owner ref. Convenience overload over [buyForOwner].
-     */
-    fun buy(stallId: StallId, buyer: UUID, price: Long, ip: String): Result =
-        buyForOwner(stallId, payer = buyer, owner = OwnerRef.solo(buyer), price = price, ip = ip)
+    private data class BuyRequest(
+        val stallId: StallId,
+        val payer: UUID,
+        val owner: OwnerRef,
+        val price: Long,
+        val ip: String,
+    )
 
-    /**
-     * Buy the stall on behalf of [actor]'s current guild. [actor] is
-     * charged personally (the guild bank isn't a UUID-addressable
-     * economy account in the current Vault setup); the stall is
-     * awarded to OwnerRef.guild. Requires the actor to be a guild
-     * member with the MANAGE_SHOPS permission so randoms can't bind
-     * a stall to a guild they don't have authority over.
-     */
+    fun buy(stallId: StallId, buyer: UUID, price: Long, ip: String): Result =
+        buyForOwner(BuyRequest(stallId, buyer, OwnerRef.solo(buyer), price, ip))
+
     fun buyForGuild(stallId: StallId, actor: UUID, price: Long, ip: String): Result {
         val guild = guildProvider.guildOf(actor) ?: return Result.NotInGuild
-        if (!guildProvider.hasShopPermission(
-                actor,
-                guild.id,
-                GuildProvider.GuildPermission.MANAGE_SHOPS,
-            )
-        ) {
+        if (!guildProvider.hasShopPermission(actor, guild.id, GuildProvider.GuildPermission.MANAGE_SHOPS)) {
             return Result.NoGuildPermission
         }
-        // WG owner sync (including the GUILD skip) is handled inside buyForOwner.
-        return buyForOwner(stallId, payer = actor, owner = OwnerRef.guild(guild.id), price = price, ip = ip)
+        return buyForOwner(BuyRequest(stallId, actor, OwnerRef.guild(guild.id), price, ip))
     }
 
-    /**
-     * Personal-ownership limit gate. Guild buys route here with `owner.type == GUILD` and skip it
-     * (a guild claim is not a personal claim). Counts SOLO-owned stalls only. Returns a rejecting
-     * [Result] when the player is at a cap, or null when the claim is allowed.
-     */
-    private fun enforceLimit(owner: OwnerRef, payer: UUID, stall: net.badgersmc.em.domain.stall.Stall): Result? {
-        if (owner.type != OwnerType.SOLO) return null
-        val counts = ownership.counts(payer)
-        return when (val decision = limits.canClaim(payer, stall.kind, counts.total, counts.byKind[stall.kind] ?: 0)) {
+    private fun enforceLimit(request: BuyRequest, stall: Stall): Result? {
+        if (request.owner.type != OwnerType.SOLO) return null
+        val counts = ownership.counts(request.payer)
+        return when (
+            val decision = limits.canClaim(
+                request.payer,
+                stall.kind,
+                counts.total,
+                counts.byKind[stall.kind] ?: 0,
+            )
+        ) {
             is LimitResolutionService.ClaimDecision.Rejected.TotalCapReached ->
                 Result.Rejected("Stall limit reached (${decision.cap})")
             is LimitResolutionService.ClaimDecision.Rejected.KindCapReached ->
@@ -113,184 +90,155 @@ class StallBuyoutService(
         }
     }
 
-    /**
-     * Refund the buyer after a persistence failure that left them charged for a stall they never
-     * got. Best-effort: if the refund itself throws, log loudly — the caller always rethrows the
-     * ORIGINAL persistence exception (the root cause), never the deposit error.
-     */
-    private fun refundAfterFailedAward(payer: UUID, price: Long, stallId: StallId, owner: OwnerRef, cause: Exception) {
-        // economy.deposit returns false on failure (and may also throw), so check both.
-        val refunded = try {
-            economy.deposit(payer, price)
-        } catch (refund: Exception) {
-            log.severe("StallBuyoutService: refund of $price to $payer threw: ${refund.message}")
-            false
-        }
-        if (refunded) {
-            log.severe(
-                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} after charging " +
-                    "payer $payer price=$price (owner=$owner). Payer has been refunded. cause=${cause.message}"
-            )
+    private fun refundAfterFailedAward(request: BuyRequest, cause: Exception) {
+        val refunded = refundPayer(request)
+        val stallId = request.stallId.value
+        val outcome = if (refunded) {
+            "Payer has been refunded."
         } else {
-            log.severe(
-                "StallBuyoutService: ownership transfer failed for stall ${stallId.value} AND the refund of " +
-                    "$price to $payer failed — manual refund required. cause=${cause.message}"
-            )
+            "Refund failed — manual refund required."
         }
+        log.severe(
+            "StallBuyoutService: ownership transfer failed for stall $stallId after charging " +
+                "payer ${request.payer} price=${request.price} (owner=${request.owner}). $outcome cause=${cause.message}",
+        )
     }
 
-    /** The stall is mid-auction (initial one-shot or re-auction), so click-to-buy must defer. */
-    private fun isAuctionLive(stall: net.badgersmc.em.domain.stall.Stall, stallId: StallId): Boolean =
+    private fun refundPayer(request: BuyRequest): Boolean = try {
+        economy.deposit(request.payer, request.price)
+    } catch (refund: Exception) {
+        log.severe("StallBuyoutService: refund of ${request.price} to ${request.payer} threw: ${refund.message}")
+        false
+    }
+
+    private fun isAuctionLive(stall: Stall, stallId: StallId): Boolean =
         stall.state in setOf(StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING) ||
             auctions.findOpenByStall(stallId) != null
 
-    /**
-     * Run all validation gates before committing a purchase. Returns a rejecting
-     * [Result] if any gate fails, or null when the purchase is allowed to proceed.
-     * Extracted from [buyForOwner] to keep complexity within static analysis limits.
-     */
-    private fun validatePurchase(
-        stall: Stall,
-        stallId: StallId,
-        owner: OwnerRef,
-        payer: UUID,
-        price: Long,
-    ): Result? {
-        if (price <= 0) return Result.Rejected("Sign price is invalid")
-
-        if (isAuctionLive(stall, stallId)) return Result.AuctionLive
-
-        if (stall.state != StallState.UNOWNED) {
-            return Result.AlreadyOwned
-        }
-
-        if (config.auction.directBuyDelaySeconds > 0) {
-            val recentClosed = auctions.findMostRecentClosedByStall(stallId)
-            if (recentClosed != null) {
-                val allowedAt = recentClosed.endAt.plusSeconds(config.auction.directBuyDelaySeconds)
-                if (clock.instant() < allowedAt) {
-                    return Result.Rejected("Direct purchase opens after the auction window ends")
-                }
-            }
-        }
-
-        enforceLimit(owner, payer, stall)?.let { return it }
-
-        return null
+    private fun validatePurchase(stall: Stall, request: BuyRequest): Result? {
+        if (request.price <= 0) return Result.Rejected("Sign price is invalid")
+        if (isAuctionLive(stall, request.stallId)) return Result.AuctionLive
+        if (stall.state != StallState.UNOWNED) return Result.AlreadyOwned
+        directBuyDelayRejection(request.stallId)?.let { return it }
+        return enforceLimit(request, stall)
     }
 
-    private fun buyForOwner(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
-        return try {
-            moderationPolicy.withAcquisitionPermit(payer) {
-                buyForOwnerWithPermit(stallId, payer, owner, price, ip)
-            }
-        } catch (blocked: MarketAcquisitionBlockedException) {
-            Result.Rejected(blocked.message ?: "Market acquisitions are restricted")
+    private fun directBuyDelayRejection(stallId: StallId): Result.Rejected? {
+        if (config.auction.directBuyDelaySeconds <= 0) return null
+        val recentClosed = auctions.findMostRecentClosedByStall(stallId) ?: return null
+        val allowedAt = recentClosed.endAt.plusSeconds(config.auction.directBuyDelaySeconds)
+        return if (clock.instant() < allowedAt) {
+            Result.Rejected("Direct purchase opens after the auction window ends")
+        } else {
+            null
         }
     }
 
-    @Suppress("LongMethod", "CyclomaticComplexMethod")
-    private fun buyForOwnerWithPermit(stallId: StallId, payer: UUID, owner: OwnerRef, price: Long, ip: String): Result {
-        if (mutationGate.isStallLocked(stallId.value)) {
+    private fun buyForOwner(request: BuyRequest): Result = try {
+        moderationPolicy.withAcquisitionPermit(request.payer) { buyForOwnerWithPermit(request) }
+    } catch (blocked: MarketAcquisitionBlockedException) {
+        Result.Rejected(blocked.message ?: "Market acquisitions are restricted")
+    }
+
+    private fun buyForOwnerWithPermit(request: BuyRequest): Result {
+        if (mutationGate.isStallLocked(request.stallId.value)) {
             return Result.Rejected("This stall is temporarily unavailable")
         }
-        val stall = stalls.findById(stallId) ?: return Result.NotFound
+        val stall = stalls.findById(request.stallId) ?: return Result.NotFound
+        validatePurchase(stall, request)?.let { return it }
 
-        validatePurchase(stall, stallId, owner, payer, price)?.let { return it }
-
-        val reservation = ipLimiter.acquireStall(ip, owner.id)
+        val reservation = ipLimiter.acquireStall(request.ip, request.owner.id)
         if (!reservation.allowed) return Result.Rejected("Your IP already owns a stall.")
         var completed = false
         try {
-
-        if (!economy.withdraw(payer, price)) {
-            return Result.Rejected("Insufficient funds: $price required")
-        }
-
-        val previousState = stall.state
-        val updated = try {
-            val now = clock.instant()
-            val awarded = stall.awardTo(owner, price, now, now.plus(RentTimingPolicy.collectionInterval(config)))
-            stalls.save(awarded)
-            // Defensive: if a sell offer somehow lingered on an UNOWNED
-            // stall, clean it up so a follow-up click doesn't trip the
-            // mutex check next door.
-            if (offers.findByStall(stallId) != null) {
-                try {
-                    offers.delete(stallId)
-                } catch (cleanupErr: Exception) {
-                    log.warning(
-                        "StallBuyoutService: failed to cleanup lingering sell offer for " +
-                            "${stallId.value}. cause=${cleanupErr.message}"
-                    )
-                }
-            }
-            awarded
-        } catch (e: Exception) {
-            refundAfterFailedAward(payer, price, stallId, owner, e)
-            throw e
-        }
-
-        // Sync ownership to WorldGuard so the new owner can actually
-        // build / break / interact inside the region without being op.
-        // SOLO → WG owner = buyer UUID. GUILD → can't map a guild to
-        // a WG player UUID directly; log + skip. Operators can wire
-        // a LumaGuilds → WG bridge later. Failures are logged but
-        // don't roll back the purchase — the DB owner remains the
-        // canonical source of truth and a resync command can be added.
-        try {
-            when (owner.type) {
-                OwnerType.SOLO -> regionMembers.setOwner(
-                    updated.world, updated.regionId, java.util.UUID.fromString(owner.id)
-                )
-                OwnerType.GUILD -> {
-                    regionMembers.clearOwnersAndMembers(updated.world, updated.regionId)
-                    val guids = guildProvider.memberIds(owner.id)
-                    if (guids.isNotEmpty()) {
-                        regionMembers.syncGuildMembers(updated.world, updated.regionId, guids)
-                    } else {
-                        log.warning(
-                            "StallBuyoutService: stall ${stallId.value} awarded to guild ${owner.id} " +
-                                "but no online guild members found — region owners/members cleared; " +
-                                "members will gain access when /em rg resync runs with them online."
-                        )
-                    }
-                }
-                OwnerType.NONE -> Unit // unreachable; awardTo rejects NONE.
-            }
-        } catch (e: Exception) {
-            log.warning(
-                "StallBuyoutService: WG owner sync failed for stall ${stallId.value} " +
-                    "(owner=$owner). The DB owner is correct; players may need op until " +
-                    "the region is resynced. cause=${e.message}"
-            )
-        }
-
-        // C6: remove the OUTER guild WG sync that was previously in
-        // buyForGuild — the inner block above correctly handles GUILD
-        // by logging+skipping. The outer call tried UUID.fromString on
-        // the guild id, which never resolves to a real player UUID.
-
-        fireStateChanged(stallId.value, previousState, updated.state)
-        completed = true
-        return Result.Purchased(updated, price, owner)
+            val result = executePurchase(stall, request)
+            completed = result is Result.Purchased
+            return result
         } finally {
             if (!completed) ipLimiter.rollback(reservation.reservation)
         }
     }
 
-    private fun fireStateChanged(
-        stallId: String,
-        previous: StallState,
-        current: StallState,
-    ) {
+    private fun executePurchase(stall: Stall, request: BuyRequest): Result {
+        if (!economy.withdraw(request.payer, request.price)) {
+            return Result.Rejected("Insufficient funds: ${request.price} required")
+        }
+        val updated = persistAward(stall, request)
+        cleanupLingeringOffer(request.stallId)
+        syncRegionOwnership(updated, request)
+        fireStateChanged(request.stallId.value, stall.state, updated.state)
+        return Result.Purchased(updated, request.price, request.owner)
+    }
+
+    private fun persistAward(stall: Stall, request: BuyRequest): Stall {
+        try {
+            val now = clock.instant()
+            val awarded = stall.awardTo(
+                request.owner,
+                request.price,
+                now,
+                now.plus(RentTimingPolicy.collectionInterval(config)),
+            )
+            stalls.save(awarded)
+            return awarded
+        } catch (failure: Exception) {
+            refundAfterFailedAward(request, failure)
+            throw failure
+        }
+    }
+
+    private fun cleanupLingeringOffer(stallId: StallId) {
+        if (offers.findByStall(stallId) == null) return
+        try {
+            offers.delete(stallId)
+        } catch (failure: Exception) {
+            log.warning(
+                "StallBuyoutService: failed to cleanup lingering sell offer for " +
+                    "${stallId.value}. cause=${failure.message}",
+            )
+        }
+    }
+
+    private fun syncRegionOwnership(stall: Stall, request: BuyRequest) {
+        try {
+            when (request.owner.type) {
+                OwnerType.SOLO -> regionMembers.setOwner(
+                    stall.world,
+                    stall.regionId,
+                    UUID.fromString(request.owner.id),
+                )
+                OwnerType.GUILD -> syncGuildRegion(stall, request.owner.id)
+                OwnerType.NONE -> Unit
+            }
+        } catch (failure: Exception) {
+            log.warning(
+                "StallBuyoutService: WG owner sync failed for stall ${request.stallId.value} " +
+                    "(owner=${request.owner}). The DB owner is correct; players may need op until " +
+                    "the region is resynced. cause=${failure.message}",
+            )
+        }
+    }
+
+    private fun syncGuildRegion(stall: Stall, guildId: String) {
+        regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        val memberIds = guildProvider.memberIds(guildId)
+        if (memberIds.isNotEmpty()) {
+            regionMembers.syncGuildMembers(stall.world, stall.regionId, memberIds)
+            return
+        }
+        log.warning(
+            "StallBuyoutService: stall ${stall.id.value} awarded to guild $guildId " +
+                "but no online guild members found — region owners/members cleared; " +
+                "members will gain access when /em rg resync runs with them online.",
+        )
+    }
+
+    private fun fireStateChanged(stallId: String, previous: StallState, current: StallState) {
         if (previous == current) return
         try {
-            Bukkit.getServer()?.pluginManager?.callEvent(
-                StallStateChangedEvent(stallId, previous, current)
-            )
-        } catch (e: Exception) {
-            log.warning("Failed to fire StallStateChangedEvent for $stallId: ${e.message}")
+            Bukkit.getServer()?.pluginManager?.callEvent(StallStateChangedEvent(stallId, previous, current))
+        } catch (failure: Exception) {
+            log.warning("Failed to fire StallStateChangedEvent for $stallId: ${failure.message}")
         }
     }
 }

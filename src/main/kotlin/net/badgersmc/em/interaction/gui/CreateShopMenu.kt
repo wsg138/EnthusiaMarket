@@ -4,6 +4,7 @@ import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHold
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopFactory
 import net.badgersmc.em.application.ShopSignRenderer
@@ -138,7 +139,7 @@ class CreateShopMenu(
             event.isCancelled = true; player.closeInventory()
         }, 1, 3)
 
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
         gui.blockItemTheft()
         gui.show(player)
     }

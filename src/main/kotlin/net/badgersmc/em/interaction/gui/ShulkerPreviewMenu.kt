@@ -5,6 +5,7 @@ import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.nexus.i18n.LangService
 import net.badgersmc.em.interaction.Menu
 import org.bukkit.Material
@@ -27,7 +28,7 @@ class ShulkerPreviewMenu(
 
         val gui = ChestGui(3, ComponentHolder.of(lang.msg("gui.shulker_preview.title")))
         val pane = StaticPane(9, 3)
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
 
         for ((idx, stack) in contents.withIndex()) {
             if (stack == null || stack.type == Material.AIR) continue

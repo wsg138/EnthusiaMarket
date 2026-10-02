@@ -6,6 +6,7 @@ import com.github.stefvanschie.inventoryframework.pane.OutlinePane
 import com.github.stefvanschie.inventoryframework.pane.PaginatedPane
 import com.github.stefvanschie.inventoryframework.pane.Pane
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionRepository
@@ -141,9 +142,9 @@ class AuctionBrowserMenu(
 
         gui.panes.clear()
 
-        val itemsPane = PaginatedPane(0, 0, 9, 5)
+        val itemsPane = PaginatedPane(9, 5)
         for (pageIdx in 0 until pageCount) {
-            val pagePane = OutlinePane(0, 0, 9, 5, Pane.Priority.LOWEST)
+            val pagePane = OutlinePane(9, 5, Pane.Priority.LOWEST)
             val slice = sorted.drop(pageIdx * ITEMS_PER_PAGE).take(ITEMS_PER_PAGE)
             for (entry in slice) {
                 pagePane.addItem(GuiItem(entryIcon(entry, now)) { event ->
@@ -152,16 +153,16 @@ class AuctionBrowserMenu(
                     AuctionBidMenu(entry.auction, auctionService, lang).open(player)
                 })
             }
-            itemsPane.addPane(pageIdx, pagePane)
+            itemsPane.addPane(pageIdx, Slot.fromXY(0, 0), pagePane)
         }
         itemsPane.page = currentPage
-        gui.addPane(itemsPane)
+        gui.addPane(Slot.fromXY(0, 0), itemsPane)
 
-        gui.addPane(buildControls(gui, pageCount, sorted.size))
+        gui.addPane(Slot.fromXY(0, 5), buildControls(gui, pageCount, sorted.size))
     }
 
     private fun buildControls(gui: ChestGui, pageCount: Int, total: Int): StaticPane {
-        val pane = StaticPane(0, 5, 9, 1)
+        val pane = StaticPane(9, 1)
 
         pane.addItem(navButton(gui, "gui.auctions.prev", -1) { currentPage > 0 }, 0, 0)
         pane.addItem(sortButton(gui), 2, 0)

@@ -5,7 +5,9 @@ import net.badgersmc.em.domain.auction.Auction
 import net.badgersmc.em.domain.auction.AuctionId
 import net.badgersmc.em.domain.auction.AuctionRepository
 import net.badgersmc.em.domain.auction.AuctionState
-import net.badgersmc.em.domain.stall.OwnerRef
+import net.badgersmc.em.domain.ports.MarketMutationGate
+import net.badgersmc.em.domain.ports.RegionMemberSync
+import net.badgersmc.em.domain.ports.SchematicService
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
@@ -38,6 +40,10 @@ class RentCollectionService(
     private val config: EnthusiaMarketConfig,
     private val auctionRepository: AuctionRepository,
     private val lang: LangService,
+    private val regionMembers: RegionMemberSync,
+    private val ipLimiter: IpLimiter,
+    private val mutationGate: MarketMutationGate = MarketMutationGate.Open,
+    private val schematics: SchematicService = SchematicService.Disabled,
 ) {
 
     private val log = Logger.getLogger(RentCollectionService::class.java.name)
@@ -74,6 +80,7 @@ class RentCollectionService(
 
         for (stall in stalls) {
             if (stall.state !in activeStates) continue
+            if (mutationGate.isStallLocked(stall.id.value)) continue
 
             try {
                 val result = processStall(stall, now)
@@ -153,10 +160,10 @@ class RentCollectionService(
         }
     }
 
-    /** Start an emergency auction for a stall whose grace period expired.
-     *  Shops stay frozen (already set on GRACE entry). The starting bid
-     *  is the one-period rent due. Does NOT delete shops or clear WG —
-     *  the auction winner inherits the stall with all bound shops. */
+    /** Start a clean emergency auction for a stall whose grace period expired.
+     *  The former owner remains on the stall only as seller provenance for
+     *  settlement; all effective ownership projections are removed after the
+     *  authoritative EMERGENCY_AUCTIONING save succeeds. */
     private fun emergencyAuction(stall: Stall, now: Instant, rentDue: Long): ProcessResult {
         val startingBid = maxOf(rentDue, 1L)
         val duration = auctionDuration()
@@ -176,12 +183,16 @@ class RentCollectionService(
             antiSnipeExtension = config.auction.antiSnipeExtensionDuration,
             auctionDuration = duration,
         )
-        // Save stall FIRST: if auction creation fails, stall is EMERGENCY_AUCTIONING without an auction
-        // (admin must manually create one). This prevents duplicate auctions on retry — the stall
-        // won't be processed again once it leaves GRACE/OWNED activeStates.
-        stallRepository.save(stall.copy(state = StallState.EMERGENCY_AUCTIONING))
-        // Broadcast BEFORE auction creation — if the DB write fails the alert
-        // still goes out and players know to expect the auction.
+        // Save FIRST so PR #194's optimistic moderation fence remains
+        // authoritative. Destructive cleanup is forbidden until this succeeds.
+        val forfeited = stall.copy(
+            state = StallState.EMERGENCY_AUCTIONING,
+            members = emptySet(),
+        )
+        stallRepository.save(forfeited)
+
+        // Broadcast before auction creation so players still receive the alert
+        // if the auction write itself fails after forfeiture was persisted.
         try {
             Bukkit.broadcast(lang.msg("purchase_sign.msg.emergency_auction_alert",
                 "stall" to stall.id.value, "bid" to startingBid))
@@ -189,7 +200,56 @@ class RentCollectionService(
             log.warning("Emergency auction broadcast failed for stall ${stall.id.value}: ${e.message}")
         }
         auctionRepository.create(auction)
+        cleanupEmergencyForfeiture(stall)
         return ProcessResult.Evicted  // reuse Evicted for counting
+    }
+
+    private fun cleanupEmergencyForfeiture(stall: Stall) {
+        if (stall.owner.type != OwnerType.NONE && stall.owner.id.isNotBlank()) {
+            ipLimiter.releaseStallByOwnerId(stall.owner.id)
+        }
+
+        try {
+            for (shop in shops.findByStall(stall.id.value)) {
+                if (shop.adminShop) continue
+                try {
+                    shops.delete(shop.id)
+                } catch (failure: Exception) {
+                    log.warning(
+                        "Emergency auction: failed to delete shop ${shop.id} for ${stall.id.value}: " +
+                            failure.message
+                    )
+                }
+            }
+        } catch (failure: Exception) {
+            log.warning(
+                "Emergency auction: failed to enumerate shops for ${stall.id.value}: ${failure.message}"
+            )
+        }
+
+        try {
+            regionMembers.clearOwnersAndMembers(stall.world, stall.regionId)
+        } catch (failure: Exception) {
+            log.warning(
+                "Emergency auction: failed to clear region access for ${stall.id.value}: ${failure.message}"
+            )
+        }
+
+        if (config.schematics.enabled) {
+            try {
+                val restore = schematics.restore(stall.id.value, stall.world, stall.regionId)
+                if (restore is SchematicService.Result.Failure) {
+                    log.warning(
+                        "Emergency auction: schematic restore failed for ${stall.id.value}: " +
+                            restore.cause.message
+                    )
+                }
+            } catch (failure: Exception) {
+                log.warning(
+                    "Emergency auction: schematic restore threw for ${stall.id.value}: ${failure.message}"
+                )
+            }
+        }
     }
 
     private fun auctionDuration(): Duration = try {
@@ -211,27 +271,38 @@ class RentCollectionService(
     private fun recoverOrphanedEmergencyStalls(): Int {
         var recovered = 0
         for (stall in stallRepository.all()) {
-            if (stall.state != StallState.EMERGENCY_AUCTIONING) continue
-            try {
-                val openAuction = auctionRepository.findOpenByStall(stall.id)
-                if (openAuction != null) continue // has active auction, skip
-                // Unfreeze shops frozen by the grace/emergency path before
-                // reverting. UNOWNED stalls are skipped by all other paths, so
-                // frozen shops would remain frozen forever otherwise.
-                shops.freezeByStall(stall.id.value, frozen = false)
-                stallRepository.save(stall.copy(
-                    state = StallState.UNOWNED,
-                    owner = OwnerRef.unowned(),
-                ))
+            val eligible = stall.state == StallState.EMERGENCY_AUCTIONING &&
+                !mutationGate.isStallLocked(stall.id.value)
+            if (eligible && recoverOrphanedEmergencyStall(stall)) {
                 recovered++
-            } catch (e: Exception) {
-                log.warning(
-                    "RentCollectionService: failed to recover orphaned emergency stall " +
-                        "${stall.id.value}: ${e.message}"
-                )
             }
         }
         return recovered
+    }
+
+    private fun recoverOrphanedEmergencyStall(stall: Stall): Boolean {
+        return try {
+            if (auctionRepository.findOpenByStall(stall.id) != null) {
+                false
+            } else {
+                // Persist the authoritative state first. PR #194's repository
+                // fence can still reject a moderation race after the fast gate;
+                // no destructive projection cleanup may happen before this save.
+                stallRepository.save(stall.releaseOwnership())
+
+                cleanupEmergencyForfeiture(stall)
+                // Preserved admin shops may have been frozen while the previous
+                // ownership context was in GRACE / emergency auction.
+                shops.freezeByStall(stall.id.value, frozen = false)
+                true
+            }
+        } catch (e: Exception) {
+            log.warning(
+                "RentCollectionService: failed to recover orphaned emergency stall " +
+                    "${stall.id.value}: ${e.message}"
+            )
+            false
+        }
     }
 
     private sealed class ProcessResult {

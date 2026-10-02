@@ -14,6 +14,7 @@ public record StallBlacklistState(
         long revision,
         Instant updatedAt
 ) {
+    /** Smallest valid persisted blacklist revision. */
     private static final long MINIMUM_REVISION = 1L;
 
     public StallBlacklistState {
@@ -28,11 +29,26 @@ public record StallBlacklistState(
         updatedAt = Objects.requireNonNull(updatedAt, "updatedAt");
     }
 
-    public boolean activeAt(Instant now) {
-        Objects.requireNonNull(now, "now");
-        return status == Status.ACTIVE && expiresAt.map(value -> now.isBefore(value)).orElse(true);
+    /** Bean-style aliases retained for reflection-based Staff integrations. */
+    public Status getStatus() {
+        return status;
     }
 
+    public Instant getExpiresAt() {
+        return expiresAt.orElse(null);
+    }
+
+    public String getCaseId() {
+        return caseId;
+    }
+
+    /** Returns whether this blacklist is active at the supplied instant. */
+    public boolean activeAt(final Instant now) {
+        Objects.requireNonNull(now, "now");
+        return status == Status.ACTIVE && expiresAt.map(now::isBefore).orElse(true);
+    }
+
+    /** Lifecycle state of a persisted stall blacklist. */
     public enum Status {
         ACTIVE,
         REMOVED

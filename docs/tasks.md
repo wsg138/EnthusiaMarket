@@ -993,3 +993,99 @@ Critical exploit: MC 1.21 applies splash/cloud potion effects additively, so rep
   Tag: DOC
   Description: Add a short section to `wiki/docs/admins/` (e.g. in `maintenance.md` or a new `market-protection.md`) stating potion effects (splash/lingering/cloud/tipped arrow) are cancelled for entities inside stall regions; note the WG flag is provision-time-only and the runtime listener enforces the invariant for all regions.
   Evidence: `wiki/docs/admins/market-protection.md` (created 2026-08-02, frontmatter-validated), `docs/requirements.md` REQ-305
+
+---
+
+## 26.2 ownership-integrity hardening (REQ-314..322)
+
+Baseline: current `main` at `8d04bd9` (PR #194 Staff Market integration). This milestone must preserve REQ-306..313 moderation behavior before changing ordinary ownership lifecycles.
+
+- [x] **INFRA-320** -- Characterize and lock PR #194 moderation baseline
+  References: REQ-320, REQ-306, REQ-307, REQ-308, REQ-309, REQ-310, REQ-311, implementation.md 3.11
+  Tag: INFRA
+  Description: Verify the existing PR #194 moderation characterization suite is green on the exact 8d04bd9 baseline before ownership refactoring. Record the dependency bootstrap required by current CI; this checkpoint changes no production behavior.
+  Evidence: `src/test/kotlin/net/badgersmc/em/application/AuctionModerationIntegrationTest.kt; src/test/kotlin/net/badgersmc/em/infrastructure/moderation/JdbcMarketModerationStoreTest.kt; docs/moderation-provider.md; .github/workflows/build.yml; 2026-09-29: ./gradlew test -PuseMavenLocal=true --tests AuctionModerationIntegrationTest --tests JdbcMarketModerationStoreTest -> BUILD SUCCESSFUL`
+
+- [x] **TDD-324** -- Eviction rejects moderation-reserved stalls before mutation
+  References: REQ-320, REQ-306, REQ-307, REQ-311, implementation.md 3.11
+  Tag: TDD
+  Description: Add a failing StallEvictionService test proving a moderation-reserved stall is rejected before StallRepository.save, shop deletion, WorldGuard cleanup, or IP-release side effects. Implement the minimum MarketMutationGate check and a controlled Blocked result; preserve the existing durable repository fence as defense in depth.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/StallEvictionService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/MarketMutationGate.kt; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt; src/test/kotlin/net/badgersmc/em/application/StallEvictionServiceTest.kt; src/test/kotlin/net/badgersmc/em/application/AuctionModerationIntegrationTest.kt; src/test/kotlin/net/badgersmc/em/infrastructure/moderation/JdbcMarketModerationStoreTest.kt; docs/moderation-provider.md; 2026-09-29 focused red -> green; full suite 757 tests, 0 failures/errors, 7 skipped; local JdbcMarketModerationMariaDbTest 6/6 skipped, CI non-skip gate still authoritative`
+
+- [x] **TDD-314** — Count only actively held SOLO stalls
+  References: REQ-314, implementation.md §3.11
+  Tag: TDD
+  Description: Write a failing StallOwnershipCounter test with the same SOLO owner across OWNED, GRACE, AUCTIONING, RE_AUCTIONING, EMERGENCY_AUCTIONING, UNOWNED, and MODERATION_HOLD rows; assert only OWNED and GRACE contribute to total and per-kind limits, then implement the minimum state filter.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/StallOwnershipCounter.kt:14-18; src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:89-92; src/main/kotlin/net/badgersmc/em/domain/stall/StallState.kt; src/test/kotlin/net/badgersmc/em/application/StallOwnershipCounterTest.kt; docs/requirements.md REQ-314`
+
+- [x] **TDD-315** -- Clear delegated members on ownership replacement
+  References: REQ-315, implementation.md 3.11
+  Tag: TDD
+  Description: Write a failing Stall domain test proving awardTo starts the successor ownership context with an empty delegated-member roster, then implement only that invariant. Canonical release-to-UNOWNED behavior is deferred to TDD-318.
+  Evidence: `src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:89-104; src/test/kotlin/net/badgersmc/em/domain/stall/StallTest.kt; docs/requirements.md REQ-315`
+
+- [x] **TDD-316** — Direct sell-offer transfer cleans previous-owner state
+  References: REQ-316, REQ-317, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Prove SellOfferService.purchase currently transfers the Stall row without removing non-admin shops from the previous ownership context or resynchronizing region access. On a successful sale, delete every bound shop with adminShop=false, preserve admin shops, and replace WorldGuard ownership through RegionMemberSync.setOwner while retaining PR #194 acquisition-permit and mutation-gate fencing. Cleanup runs only after the ownership save; cleanup or WG-sync failures must not refund or roll back an already-committed transfer and must emit a compensation alert for operator repair.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/SellOfferService.kt:90-165; src/main/kotlin/net/badgersmc/em/domain/shop/Shop.kt; src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt; net.badgersmc.em.domain.shop.ShopRepository; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; net.badgersmc.em.domain.ports.RegionMemberSync; src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionMemberSync.kt:35-45; src/main/kotlin/net/badgersmc/em/infrastructure/listeners/BlockProtectionListener.kt:35-104; src/test/kotlin/net/badgersmc/em/application/SellOfferServiceTest.kt; 2026-09-29 focused red -> green; full suite 759 tests, 0 failures/errors, 7 skipped; local JdbcMarketModerationMariaDbTest 6/6 skipped, CI non-skip gate remains authoritative`
+
+- [x] **TDD-317** — Auction award cleans previous-owner state
+  References: REQ-316, REQ-317, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Prove a successful normal or emergency auction award removes every non-admin shop bound to the previous ownership context while preserving admin shops. Run cleanup only after the stall award save has succeeded; cleanup failure must not reopen the auction, refund the winner, or undo the committed ownership award. Preserve the existing RegionMemberSync.setOwner path, close-first/charge-exactly-once/refund ordering, ownership-limit checks, MarketMutationGate skips, and winner acquisition permit.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/AuctionLifecycleService.kt:549-823; src/main/kotlin/net/badgersmc/em/domain/shop/Shop.kt; src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt; net.badgersmc.em.domain.shop.ShopRepository; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/infrastructure/worldguard/WorldGuardRegionMemberSync.kt:35-45; src/test/kotlin/net/badgersmc/em/application/AuctionLifecycleServiceTest.kt; src/test/kotlin/net/badgersmc/em/application/AuctionLifecycleSchematicTest.kt; src/test/kotlin/net/badgersmc/em/application/AuctionModerationIntegrationTest.kt; 2026-09-29 focused red -> green; full suite 762 tests, 0 failures/errors, 7 skipped`
+
+- [x] **TDD-318** — Auction-driven release uses canonical UNOWNED cleanup
+  References: REQ-318, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Add a failing emergency-auction no-bid test proving every auction-driven release path clears owner, ownerSince, winningBid, delegated members, and nextRentAt, removes prior non-admin shops while preserving admin shops, clears WorldGuard access, and releases the previous owner's stall IP reservation. Route no-bid settlement, closeWithoutAward, system-auction cancellation/revert, and failed-award recovery through one canonical auction release helper while preserving moderation gates, auction close/refund ordering, and best-effort cleanup semantics.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/AuctionLifecycleService.kt:420-914; src/main/kotlin/net/badgersmc/em/application/StallEvictionService.kt:43-88; src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:89-117; src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/application/IpLimiter.kt:63-103; src/test/kotlin/net/badgersmc/em/application/AuctionLifecycleServiceTest.kt; docs/requirements.md REQ-318, REQ-320; 2026-09-29 focused red -> green; Konsist LayerRulesTest green; full suite 763 tests, 0 failures/errors, 7 skipped`
+
+- [x] **TDD-326** — Rent orphan recovery clears canonical stall and shop state
+  References: REQ-318, REQ-319, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Add a failing RentCollectionService test proving an orphaned EMERGENCY_AUCTIONING stall with no open auction is released through Stall.releaseOwnership(), removing stale owner/ownerSince/winningBid/members/nextRentAt data and deleting bound non-admin shops while preserving admin shops. A second tick must be idempotent. Keep this cycle limited to collaborators already present on RentCollectionService.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt:35-41,59-90,208-246; src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt:94-117; src/main/kotlin/net/badgersmc/em/domain/shop/Shop.kt; src/main/kotlin/net/badgersmc/em/domain/shop/ShopRepository.kt; src/test/kotlin/net/badgersmc/em/application/RentCollectionServiceTest.kt; docs/requirements.md REQ-318, REQ-319, REQ-320; 2026-09-29 focused red -> green; net.badgersmc.em.architecture.LayerRulesTest green; full suite 764 tests, 0 failures/errors, 7 skipped`
+
+- [x] **TDD-325** — Rent orphan recovery clears access/IP and honors moderation lock
+  References: REQ-318, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Extend orphan recovery with the missing lifecycle collaborators after TDD-326: skip a moderation-locked emergency stall without mutation; persist the canonical UNOWNED row before destructive projection cleanup so the durable repository fence can reject a race safely; then clear WorldGuard owners/members and release the previous owner's stall IP reservation. Prove the behavior without changing auction or moderation-provider semantics.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/MarketMutationGate.kt; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/application/IpLimiter.kt; src/main/kotlin/net/badgersmc/em/infrastructure/moderation/DurableMarketMutationGate.kt; src/test/kotlin/net/badgersmc/em/application/RentCollectionServiceTest.kt; src/test/kotlin/net/badgersmc/em/application/SchematicRestoreTest.kt; docs/requirements.md REQ-318, REQ-320; 2026-09-29 focused red -> green; net.badgersmc.em.architecture.LayerRulesTest green; full suite 765 tests, 0 failures/errors, 7 skipped`
+
+- [x] **TDD-319** — Emergency auction begins from a clean forfeited stall
+  References: REQ-319, REQ-280, REQ-271, REQ-320, implementation.md §3.11
+  Tag: TDD
+  Description: Add a failing GRACE → EMERGENCY_AUCTIONING test proving forfeiture persists the emergency state with the former owner retained only as seller provenance and delegated members cleared, creates the emergency auction, then releases the former owner's stall IP reservation, removes non-admin shops while preserving admin shops, clears WorldGuard owners/members, and attempts schematic restore when enabled. Cleanup must occur only after both the authoritative stall save and auction insert succeed so PR #194 repository fencing and auction-write failures cannot cause destructive side effects.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt:115-255; src/main/kotlin/net/badgersmc/em/domain/ports/SchematicService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/RegionMemberSync.kt; src/main/kotlin/net/badgersmc/em/application/IpLimiter.kt; src/main/kotlin/net/badgersmc/em/infrastructure/moderation/DurableMarketMutationGate.kt; src/test/kotlin/net/badgersmc/em/application/RentCollectionServiceTest.kt; src/test/kotlin/net/badgersmc/em/application/SchematicRestoreTest.kt; docs/requirements.md REQ-319, REQ-320; 2026-09-29 focused red -> green; architecture gate green; full suite 766 tests, 0 failures/errors, 7 skipped`
+
+- [x] **TDD-327** — Active rent enforcement honors moderation locks
+  References: REQ-320, REQ-306, REQ-307, REQ-311, implementation.md §3.11
+  Tag: TDD
+  Description: Prove RentCollectionService skips moderation-locked OWNED and GRACE stalls before shop freeze, state mutation, or emergency-auction creation. Preserve the durable repository fence as defense in depth and do not alter Staff Market snapshot/restore semantics.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/RentCollectionService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/MarketMutationGate.kt; src/main/kotlin/net/badgersmc/em/infrastructure/moderation/DurableMarketMutationGate.kt; src/test/kotlin/net/badgersmc/em/application/RentCollectionServiceTest.kt; docs/requirements.md REQ-320; 2026-09-29 focused red -> green; net.badgersmc.em.architecture.LayerRulesTest green; full suite 767 tests, 0 failures/errors, 7 skipped`
+
+- [x] **TDD-321** — Conservative legacy ownership reconciliation
+  References: REQ-321, REQ-316, REQ-318, REQ-320, docs/db-schema.md
+  Tag: TDD
+  Description: Add V029 as a conservative, idempotent database reconciliation. Delete non-admin shops only when stale ownership is provable: a SOLO OWNED/GRACE stall whose shop owner matches neither the current owner nor a current delegated member, a true UNOWNED or EMERGENCY_AUCTIONING stall, or a system AUCTIONING/RE_AUCTIONING stall with owner_type=NONE. Normalize UNOWNED ownership fields and clear delegated members from vacant/system/emergency auction states. Preserve admin shops and all guild-owned active data, skip MODERATION_HOLD and any stall with a durable market_moderation_locks reservation, and leave WorldGuard to the existing DB-authoritative /em rg resync projection repair.
+  Evidence: `src/main/resources/migrations/V001__init.sql; src/main/resources/migrations/V004__shops.sql; src/main/resources/migrations/V008__stall_members.sql; src/main/resources/migrations/V011__stall_next_rent.sql; src/main/resources/migrations/V021__drop_shop_guild.sql; src/main/resources/migrations/V028__market_moderation_provider.sql; src/test/kotlin/net/badgersmc/em/infrastructure/persistence/UnfreezeOwnedStallsMigrationTest.kt; net.badgersmc.nexus.persistence.DatabaseFactory; net.badgersmc.nexus.persistence.DatabaseSpec; net.badgersmc.nexus.persistence.MigrationRunner; javax.sql.DataSource; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt:580-633; docs/moderation-provider.md; docs/requirements.md REQ-321; 2026-09-29 copied-live-db validation after delegated-member fix: 62 provably stale non-admin shops removed, 41 legitimate delegated-member shops preserved, 69 active guild shops preserved, 3 stale member rosters cleared, 2 stale UNOWNED rows normalized, integrity_check=ok, second run content-idempotent; focused red -> green; LegacyOwnershipReconciliationMigrationTest 2/2 green; net.badgersmc.em.architecture.LayerRulesTest green; full suite 769 tests, 0 failures/errors, 7 skipped`
+
+- [x] **TDD-322** — Bulk rent extension service
+  References: REQ-322, implementation.md §3.12
+  Tag: TDD
+  Description: Add a BulkRentExtensionService that applies a positive administrative deadline credit without charging players or guild banks. Process only unlocked OWNED/GRACE stalls, add the requested duration to the existing nextRentAt or the legacy ownerSince + collection interval due-date estimate when no deadline exists (falling back to supplied now only when no owner timestamp exists), isolate per-stall gate/save failures, skip all other lifecycle states and moderation locks, and return updated/recovered/skipped/failed counts. A GRACE stall returns to OWNED only when the shifted deadline is strictly after now and must emit the normal state-change event so penalty shops unfreeze through ShopFreezeStateListener.
+  Evidence: `src/main/kotlin/net/badgersmc/em/application/StallRentExtensionService.kt; src/main/kotlin/net/badgersmc/em/domain/ports/MarketMutationGate.kt; src/main/kotlin/net/badgersmc/em/infrastructure/listeners/ShopFreezeStateListener.kt; src/main/kotlin/net/badgersmc/em/events/StallStateChangedEvent.kt; src/main/kotlin/net/badgersmc/em/domain/stall/Stall.kt; src/main/kotlin/net/badgersmc/em/domain/stall/StallRepository.kt; src/test/kotlin/net/badgersmc/em/application/StallRentExtensionServiceTest.kt; net.badgersmc.nexus.annotations.Service; org.bukkit.Bukkit; java.time.Duration; java.time.Instant; java.util.logging.Logger; docs/requirements.md REQ-322; docs/implementation.md §3.12; 2026-09-29 focused red -> green; BulkRentExtensionServiceTest 2/2 green; net.badgersmc.em.architecture.LayerRulesTest green; full suite 771 tests, 0 failures/errors, 7 skipped`
+
+- [x] **TDD-323** — Wire /em rent extendall <duration>
+  References: REQ-322, implementation.md §3.12
+  Tag: TDD
+  Description: Wire /em rent extendall <duration> to BulkRentExtensionService under a dedicated enthusiamarket.admin.rent permission. Accept strict positive whole-number durations with m, h, or d suffixes (for example 30m, 12h, 7d), reject zero/negative/malformed values before invoking the service, and return localized updated/recovered/skipped/failed counts. Add the permission beneath enthusiamarket.admin and keep the command free of economy mutations because the application service is a deadline credit only.
+  Evidence: `src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt; src/test/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommandsTest.kt; src/main/resources/lang/en_US.yml; src/main/resources/paper-plugin.yml; src/main/kotlin/net/badgersmc/em/application/BulkRentExtensionService.kt; net.badgersmc.nexus.paper.commands.annotations.Permission; net.badgersmc.nexus.paper.commands.annotations.Subcommand; net.badgersmc.nexus.commands.annotations.Arg; java.time.Duration; java.time.Instant; docs/requirements.md REQ-322; docs/implementation.md §3.12; 2026-09-29 focused red -> green; net.badgersmc.em.architecture.LayerRulesTest green; full suite 772 tests, 0 failures/errors, 7 skipped`
+
+- [x] **DOC-322** — Document ownership invariants and bulk rent extension
+  References: REQ-314, REQ-315, REQ-316, REQ-317, REQ-318, REQ-319, REQ-320, REQ-321, REQ-322
+  Tag: DOC
+  Description: Update operator/developer docs after implementation with the authoritative active-owner states, transfer cleanup rules, moderation boundary, reconciliation behavior, and /em rent extendall usage.
+  Evidence: `docs/ownership-integrity-26.2.md; docs/implementation.md §3.11-3.12; docs/db-schema.md V029; src/main/resources/migrations/V029__ownership_integrity_reconciliation.sql; src/main/kotlin/net/badgersmc/em/infrastructure/commands/AdminCommands.kt; src/main/resources/paper-plugin.yml; src/main/resources/lang/en_US.yml`

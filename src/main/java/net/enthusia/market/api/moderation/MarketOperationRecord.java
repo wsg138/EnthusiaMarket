@@ -20,6 +20,7 @@ public record MarketOperationRecord(
         String detail,
         Instant updatedAt
 ) {
+    /** Smallest valid persisted operation revision. */
     private static final long MINIMUM_REVISION = 1L;
 
     public MarketOperationRecord {
@@ -43,6 +44,7 @@ public record MarketOperationRecord(
         updatedAt = Objects.requireNonNull(updatedAt, "updatedAt");
     }
 
+    /** Durable lifecycle state of a market moderation operation. */
     public enum State {
         PREPARED,
         MODERATION_HOLD,

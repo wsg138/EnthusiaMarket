@@ -5,6 +5,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import net.badgersmc.em.config.EnthusiaMarketConfig
+import net.badgersmc.em.domain.ports.MarketMutationGate
 import net.badgersmc.em.domain.ports.RegionMemberSync
 import net.badgersmc.em.domain.stall.OwnerRef
 import net.badgersmc.em.domain.stall.OwnerType
@@ -32,12 +33,20 @@ class StallEvictionServiceTest {
         repo: StallRepository,
         regions: RegionMemberSync,
         shops: net.badgersmc.em.domain.shop.ShopRepository = mockk(relaxed = true),
+        mutationGate: MarketMutationGate = MarketMutationGate.Open,
     ): StallEvictionService {
         val config = mockk<EnthusiaMarketConfig>()
         val schem = mockk<EnthusiaMarketConfig.Schematics>()
         every { schem.enabled } returns false
         every { config.schematics } returns schem
-        return StallEvictionService(repo, shops, regions, config, ipLimiter = mockk<IpLimiter>(relaxed = true))
+        return StallEvictionService(
+            repo,
+            shops,
+            regions,
+            config,
+            ipLimiter = mockk<IpLimiter>(relaxed = true),
+            mutationGate = mutationGate,
+        )
     }
 
     @Test fun `evict resets an owned stall to UNOWNED and clears WG`() {
@@ -74,6 +83,23 @@ class StallEvictionServiceTest {
 
         assertIs<StallEvictionService.Result.Evicted>(result)
         verify { shops.delete(7) }
+    }
+
+    @Test fun `evict rejects a moderation locked stall before mutating ownership`() {
+        val repo = mockk<StallRepository>(relaxed = true)
+        val regions = mockk<RegionMemberSync>(relaxed = true)
+        val shops = mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true)
+        every { repo.findById(StallId("stall1")) } returns ownedStall()
+        val lockedGate = object : MarketMutationGate {
+            override fun isStallLocked(stallId: String): Boolean = stallId == "stall1"
+        }
+
+        val result = service(repo, regions, shops, lockedGate).evict(StallId("stall1"))
+
+        assertIs<StallEvictionService.Result.Blocked>(result)
+        verify(exactly = 0) { repo.save(any()) }
+        verify(exactly = 0) { shops.findByStall(any()) }
+        verify(exactly = 0) { regions.clearOwnersAndMembers(any(), any()) }
     }
 
     @Test fun `evict returns NotFound for a missing stall`() {

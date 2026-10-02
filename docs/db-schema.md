@@ -15,12 +15,19 @@ Authoritative schema definitions live in versioned migration files. This doc sum
 | V026 | `V026__maintenance_freeze.sql` | Durable maintenance-freeze state. |
 | V027 | `V027__unfreeze_owned_stalls.sql` | Repairs frozen shops on owned stalls. |
 | V028 | `V028__market_moderation_provider.sql` | Moderation revisions, operation journal, stall locks, player acquisition fences, and case-linked blacklists. |
+| V029 | `V029__ownership_integrity_reconciliation.sql` | Conservative data-only reconciliation for provably stale SOLO shops, vacant/system/emergency member rosters, and canonical UNOWNED ownership fields; preserves guild/admin/moderation data. |
 
 `MigrationRunner(...).runAll()` applies files in numeric order and records them in
 `schema_migration`; existing versions are skipped (REQ-042).
 
-The migration directory is authoritative for the complete V001–V028 history. Applied
+The migration directory is authoritative for the complete V001–V029 history. Applied
 migrations are immutable; future changes use a new version.
+
+V029 is data-only and idempotent. It skips `MODERATION_HOLD` and stalls with durable
+`market_moderation_locks`, preserves admin shops and active guild-owned data, and does not
+attempt to mutate WorldGuard. Use `/em rg resync` after deployment when WG projection repair
+is required. See [ownership-integrity-26.2.md](ownership-integrity-26.2.md) for the exact
+repair boundary and rollout checklist.
 
 ### Staff moderation tables (V028)
 

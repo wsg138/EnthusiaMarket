@@ -26,6 +26,7 @@ import java.util.UUID
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 
 class AdminCommandsTest {
 
@@ -283,6 +284,7 @@ class AdminCommandsTest {
     private fun freezeCommands(
         lang: net.badgersmc.nexus.i18n.LangService,
         freeze: net.badgersmc.em.application.MaintenanceFreezeService,
+        bulkRentExtension: net.badgersmc.em.application.BulkRentExtensionService? = null,
     ): AdminCommands = AdminCommands(
         service = mockk(relaxed = true),
         stalls = mockk(relaxed = true),
@@ -312,6 +314,7 @@ class AdminCommandsTest {
         signRenderer = mockk(relaxed = true),
         maintenanceFreeze = freeze,
         playerNameResolver = mockk(relaxed = true),
+        bulkRentExtension = bulkRentExtension,
     )
 
     private val freezeSince = java.time.Instant.parse("2026-06-01T10:00:00Z")
@@ -411,5 +414,57 @@ class AdminCommandsTest {
 
         verify { lang.msg("admin.maintenance.status.inactive") }
         verify { sender.sendMessage(any<Component>()) }
+    }
+
+    @Test fun `rent extendall parses strict human durations and reports bulk result`() {
+        val lang = mockk<net.badgersmc.nexus.i18n.LangService>()
+        val freeze = mockk<net.badgersmc.em.application.MaintenanceFreezeService>(relaxed = true)
+        val bulk = mockk<net.badgersmc.em.application.BulkRentExtensionService>()
+        val report = net.badgersmc.em.application.BulkRentExtensionReport(
+            updated = 9,
+            recovered = 2,
+            skipped = 4,
+            failed = 1,
+        )
+        val durations = mutableListOf<java.time.Duration>()
+        every { bulk.extendAll(capture(durations), any()) } returns report
+        every { lang.msg(any(), *anyVararg()) } answers {
+            Component.text(firstArg<String>())
+        }
+
+        val method = AdminCommands::class.java.getDeclaredMethod(
+            "rentExtendAll",
+            CommandSender::class.java,
+            String::class.java,
+        )
+        val permission = method.getAnnotation(
+            net.badgersmc.nexus.paper.commands.annotations.Permission::class.java
+        )
+        assertEquals("enthusiamarket.admin.rent", permission.value)
+
+        val cmd = freezeCommands(lang, freeze, bulk)
+
+        method.invoke(cmd, sender, "7d")
+        method.invoke(cmd, sender, "12h")
+        method.invoke(cmd, sender, "30m")
+
+        assertEquals(
+            listOf(
+                java.time.Duration.ofDays(7),
+                java.time.Duration.ofHours(12),
+                java.time.Duration.ofMinutes(30),
+            ),
+            durations,
+        )
+
+        for (bad in listOf("0m", "-1h", "1w", "1.5h", "garbage", "")) {
+            method.invoke(cmd, sender, bad)
+        }
+
+        assertEquals(3, durations.size, "invalid durations must not invoke the service")
+        verify(exactly = 3) { bulk.extendAll(any(), any()) }
+        verify(exactly = 3) { lang.msg("admin.rent.extendall.result", *anyVararg()) }
+        verify(exactly = 6) { lang.msg("admin.rent.extendall.invalid_duration", *anyVararg()) }
+        verify(atLeast = 9) { sender.sendMessage(any<Component>()) }
     }
 }

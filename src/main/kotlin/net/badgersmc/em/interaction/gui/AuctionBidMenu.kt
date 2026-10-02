@@ -4,6 +4,7 @@ import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHold
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.AuctionLifecycleService
 import net.badgersmc.em.application.AuctionResult
 import net.badgersmc.em.domain.auction.Auction
@@ -71,7 +72,7 @@ class AuctionBidMenu(
                 player.closeInventory()
             }, 4, 2)
 
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
         return gui
     }
 

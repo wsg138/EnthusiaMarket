@@ -6,6 +6,7 @@ import io.mockk.verify
 import org.geysermc.geyser.api.event.EventBus
 import org.geysermc.geyser.api.event.EventRegistrar
 import org.geysermc.geyser.api.event.bedrock.SessionSkinApplyEvent
+import org.geysermc.geyser.api.skin.Cape
 import org.geysermc.geyser.api.skin.Skin
 import org.geysermc.geyser.api.skin.SkinData
 import org.geysermc.geyser.api.skin.SkinGeometry
@@ -57,7 +58,7 @@ class GeyserSessionSkinListenerTest {
         val skin = Skin("", byteArrayOf(1))
         val geometry = SkinGeometry(SkinGeometry.WIDE.geometryName(), "")
         every { event.bedrock() } returns true
-        every { event.skinData() } returns SkinData(skin, null, geometry)
+        every { event.skinData() } returns SkinData(skin, Cape("", "", byteArrayOf()), geometry)
         every { event.uuid() } returns UUID.randomUUID()
         return event
     }

@@ -4,6 +4,7 @@ import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHold
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.domain.shop.PriceTicker
 import net.badgersmc.em.domain.shop.Shop
@@ -51,7 +52,7 @@ class SearchResultsMenu(
         addControls(pane, player, current, totalPages, visible)
         addResultIcons(pane, player, pageItems, stallNames)
 
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
         gui.blockItemTheft()
         gui.show(player)
     }

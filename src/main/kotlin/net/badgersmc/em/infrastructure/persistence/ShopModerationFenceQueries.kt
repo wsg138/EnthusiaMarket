@@ -26,6 +26,7 @@ internal object ShopModerationFenceQueries {
         y: Int,
         z: Int,
     ) {
+        val container = ContainerAddress(world, x, y, z)
         connection.prepareStatement(
             """UPDATE shop_items SET id = id
                WHERE container_world = ? AND container_x = ?
@@ -35,13 +36,13 @@ internal object ShopModerationFenceQueries {
                      WHERE l.stall_id = shop_items.stall_id
                  )""",
         ).use { statement ->
-            statement.setString(1, world)
-            statement.setInt(2, x)
-            statement.setInt(3, y)
-            statement.setInt(4, z)
+            statement.setString(1, container.world)
+            statement.setInt(2, container.x)
+            statement.setInt(3, container.y)
+            statement.setInt(4, container.z)
             statement.executeUpdate()
         }
-        rejectLockedContainer(connection, world, x, y, z)
+        rejectLockedContainer(connection, container)
     }
 
     fun lockOwnerForMutation(connection: Connection, owner: UUID) {
@@ -90,20 +91,28 @@ internal object ShopModerationFenceQueries {
     fun rejectLockedContainer(
         connection: Connection,
         world: String,
-        x: Int,
-        y: Int,
-        z: Int,
+        vararg coordinates: Int,
     ) {
+        require(coordinates.size == CONTAINER_COORDINATE_COUNT) {
+            "Container coordinates must contain x, y, and z"
+        }
+        rejectLockedContainer(
+            connection,
+            ContainerAddress(world, coordinates[0], coordinates[1], coordinates[2]),
+        )
+    }
+
+    private fun rejectLockedContainer(connection: Connection, container: ContainerAddress) {
         connection.prepareStatement(
             """SELECT 1 FROM shop_items s
                JOIN market_moderation_locks l ON l.stall_id = s.stall_id
                WHERE s.container_world = ? AND s.container_x = ?
                  AND s.container_y = ? AND s.container_z = ?""",
         ).use { statement ->
-            statement.setString(1, world)
-            statement.setInt(2, x)
-            statement.setInt(3, y)
-            statement.setInt(4, z)
+            statement.setString(1, container.world)
+            statement.setInt(2, container.x)
+            statement.setInt(3, container.y)
+            statement.setInt(4, container.z)
             statement.executeQuery().use { result ->
                 if (result.next()) {
                     throw MarketModerationConflictException("Container shop is reserved for moderation")
@@ -126,4 +135,8 @@ internal object ShopModerationFenceQueries {
             }
         }
     }
+
+    private data class ContainerAddress(val world: String, val x: Int, val y: Int, val z: Int)
+
+    private const val CONTAINER_COORDINATE_COUNT = 3
 }

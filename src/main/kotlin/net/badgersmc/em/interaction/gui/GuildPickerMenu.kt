@@ -8,6 +8,7 @@ import com.github.stefvanschie.inventoryframework.pane.OutlinePane
 import com.github.stefvanschie.inventoryframework.pane.PaginatedPane
 import com.github.stefvanschie.inventoryframework.pane.Pane
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.GuildTradePolicyService
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.interaction.Menu
@@ -33,22 +34,22 @@ class GuildPickerMenu(
         val pageCount = maxOf(1, (targets.size + PER_PAGE - 1) / PER_PAGE)
         val gui = ChestGui(6, ComponentHolder.of(lang.msg("gui.guildpicker.title")))
         val pages = pickerPages(player, targets, pageCount)
-        gui.addPane(pages)
-        gui.addPane(navBar(player, gui, pages, pageCount))
+        gui.addPane(Slot.fromXY(0, 0), pages)
+        gui.addPane(Slot.fromXY(0, 5), navBar(player, gui, pages, pageCount))
         gui.blockItemTheft()
         gui.show(player)
     }
 
     private fun pickerPages(player: Player, targets: List<GuildProvider.GuildRef>, pageCount: Int): PaginatedPane {
-        val pages = PaginatedPane(0, 0, 9, 5)
+        val pages = PaginatedPane(9, 5)
         for (p in 0 until pageCount) {
-            val pane = OutlinePane(0, 0, 9, 5, Pane.Priority.LOWEST)
+            val pane = OutlinePane(9, 5, Pane.Priority.LOWEST)
             targets.drop(p * PER_PAGE).take(PER_PAGE).forEach { ref ->
                 pane.addItem(GuiItem(named(Material.PAPER, lang.msg("gui.guildpicker.entry", "name" to ref.name))) { ev ->
                     ev.isCancelled = true; pickTarget(player, ref)
                 })
             }
-            pages.addPane(p, pane)
+            pages.addPane(p, Slot.fromXY(0, 0), pane)
         }
         return pages
     }
@@ -65,7 +66,7 @@ class GuildPickerMenu(
     }
 
     private fun navBar(player: Player, gui: ChestGui, pages: PaginatedPane, pageCount: Int): StaticPane {
-        val bar = StaticPane(0, 5, 9, 1)
+        val bar = StaticPane(9, 1)
         bar.addItem(GuiItem(named(Material.ARROW, lang.msg("gui.common.prev"))) { it.isCancelled = true; if (pages.page > 0) { pages.page -= 1; gui.update() } }, 0, 0)
         bar.addItem(GuiItem(named(Material.BARRIER, lang.msg("gui.common.back"))) {
             it.isCancelled = true; GuildTradePolicyMenu(actor, ownerGuildId, policyService, guildProvider, lang).open(player)

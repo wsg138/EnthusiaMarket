@@ -9,9 +9,9 @@ How to build, test, and run EnthusiaMarket locally. Read alongside `tech-stack.m
 
 | Tool | Min | How to verify |
 |---|---|---|
-| JDK | 21 | `java -version` |
+| JDK | 25 | `java -version` |
 | Git | 2.40+ | `git --version` |
-| Paper server | 1.21.x | `paper-1.21.11.jar` for manual test |
+| Paper server | 26.2 | `paper-26.2.jar` for manual test |
 | LuckPerms (optional) | latest | required if testing permission gating |
 | Vault + EssentialsX (or any Vault econ) | 1.7 / latest | required to enable economy paths |
 | LumaGuilds | local build | required for guild stall path (REQ-010) |
@@ -54,7 +54,7 @@ Konsist test enforces layer rules (REQ-101) and runs on every `gradle test`. If 
 1. Build: `./gradlew shadowJar`
 2. Drop jar into `<paper>/plugins/`
 3. Drop hard dependencies: `LumaGuilds.jar`, `WorldGuard.jar`, `Vault.jar` + an economy plugin
-4. Start server: `java -Xmx4G -jar paper-1.21.11.jar nogui`
+4. Start server: `java -Xmx4G -jar paper-26.2.jar nogui`
 5. First boot writes `plugins/EnthusiaMarket/config.yml` (defaults from `src/main/resources/config.yml`)
 6. Stop server, edit config per `docs/config.md`, restart
 

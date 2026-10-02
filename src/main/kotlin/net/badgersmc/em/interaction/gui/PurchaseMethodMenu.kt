@@ -4,6 +4,7 @@ import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHold
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.StallBuyoutService
 import net.badgersmc.em.domain.ports.GuildProvider
 import net.badgersmc.em.domain.stall.StallId
@@ -89,7 +90,7 @@ class PurchaseMethodMenu(
             4, 2,
         )
 
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
         gui.blockItemTheft()
         gui.show(player)
     }

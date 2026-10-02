@@ -10,9 +10,9 @@ import net.badgersmc.em.domain.sign.PurchaseSignRepository
 import net.badgersmc.em.domain.stall.Stall
 import net.badgersmc.em.domain.stall.StallRepository
 import net.badgersmc.em.domain.stall.StallState
-import net.badgersmc.em.interaction.gui.PurchaseMethodMenu
 import net.badgersmc.em.interaction.MenuFactory
 import net.badgersmc.em.interaction.bedrock.BedrockPurchaseMethodForm
+import net.badgersmc.em.interaction.gui.PurchaseMethodMenu
 import net.badgersmc.nexus.annotations.Component
 import net.badgersmc.nexus.i18n.LangService
 import net.kyori.adventure.text.Component as AdventureComponent
@@ -96,34 +96,48 @@ open class PurchaseSignClickListener(
         sign: PurchaseSign,
         stall: Stall,
     ) {
+        if (stall.state in AUCTION_STATES) {
+            showAuction(player, sign)
+            return
+        }
+        routeNonAuction(player, sign, stall)
+    }
+
+    private fun routeNonAuction(
+        player: org.bukkit.entity.Player,
+        sign: PurchaseSign,
+        stall: Stall,
+    ) {
         when (stall.state) {
-            StallState.UNOWNED -> {
-                if (!player.hasPermission("enthusiamarket.stall.buyout")) {
-                    player.sendMessage(lang.msg("purchase_sign.msg.buy_no_permission"))
-                    return
-                }
-                handleBuy(sign.stallId, sign.price, player)
-            }
-            StallState.AUCTIONING, StallState.RE_AUCTIONING, StallState.EMERGENCY_AUCTIONING -> {
-                player.sendMessage(
-                    lang.msg("purchase_sign.msg.auction_live", "stall" to sign.stallId.value)
-                )
-                val auction = auctions.findOpenByStall(sign.stallId)
-                if (auction != null) {
-                    val cmd = "/em bid ${auction.id} "
-                    player.sendMessage(
-                        AdventureComponent.text("  /em bid ", NamedTextColor.GRAY)
-                            .append(AdventureComponent.text(auction.id.value, NamedTextColor.YELLOW)
-                                .clickEvent(ClickEvent.suggestCommand(cmd)))
-                            .append(AdventureComponent.text(" <amount>", NamedTextColor.GRAY))
-                    )
-                }
-            }
+            StallState.UNOWNED -> handleUnowned(player, sign)
             StallState.OWNED, StallState.GRACE ->
                 handleExtension(player.uniqueId, sign.stallId, sign.locationKey, player)
             StallState.MODERATION_HOLD ->
                 player.sendMessage(lang.msg("purchase_sign.msg.moderation_hold"))
+            else -> Unit
         }
+    }
+
+    private fun handleUnowned(player: org.bukkit.entity.Player, sign: PurchaseSign) {
+        if (!player.hasPermission("enthusiamarket.stall.buyout")) {
+            player.sendMessage(lang.msg("purchase_sign.msg.buy_no_permission"))
+            return
+        }
+        handleBuy(sign.stallId, sign.price, player)
+    }
+
+    private fun showAuction(player: org.bukkit.entity.Player, sign: PurchaseSign) {
+        player.sendMessage(lang.msg("purchase_sign.msg.auction_live", "stall" to sign.stallId.value))
+        val auction = auctions.findOpenByStall(sign.stallId) ?: return
+        val cmd = "/em bid ${auction.id} "
+        player.sendMessage(
+            AdventureComponent.text("  /em bid ", NamedTextColor.GRAY)
+                .append(
+                    AdventureComponent.text(auction.id.value, NamedTextColor.YELLOW)
+                        .clickEvent(ClickEvent.suggestCommand(cmd)),
+                )
+                .append(AdventureComponent.text(" <amount>", NamedTextColor.GRAY)),
+        )
     }
 
     private fun handleBuy(stallId: net.badgersmc.em.domain.stall.StallId, price: Long, player: org.bukkit.entity.Player) {
@@ -187,4 +201,12 @@ open class PurchaseSignClickListener(
 
     private fun isSignMaterial(m: Material): Boolean =
         Tag.SIGNS.isTagged(m) || Tag.WALL_SIGNS.isTagged(m)
+
+    private companion object {
+        val AUCTION_STATES = setOf(
+            StallState.AUCTIONING,
+            StallState.RE_AUCTIONING,
+            StallState.EMERGENCY_AUCTIONING,
+        )
+    }
 }
