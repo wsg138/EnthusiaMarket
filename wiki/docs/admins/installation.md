@@ -2,7 +2,7 @@
 title: Installation & config.yml
 audience: admin
 topic: installation
-summary: Install EnthusiaMarket on Paper 1.21.x, drop in dependencies, config overview.
+summary: Install EnthusiaMarket on Paper 26.2, drop in dependencies, config overview.
 keywords: [installation, install, setup, config, config.yml, paper, dependencies]
 related: [config, permissions, integration, release-checklist]
 updated: 2026-06-25
@@ -10,13 +10,13 @@ updated: 2026-06-25
 
 # Installation & config.yml
 
-Install EnthusiaMarket on Paper 1.21.x, drop in dependencies, and walk through the config.
+Install EnthusiaMarket on Paper 26.2, drop in dependencies, and walk through the config.
 
 ## Quick reference
 
 | Dependency | Type | Required | Notes |
 |-----------|------|----------|-------|
-| Paper 1.21.11+ | Server | Yes | API version checked at load |
+| Paper 26.2 | Server | Yes | API version checked at load |
 | WorldGuard 7.x | Plugin | Yes | Stall region management |
 | Vault | Plugin | Yes | Economy abstraction layer |
 | EnthusiaCurrency | Plugin | Yes | Actual Vault economy provider |
@@ -40,7 +40,7 @@ Drop the EnthusiaMarket JAR into `plugins/`, start the server, and it auto-creat
    /version
    ```
 
-   Confirm Paper 1.21.11 or later.
+   Confirm Paper 26.2.
 
 2. **Download dependencies into `plugins/`:**
    - WorldGuard 7.x

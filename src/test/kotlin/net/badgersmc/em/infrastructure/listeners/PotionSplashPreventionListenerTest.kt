@@ -146,7 +146,7 @@ class PotionSplashPreventionListenerTest {
         cause: EntityPotionEffectEvent.Cause,
     ): EntityPotionEffectEvent {
         val entity = mockk<LivingEntity> { every { location } returns location(x, y, z) }
-        return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.ADDED, false)
+        return EntityPotionEffectEvent(entity, null, null, null, cause, EntityPotionEffectEvent.Action.ADDED, false)
     }
 
     private fun clearingEvent(
@@ -154,7 +154,7 @@ class PotionSplashPreventionListenerTest {
         cause: EntityPotionEffectEvent.Cause,
     ): EntityPotionEffectEvent {
         val entity = mockk<LivingEntity> { every { location } returns location(x, y, z) }
-        return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.CLEARED, false)
+        return EntityPotionEffectEvent(entity, null, null, null, cause, EntityPotionEffectEvent.Action.CLEARED, false)
     }
 
     private fun changedEvent(
@@ -162,7 +162,7 @@ class PotionSplashPreventionListenerTest {
         cause: EntityPotionEffectEvent.Cause,
     ): EntityPotionEffectEvent {
         val entity = mockk<LivingEntity> { every { location } returns location(x, y, z) }
-        return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.CHANGED, false)
+        return EntityPotionEffectEvent(entity, null, null, null, cause, EntityPotionEffectEvent.Action.CHANGED, false)
     }
 
     private fun removedEvent(
@@ -170,7 +170,7 @@ class PotionSplashPreventionListenerTest {
         cause: EntityPotionEffectEvent.Cause,
     ): EntityPotionEffectEvent {
         val entity = mockk<LivingEntity> { every { location } returns location(x, y, z) }
-        return EntityPotionEffectEvent(entity, null, null, cause, EntityPotionEffectEvent.Action.REMOVED, false)
+        return EntityPotionEffectEvent(entity, null, null, null, cause, EntityPotionEffectEvent.Action.REMOVED, false)
     }
 
     @Test

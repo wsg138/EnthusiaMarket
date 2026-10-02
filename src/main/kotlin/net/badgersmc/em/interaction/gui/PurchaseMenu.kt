@@ -4,6 +4,7 @@ import com.github.stefvanschie.inventoryframework.adventuresupport.ComponentHold
 import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.ContainerTradeResult
 import net.badgersmc.em.application.ContainerTradeService
 import net.badgersmc.em.application.ItemStackSerializer
@@ -106,7 +107,7 @@ class PurchaseMenu(
         // Shulker box preview button (IS2-12, REQ-298)
         addShulkerPreview(pane, player)
 
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
         if (shop.direction == SignDirection.TRADE) {
             gui.blockTopInventoryExcept(15) // slot 15 = cost placement slot
             gui.setOnClose { event ->
@@ -177,24 +178,27 @@ class PurchaseMenu(
             player.sendMessage(lang.msg("shop.trade.multiplier_capped",
                 "asked" to multiplier, "available" to effectiveMultiplier))
         }
-        var lastResult: ContainerTradeResult = ContainerTradeResult.Success("")
-        var completed = 0
-        var remaining = effectiveMultiplier
-        while (remaining > 0) {
-            val result = when (shop.direction) {
-                SignDirection.SELL -> tradeService.executeSell(shop, player.uniqueId)
-                SignDirection.BUY -> tradeService.executeBuy(shop, player.uniqueId)
-                else -> break
-            }
-            lastResult = result
-            if (result is ContainerTradeResult.Success) {
-                completed++
-                remaining--
-            } else {
-                break
+
+        // Execute all trades in a single batch operation — avoids N separate
+        // inventory transfers, N separate transaction events, and N individual
+        // log lines that compound and can crash the server on large purchases.
+        val result = when (shop.direction) {
+            SignDirection.SELL -> tradeService.executeSellBatch(shop, player.uniqueId, effectiveMultiplier)
+            SignDirection.BUY -> tradeService.executeBuyBatch(shop, player.uniqueId, effectiveMultiplier)
+            else -> return
+        }
+        when (result) {
+            is ContainerTradeResult.Success -> player.sendMessage(
+                lang.msg("shop.trade.success", "message" to result.message),
+            )
+            is ContainerTradeResult.Failure -> player.sendMessage(
+                lang.msg("shop.trade.failure", "reason" to result.reason),
+            )
+            is ContainerTradeResult.CompensationFailed -> {
+                player.sendMessage(lang.msg("shop.trade.compensation_failed", "error" to result.error))
+                player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to result.compensation))
             }
         }
-        reportTradeResult(player, completed, effectiveMultiplier, lastResult)
     }
 
     private fun executeTradeFromSlot(player: Player) {
@@ -241,41 +245,6 @@ class PurchaseMenu(
             topInv.setItem(15, slotItem)
         } else {
             topInv.setItem(15, null)
-        }
-    }
-
-    private fun reportTradeResult(
-        player: Player,
-        completed: Int,
-        total: Int,
-        lastResult: ContainerTradeResult,
-    ) {
-        when {
-            completed == total -> player.sendMessage(
-                lang.msg("shop.trade.success", "message" to (lastResult as ContainerTradeResult.Success).message),
-            )
-            completed > 0 -> reportPartial(player, completed, total, lastResult)
-            else -> reportTotalFailure(player, lastResult)
-        }
-    }
-
-    private fun reportPartial(
-        player: Player,
-        completed: Int,
-        total: Int,
-        lastResult: ContainerTradeResult,
-    ) {
-        when (lastResult) {
-            is ContainerTradeResult.Failure -> player.sendMessage(
-                lang.msg("shop.trade.partial_failure",
-                    "completed" to completed, "total" to total, "reason" to lastResult.reason),
-            )
-            is ContainerTradeResult.CompensationFailed -> {
-                player.sendMessage(lang.msg("shop.trade.partial_compensation",
-                    "completed" to completed, "total" to total, "error" to lastResult.error))
-                player.sendMessage(lang.msg("shop.trade.compensation_note", "compensation" to lastResult.compensation))
-            }
-            else -> {} // unreachable
         }
     }
 

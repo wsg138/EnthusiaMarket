@@ -2,6 +2,7 @@ package net.badgersmc.em.application
 
 import net.badgersmc.em.domain.stall.OwnerType
 import net.badgersmc.em.domain.stall.StallRepository
+import net.badgersmc.em.domain.stall.StallState
 import net.badgersmc.nexus.annotations.Service
 import java.util.UUID
 
@@ -13,7 +14,9 @@ class StallOwnershipCounter(private val stalls: StallRepository) {
 
     fun counts(player: UUID): OwnedCounts {
         val owned = stalls.all().filter {
-            it.owner.type == OwnerType.SOLO && it.owner.id == player.toString()
+            it.owner.type == OwnerType.SOLO &&
+                it.owner.id == player.toString() &&
+                (it.state == StallState.OWNED || it.state == StallState.GRACE)
         }
         return OwnedCounts(total = owned.size, byKind = owned.groupingBy { it.kind }.eachCount())
     }

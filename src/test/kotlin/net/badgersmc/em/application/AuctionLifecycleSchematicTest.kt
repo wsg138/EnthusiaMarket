@@ -90,6 +90,7 @@ class AuctionLifecycleSchematicTest {
 
         val service = AuctionLifecycleService(
             auctionRepo, stallRepo, economy, cfg, limits, sellOffers,
+            mockk<net.badgersmc.em.domain.shop.ShopRepository>(relaxed = true),
             mockk(relaxed = true), mockk(relaxed = true), mockk<IpLimiter>(relaxed = true), schematics,
             mockk(relaxed = true),
         )

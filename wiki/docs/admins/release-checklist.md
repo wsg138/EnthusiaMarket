@@ -16,7 +16,7 @@ Step-by-step deployment guide for admins releasing EnthusiaMarket to production.
 
 | Dependency | Required? | Notes |
 |---|---|---|
-| Paper 1.21.11+ | **Hard** | `/version` to verify |
+| Paper 26.2 | **Hard** | `/version` to verify |
 | WorldGuard 7.x | **Hard** | Stall region management |
 | Vault | **Hard** | Economy abstraction |
 | EnthusiaCurrency | **Hard** | Actual economy provider |
@@ -211,4 +211,4 @@ Player-side:
 - **Bedrock forms not opening**: Floodgate must be loaded. Check console for `[floodgate]` on plugin list.
 - **Shops not working**: Player must own the stall (or be a member). For guild stalls, player needs `MANAGE_SHOPS` guild permission.
 - **Economy disabled**: EnthusiaCurrency must be loaded. Check `/plugins` output.
-- **Plugin won't enable**: All 5 hard dependencies (Paper 1.21.11+, WorldGuard, Vault, EnthusiaCurrency, LumaGuilds) must load BEFORE EnthusiaMarket.
+- **Plugin won't enable**: All 5 hard dependencies (Paper 26.2, WorldGuard, Vault, EnthusiaCurrency, LumaGuilds) must load BEFORE EnthusiaMarket.

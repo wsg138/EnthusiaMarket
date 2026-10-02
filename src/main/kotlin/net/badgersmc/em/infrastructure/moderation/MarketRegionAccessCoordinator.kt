@@ -6,6 +6,7 @@ import net.badgersmc.em.domain.ports.RegionProvider
 import net.enthusia.market.api.moderation.MarketOwnership
 import org.bukkit.Bukkit
 import org.bukkit.plugin.Plugin
+import org.bukkit.scheduler.BukkitTask
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -69,18 +70,25 @@ internal class BukkitMarketRegionAccessCoordinator(
             if (completion.isDone) return@Runnable
             runCatching(action).fold(completion::complete, completion::completeExceptionally)
         })
+        awaitCompletion(completion, task)
+    }
+
+    private fun awaitCompletion(completion: CompletableFuture<Unit>, task: BukkitTask) {
         try {
             completion.get(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         } catch (timeout: TimeoutException) {
-            completion.cancel(false)
-            task.cancel()
+            cancel(completion, task)
             throw IllegalStateException("Timed out waiting for the Market region mutation", timeout)
         } catch (interrupted: InterruptedException) {
-            completion.cancel(false)
-            task.cancel()
+            cancel(completion, task)
             Thread.currentThread().interrupt()
             throw interrupted
         }
+    }
+
+    private fun cancel(completion: CompletableFuture<Unit>, task: BukkitTask) {
+        completion.cancel(false)
+        task.cancel()
     }
 
     private companion object {

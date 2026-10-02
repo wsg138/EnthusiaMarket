@@ -5,6 +5,7 @@ import com.github.stefvanschie.inventoryframework.gui.GuiItem
 import com.github.stefvanschie.inventoryframework.gui.type.ChestGui
 import net.badgersmc.em.interaction.blockItemTheft
 import com.github.stefvanschie.inventoryframework.pane.StaticPane
+import com.github.stefvanschie.inventoryframework.pane.util.Slot
 import net.badgersmc.em.application.ItemStackSerializer
 import net.badgersmc.em.application.ShopManagementService
 import net.badgersmc.em.domain.shop.ShopRepository
@@ -49,7 +50,7 @@ class OwnedShopsMenu(
                 ShopEditMenu(shop, shopRepository, management, lang).open(player)
             }, idx % 9, idx / 9)
         }
-        gui.addPane(pane)
+        gui.addPane(Slot.fromXY(0, 0), pane)
         gui.blockItemTheft()
         gui.show(player)
     }

@@ -75,6 +75,7 @@ class AdminCommands(
     private val playerNameResolver: PlayerNameResolver,
     private val pricing: net.badgersmc.em.application.StallVolumePricingService? = null,
     private val websiteSync: WebsiteSyncService? = null,
+    private val bulkRentExtension: net.badgersmc.em.application.BulkRentExtensionService? = null,
 ) {
     /** Pending `/em sellback` confirmations keyed on (player, stall). */
     private val pendingSellbacks =
@@ -123,6 +124,52 @@ class AdminCommands(
         // rent-config change (e.g. formula → flat) because terms are snapshotted per-stall at import.
         val n = rentResync.resync()
         sender.sendMessage(lang.msg("admin.rent.resync.result", "count" to n))
+    }
+
+    @Subcommand("rent extendall")
+    @Permission("enthusiamarket.admin.rent")
+    fun rentExtendAll(
+        @Context sender: CommandSender,
+        @Arg("duration") duration: String,
+    ) {
+        val parsed = parseBulkRentDuration(duration)
+        if (parsed == null) {
+            sender.sendMessage(
+                lang.msg("admin.rent.extendall.invalid_duration", "duration" to duration)
+            )
+            return
+        }
+
+        val service = bulkRentExtension
+        if (service == null) {
+            sender.sendMessage(lang.msg("admin.rent.extendall.unavailable"))
+            return
+        }
+
+        val report = service.extendAll(parsed, Instant.now())
+        sender.sendMessage(
+            lang.msg(
+                "admin.rent.extendall.result",
+                "duration" to duration,
+                "updated" to report.updated,
+                "recovered" to report.recovered,
+                "skipped" to report.skipped,
+                "failed" to report.failed,
+            )
+        )
+    }
+
+    private fun parseBulkRentDuration(raw: String): java.time.Duration? {
+        val match = BULK_RENT_DURATION.matchEntire(raw) ?: return null
+        val amount = match.groupValues[1].toLongOrNull() ?: return null
+        return runCatching {
+            when (match.groupValues[2]) {
+                "m" -> java.time.Duration.ofMinutes(amount)
+                "h" -> java.time.Duration.ofHours(amount)
+                "d" -> java.time.Duration.ofDays(amount)
+                else -> return null
+            }
+        }.getOrNull()
     }
 
     @Subcommand("pricing preview")
@@ -829,6 +876,8 @@ class AdminCommands(
                 lang.msg("admin.evict.not_found", "stall" to stall)
             is StallEvictionService.Result.NotOwned ->
                 lang.msg("admin.evict.not_owned", "stall" to stall)
+            is StallEvictionService.Result.Blocked ->
+                lang.msg("admin.evict.blocked", "stall" to stall)
         }
         sender.sendMessage(msg)
     }
@@ -979,6 +1028,8 @@ class AdminCommands(
 
 
     internal companion object {
+        private val BULK_RENT_DURATION = Regex("^([1-9][0-9]*)([mhd])$")
+
         const val KEY_WORLD = "world"
         const val KEY_REGION_PREFIX = "region_prefix"
         const val WEBSYNC_PERMISSION = "enthusiamarket.admin.websync"

@@ -47,6 +47,29 @@ class StallTest {
         assertEquals(nextRentAt, awarded.nextRentAt)
     }
 
+    @Test fun `awarding to a successor clears delegated members`() {
+        val previousOwner = UUID.randomUUID()
+        val delegatedMember = UUID.randomUUID()
+        val successor = UUID.randomUUID()
+        val now = Instant.parse("2026-09-29T12:00:00Z")
+        val current = baseStall.copy(
+            state = StallState.OWNED,
+            owner = OwnerRef.solo(previousOwner),
+            ownerSince = now.minusSeconds(86_400),
+            winningBid = 500L,
+            members = setOf(delegatedMember),
+        )
+
+        val awarded = current.awardTo(
+            OwnerRef.solo(successor),
+            winningBid = 750L,
+            at = now,
+            nextRentAt = now.plusSeconds(86_400),
+        )
+
+        assertTrue(awarded.members.isEmpty())
+    }
+
     @Test fun `awarding requires a non-unowned owner`() {
         assertFailsWith<IllegalArgumentException> {
             val now = Instant.now()
