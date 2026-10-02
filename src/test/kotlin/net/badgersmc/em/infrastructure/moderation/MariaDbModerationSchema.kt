@@ -15,9 +15,7 @@ internal fun createV27UpgradeBaseline(dataSource: DataSource, now: Instant) {
 }
 
 private fun dropModerationTables(connection: Connection) {
-    BASELINE_TABLES.forEach { table ->
-        connection.prepareStatement("DROP TABLE IF EXISTS $table").use { it.executeUpdate() }
-    }
+    DROP_BASELINE_TABLE_SQL.forEach { sql -> executeDdl(connection, sql) }
 }
 
 private fun executeDdl(connection: Connection, sql: String) {
@@ -38,15 +36,15 @@ private fun seedMigrationBaseline(connection: Connection, now: Instant) {
     }
 }
 
-private val BASELINE_TABLES = listOf(
-    "market_moderation_locks",
-    "market_moderation_operations",
-    "market_stall_blacklists",
-    "market_player_fences",
-    "shop_transactions",
-    "shop_items",
-    "stalls",
-    "schema_migration",
+private val DROP_BASELINE_TABLE_SQL = listOf(
+    "DROP TABLE IF EXISTS market_moderation_locks",
+    "DROP TABLE IF EXISTS market_moderation_operations",
+    "DROP TABLE IF EXISTS market_stall_blacklists",
+    "DROP TABLE IF EXISTS market_player_fences",
+    "DROP TABLE IF EXISTS shop_transactions",
+    "DROP TABLE IF EXISTS shop_items",
+    "DROP TABLE IF EXISTS stalls",
+    "DROP TABLE IF EXISTS schema_migration",
 )
 
 private const val STALLS_BASELINE_SQL = """CREATE TABLE stalls (

@@ -28,39 +28,39 @@ internal class MarketRestrictionJournal(
     }
 
     fun apply(request: MarketBlacklistRequest): MarketBlacklistResult =
-        blacklistTransaction { connection -> apply(connection, request) }
+        dataSource.marketBlacklistTransaction { connection -> apply(connection, request) }
 
     fun remove(removal: MarketBlacklistRemoval): MarketBlacklistResult =
-        blacklistTransaction { connection -> remove(connection, removal) }
+        dataSource.marketBlacklistTransaction { connection -> remove(connection, removal) }
 
     private fun remove(connection: Connection, removal: MarketBlacklistRemoval): MarketBlacklistResult {
         claimRestrictionMutation(connection, removal.targetId())
         val current = connection.readMarketBlacklist(removal.targetId())
         removalPrecondition(current, removal)?.let { return it }
         if (!connection.markMarketBlacklistRemoved(removal, clock.millis())) {
-            return result(
+            return marketBlacklistResult(
                 MarketBlacklistResult.Status.CONFLICT,
                 connection.readMarketBlacklist(removal.targetId()),
                 "Market blacklist changed concurrently",
             )
         }
         val removed = checkNotNull(connection.readMarketBlacklist(removal.targetId()))
-        return result(MarketBlacklistResult.Status.REMOVED, removed, "Market blacklist removed")
+        return marketBlacklistResult(MarketBlacklistResult.Status.REMOVED, removed, "Market blacklist removed")
     }
 
     private fun removalPrecondition(
         current: StallBlacklistState?,
         removal: MarketBlacklistRemoval,
     ): MarketBlacklistResult? = when {
-        current == null -> result(
+        current == null -> marketBlacklistResult(
             MarketBlacklistResult.Status.REJECTED,
             null,
             "Player does not have a market blacklist record",
         )
         current.operationId() == removal.operationId() && current.status() == StallBlacklistState.Status.REMOVED ->
-            result(MarketBlacklistResult.Status.REPLAYED, current, "Market blacklist was already removed")
+            marketBlacklistResult(MarketBlacklistResult.Status.REPLAYED, current, "Market blacklist was already removed")
         current.caseId() != removal.caseId() || current.revision() != removal.expectedRevision() ->
-            result(MarketBlacklistResult.Status.CONFLICT, current, "Market blacklist case or revision changed")
+            marketBlacklistResult(MarketBlacklistResult.Status.CONFLICT, current, "Market blacklist case or revision changed")
         else -> null
     }
 
@@ -138,7 +138,7 @@ internal class MarketRestrictionJournal(
         }
         connection.writeMarketBlacklist(blacklistWrite(request, current))
         val applied = checkNotNull(connection.readMarketBlacklist(request.targetId()))
-        return result(MarketBlacklistResult.Status.APPLIED, applied, "Market blacklist applied")
+        return marketBlacklistResult(MarketBlacklistResult.Status.APPLIED, applied, "Market blacklist applied")
     }
 
     private fun blacklistWrite(
@@ -161,7 +161,7 @@ internal class MarketRestrictionJournal(
         if (current.caseId() != request.caseId() || current.expiresAt() != request.expiresAt()) {
             throw MarketModerationConflict("Operation id belongs to a different blacklist request")
         }
-        return result(MarketBlacklistResult.Status.REPLAYED, current, "Market blacklist already applied")
+        return marketBlacklistResult(MarketBlacklistResult.Status.REPLAYED, current, "Market blacklist already applied")
     }
 
     private fun claimRestrictionMutation(connection: Connection, playerId: UUID) {
@@ -198,20 +198,5 @@ internal class MarketRestrictionJournal(
             revision() == snapshot.revision &&
             updatedAt().toEpochMilli() == snapshot.updatedAt
 
-    private fun result(
-        status: MarketBlacklistResult.Status,
-        blacklist: StallBlacklistState?,
-        detail: String,
-    ): MarketBlacklistResult = MarketBlacklistResult(status, Optional.ofNullable(blacklist), detail)
 
-    private inline fun blacklistTransaction(
-        block: (Connection) -> MarketBlacklistResult,
-    ): MarketBlacklistResult = try {
-        dataSource.inTransaction(block)
-    } catch (conflict: MarketModerationConflict) {
-        result(MarketBlacklistResult.Status.CONFLICT, null, conflict.message ?: "Blacklist conflict")
-    } catch (failure: SQLException) {
-        if (!failure.isTransactionContention()) throw failure
-        result(MarketBlacklistResult.Status.CONFLICT, null, "Market blacklist changed concurrently")
-    }
 }

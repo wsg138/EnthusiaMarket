@@ -11,15 +11,6 @@ import java.time.Instant
 import java.util.Optional
 import java.util.UUID
 
-internal data class BlacklistWrite(
-    val operationId: UUID,
-    val playerId: UUID,
-    val caseId: String,
-    val expiresAt: Long?,
-    val revision: Long,
-    val updatedAt: Long,
-)
-
 internal fun Connection.readMarketBlacklist(playerId: UUID): StallBlacklistState? =
     prepareStatement("SELECT * FROM market_stall_blacklists WHERE player_uuid = ?").use { statement ->
         statement.setString(1, playerId.toString())
@@ -140,14 +131,24 @@ internal fun Connection.releaseMarketPlayerReservation(operation: MarketOperatio
 
 private fun PreparedStatement.executeBlacklistWrite() {
     try {
-        if (executeUpdate() != 1) throw MarketModerationConflict("Market blacklist changed concurrently")
+        requireSingleBlacklistWrite(executeUpdate())
     } catch (failure: SQLException) {
-        if (failure.isDuplicateKeyViolation() || failure.isTransactionContention()) {
-            throw MarketModerationConflict("Market blacklist changed concurrently")
-        }
-        throw failure
+        throw failure.toBlacklistWriteFailure()
     }
 }
+
+private fun requireSingleBlacklistWrite(updated: Int) {
+    if (updated != 1) {
+        throw MarketModerationConflict("Market blacklist changed concurrently")
+    }
+}
+
+private fun SQLException.toBlacklistWriteFailure(): Throwable =
+    if (isDuplicateKeyViolation() || isTransactionContention()) {
+        MarketModerationConflict("Market blacklist changed concurrently")
+    } else {
+        this
+    }
 
 private fun PreparedStatement.setNullableLong(index: Int, value: Long?) {
     if (value == null) setNull(index, Types.BIGINT) else setLong(index, value)
