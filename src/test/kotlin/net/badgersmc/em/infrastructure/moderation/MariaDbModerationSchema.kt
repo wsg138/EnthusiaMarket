@@ -7,19 +7,25 @@ import javax.sql.DataSource
 internal fun createV27UpgradeBaseline(dataSource: DataSource, now: Instant) {
     dataSource.connection.use { connection ->
         dropModerationTables(connection)
-        executeDdl(connection, STALLS_BASELINE_SQL)
-        executeDdl(connection, SHOPS_BASELINE_SQL)
-        executeDdl(connection, MIGRATION_BASELINE_SQL)
+        connection.prepareStatement(STALLS_BASELINE_SQL).use { it.executeUpdate() }
+        connection.prepareStatement(SHOPS_BASELINE_SQL).use { it.executeUpdate() }
+        connection.prepareStatement(MIGRATION_BASELINE_SQL).use { it.executeUpdate() }
         seedMigrationBaseline(connection, now)
     }
 }
 
 private fun dropModerationTables(connection: Connection) {
-    DROP_BASELINE_TABLE_SQL.forEach { sql -> executeDdl(connection, sql) }
-}
-
-private fun executeDdl(connection: Connection, sql: String) {
-    connection.prepareStatement(sql).use { it.executeUpdate() }
+    connection.createStatement().use { statement ->
+        statement.addBatch("DROP TABLE IF EXISTS market_moderation_locks")
+        statement.addBatch("DROP TABLE IF EXISTS market_moderation_operations")
+        statement.addBatch("DROP TABLE IF EXISTS market_stall_blacklists")
+        statement.addBatch("DROP TABLE IF EXISTS market_player_fences")
+        statement.addBatch("DROP TABLE IF EXISTS shop_transactions")
+        statement.addBatch("DROP TABLE IF EXISTS shop_items")
+        statement.addBatch("DROP TABLE IF EXISTS stalls")
+        statement.addBatch("DROP TABLE IF EXISTS schema_migration")
+        statement.executeBatch()
+    }
 }
 
 private fun seedMigrationBaseline(connection: Connection, now: Instant) {
@@ -36,16 +42,6 @@ private fun seedMigrationBaseline(connection: Connection, now: Instant) {
     }
 }
 
-private val DROP_BASELINE_TABLE_SQL = listOf(
-    "DROP TABLE IF EXISTS market_moderation_locks",
-    "DROP TABLE IF EXISTS market_moderation_operations",
-    "DROP TABLE IF EXISTS market_stall_blacklists",
-    "DROP TABLE IF EXISTS market_player_fences",
-    "DROP TABLE IF EXISTS shop_transactions",
-    "DROP TABLE IF EXISTS shop_items",
-    "DROP TABLE IF EXISTS stalls",
-    "DROP TABLE IF EXISTS schema_migration",
-)
 
 private const val STALLS_BASELINE_SQL = """CREATE TABLE stalls (
     id VARCHAR(128) PRIMARY KEY,
