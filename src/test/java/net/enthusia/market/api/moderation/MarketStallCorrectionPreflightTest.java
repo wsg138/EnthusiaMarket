@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
 class MarketStallCorrectionPreflightTest {
@@ -89,6 +90,18 @@ class MarketStallCorrectionPreflightTest {
                 4L, false, Optional.empty()
         );
         assertEquals(grace, select("surplus", 4L, List.of(grace)).stall());
+    }
+
+    @Test
+    void refusesOversizedProviderSnapshotInsteadOfSelectingFromIncompleteInventory() {
+        // The provider's findStalls() refuses any inventory above 100.
+        // Standalone preflight must not silently accept a fabricated 101-row list.
+        List<MarketStallRecord> impossible = IntStream.range(0, 101)
+                .mapToObj(index -> stall("s-" + index, SUBJECT, 1L, false))
+                .toList();
+        assertThrows(IllegalStateException.class, () -> select("s-0", 1L, impossible));
+        // A complete, correctly bounded 100-row list can still name one exact stall.
+        assertEquals("s-99", select("s-99", 1L, impossible.subList(0, 100)).stall().id());
     }
 
     @Test
