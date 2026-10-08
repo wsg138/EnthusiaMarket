@@ -3,6 +3,7 @@ package net.enthusia.market.api.moderation;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,7 +16,7 @@ class MarketStallCorrectionPreflightTest {
 
     private static MarketStallRecord stall(String id, UUID owner, long revision, boolean locked) {
         return new MarketStallRecord(
-                id, "world", "OPEN",
+                id, "world", "OWNED",
                 new MarketOwnership(MarketOwnership.Type.SOLO, Optional.of(owner.toString())),
                 revision, locked, Optional.empty()
         );
@@ -45,7 +46,7 @@ class MarketStallCorrectionPreflightTest {
         assertThrows(IllegalArgumentException.class, () ->
                 select("surplus", 1L, List.of(stall("surplus", OTHER, 1L, false))));
         MarketStallRecord guild = new MarketStallRecord(
-                "surplus", "world", "OPEN",
+                "surplus", "world", "OWNED",
                 new MarketOwnership(MarketOwnership.Type.GUILD, Optional.of("guild-1")),
                 1L, false, Optional.empty()
         );
@@ -64,6 +65,30 @@ class MarketStallCorrectionPreflightTest {
         assertThrows(IllegalStateException.class, () ->
                 select("surplus", 4L, List.of(stall("surplus", SUBJECT, 4L, true))));
         assertThrows(IllegalStateException.class, () -> select("surplus", 4L, List.of()));
+    }
+
+    @Test
+    void refusesHeldOrTransferringStallsEvenIfLockFlagIsMissing() {
+        for (String state : List.of("MODERATION_HOLD", "RE_AUCTIONING", "UNOWNED", "AUCTIONING")) {
+            MarketStallRecord stalled = new MarketStallRecord(
+                    "surplus", "world", state,
+                    new MarketOwnership(MarketOwnership.Type.SOLO, Optional.of(SUBJECT.toString())),
+                    4L, false, Optional.empty()
+            );
+            assertThrows(IllegalStateException.class, () -> select("surplus", 4L, List.of(stalled)));
+        }
+        MarketStallRecord pendingReview = new MarketStallRecord(
+                "surplus", "world", "OWNED",
+                new MarketOwnership(MarketOwnership.Type.SOLO, Optional.of(SUBJECT.toString())),
+                4L, false, Optional.of(Instant.parse("2026-10-08T17:00:00Z"))
+        );
+        assertThrows(IllegalStateException.class, () -> select("surplus", 4L, List.of(pendingReview)));
+        MarketStallRecord grace = new MarketStallRecord(
+                "surplus", "world", "GRACE",
+                new MarketOwnership(MarketOwnership.Type.SOLO, Optional.of(SUBJECT.toString())),
+                4L, false, Optional.empty()
+        );
+        assertEquals(grace, select("surplus", 4L, List.of(grace)).stall());
     }
 
     @Test
