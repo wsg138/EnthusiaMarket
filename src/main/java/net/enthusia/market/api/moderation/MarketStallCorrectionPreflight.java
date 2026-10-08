@@ -47,7 +47,10 @@ public final class MarketStallCorrectionPreflight {
         if (!expectedWorld.equals(selected.world()) || expectedRevision != selected.revision()) {
             throw new IllegalStateException("Selected stall changed since the observed state");
         }
-        if (selected.moderationLocked()) {
+        if (!"OWNED".equals(selected.state()) && !"GRACE".equals(selected.state())) {
+            throw new IllegalStateException("Selected stall is not in a player-owned market state");
+        }
+        if (selected.moderationLocked() || selected.reviewDueAt().isPresent()) {
             throw new IllegalStateException("Selected stall is reserved by another moderation operation");
         }
         return new Selection(operationId, subjectId, caseId, selected);
