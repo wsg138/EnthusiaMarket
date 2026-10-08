@@ -14,6 +14,8 @@ import java.util.UUID;
  * ownership and revision checks inside its own durable transaction.</p>
  */
 public final class MarketStallCorrectionPreflight {
+    // Must match the upper bound on provider-owned findStalls() results.
+    private static final int MAXIMUM_STALLS_PER_PLAYER = 100;
     private MarketStallCorrectionPreflight() {
     }
 
@@ -42,6 +44,9 @@ public final class MarketStallCorrectionPreflight {
             throw new IllegalArgumentException("expected stall revision cannot be negative");
         }
         Objects.requireNonNull(currentStalls, "currentStalls");
+        if (currentStalls.size() > MAXIMUM_STALLS_PER_PLAYER) {
+            throw new IllegalStateException("Provider stall snapshot exceeds the verified player limit");
+        }
 
         MarketStallRecord selected = locateExactOwnedStall(subjectId, stallId, currentStalls);
         if (!expectedWorld.equals(selected.world()) || expectedRevision != selected.revision()) {
