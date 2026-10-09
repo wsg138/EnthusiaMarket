@@ -19,19 +19,32 @@ class CanonicalMarketMap private constructor(
     val stallCount: Int get() = stalls.size
 
     fun validate(): List<String> {
-        val expected = (1..stallCount).map { "stall$it" }.toSet()
         val errors = mutableListOf<String>()
-        if (stalls.keys != expected) errors += "canonical_ids"
-        if (stalls.size != stallCount || provenance.recordCount != stallCount) errors += "canonical_count"
-        if (provenance.mapperCommit != MAPPER_COMMIT || provenance.sourceSha256 != SOURCE_SHA256 ||
-            provenance.approvedPolygonFingerprint != POLYGON_FINGERPRINT
-        ) errors += "canonical_provenance"
-        if (stalls.values.any { !it.buildingId.matches(Regex("building-[1-9][0-9]*")) || it.floor !in -64..1024 }) {
-            errors += "canonical_values"
-        }
-        if (!stalls.containsKey("stall60") || !stalls.containsKey("stall62")) errors += "canonical_duplicate_keys"
+        if (!hasExpectedIds()) errors += "canonical_ids"
+        if (!hasExpectedCount()) errors += "canonical_count"
+        if (!hasExpectedProvenance()) errors += "canonical_provenance"
+        if (!hasValidValues()) errors += "canonical_values"
+        if (!hasDuplicateSourceKeys()) errors += "canonical_duplicate_keys"
         return errors
     }
+
+    private fun hasExpectedIds(): Boolean =
+        stalls.keys == (1..stallCount).map { "stall$it" }.toSet()
+
+    private fun hasExpectedCount(): Boolean = provenance.recordCount == stallCount
+
+    private fun hasExpectedProvenance(): Boolean =
+        provenance.mapperCommit == MAPPER_COMMIT &&
+            provenance.sourceSha256 == SOURCE_SHA256 &&
+            provenance.approvedPolygonFingerprint == POLYGON_FINGERPRINT
+
+    private fun hasValidValues(): Boolean = stalls.values.all {
+        it.buildingId.matches(Regex("building-[1-9][0-9]*")) && it.floor in -64..1024
+    }
+
+    private fun hasDuplicateSourceKeys(): Boolean =
+        stalls.containsKey("stall60") && stalls.containsKey("stall62")
+
 
     companion object {
         const val MAPPER_COMMIT = "f35e53c22d30191546330ba84bcefd839cc65ee7"

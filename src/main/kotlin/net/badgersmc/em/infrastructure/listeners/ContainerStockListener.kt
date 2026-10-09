@@ -73,14 +73,23 @@ class ContainerStockListener(
 
     /** Recompute stock for a batch of shops and flush on cycle completion. */
     fun refreshBatch(batchSize: Int = 50) {
-        // Only re-query the full shop list at cycle start — not every tick.
-        // With 200-300 shops, this cuts DB queries from 20/s to ~0.25/s.
-        if (cachedShops.isEmpty() || cursor == 0) {
-            cachedShops = shopRepository.all().toList()
-        }
+        refreshCachedShops()
         val shops = cachedShops
         if (shops.isEmpty()) return
         val end = (cursor + batchSize).coerceAtMost(shops.size)
+        refreshRange(shops, end)
+        cursor = if (end >= shops.size) 0 else end
+        if (cursor == 0) flushDirtyStock()
+    }
+
+    private fun refreshCachedShops() {
+        if (cachedShops.isEmpty() || cursor == 0) {
+            cachedShops = shopRepository.all().toList()
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun refreshRange(shops: List<Shop>, end: Int) {
         for (i in cursor until end) {
             try {
                 val shop = shops[i]
@@ -90,8 +99,6 @@ class ContainerStockListener(
                 log.warning("Stock refresh failed for shop ${shops[i].id}: ${e.message}")
             }
         }
-        cursor = if (end >= shops.size) 0 else end
-        if (cursor == 0) flushDirtyStock()  // full cycle complete → persist
     }
 
     /** Recompute stock for every shop whose container chunk is loaded (admin resync). */

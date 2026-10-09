@@ -44,29 +44,42 @@ class ShopAuditScheduler(
     private fun tick() {
         val all = shops.all()
         if (all.isEmpty()) return
-        var processed = 0
+        logSweep(auditBatch(all, minOf(config.shopAudit.maxPerTick, all.size)))
+    }
+
+    private data class SweepResult(
+        val processed: Int,
+        val removed: Int,
+        val skips: List<String>,
+    )
+
+    private fun auditBatch(
+        all: List<net.badgersmc.em.domain.shop.Shop>,
+        max: Int,
+    ): SweepResult {
         var removed = 0
         val skips = mutableListOf<String>()
-        // Cap at the list size so a tick never re-audits the same shop when
-        // there are fewer shops than maxPerTick. The cursor still advances
-        // across ticks, so over time every shop is swept.
-        val max = minOf(config.shopAudit.maxPerTick, all.size)
-        while (processed < max) {
+        repeat(max) {
             if (cursor >= all.size) cursor = 0
-            val shop = all[cursor]
-            cursor++
-            processed++
-            val decision = auditOne(shop)
-            if (decision == Decision.REMOVED) removed++ else if (decision == Decision.SKIPPED) {
-                skips.add(shop.id.toString())
+            val shop = all[cursor++]
+            when (auditOne(shop)) {
+                Decision.REMOVED -> removed++
+                Decision.SKIPPED -> skips.add(shop.id.toString())
+                Decision.KEPT -> Unit
             }
         }
-        if (removed > 0 || skips.isNotEmpty()) {
-            plugin.logger.info(
-                "[audit] sweep: $processed checked, $removed removed" +
-                if (skips.isNotEmpty()) ", ${skips.size} skipped (unloaded chunks: ${skips.take(3).joinToString()})" else ""
-            )
-        }
+        return SweepResult(max, removed, skips)
+    }
+
+    private fun logSweep(result: SweepResult) {
+        if (result.removed == 0 && result.skips.isEmpty()) return
+        val skipped = if (result.skips.isEmpty()) "" else
+            ", ${result.skips.size} skipped " +
+                "(unloaded chunks: ${result.skips.take(3).joinToString()})"
+        plugin.logger.info(
+            "[audit] sweep: ${result.processed} checked, " +
+                "${result.removed} removed$skipped"
+        )
     }
 
     private enum class Decision { KEPT, REMOVED, SKIPPED }
