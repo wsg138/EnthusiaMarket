@@ -15,3 +15,7 @@
 - Market GitHub releases trigger from merges to `main`. **Do not merge or deploy without owner authorization and a release-impact review.**
 
 No production changes, and no Policy v2 activation.
+
+## CI verification
+
+The Market build workflow runs only when a pull request targets `main`. The stacked pull request may temporarily target `main` to validate its complete head, including base PR #15; it must be restored to the preflight branch for a focused review. This does not authorize merging or releasing either PR.
