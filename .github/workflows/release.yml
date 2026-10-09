@@ -42,24 +42,20 @@ jobs:
           echo "Latest tag: ${LATEST:-none}, bumping to v$NEXT"
           echo "version=$NEXT" >> "$GITHUB_OUTPUT"
 
-      - name: Download latest LumaGuilds release
+      - name: Fetch tested, checksum-pinned LumaGuilds dependency
         env:
-          GH_TOKEN: ${{ github.token }}
+          LUMAGUILDS_VERSION: "2.1.24"
+          LUMAGUILDS_SHA256: "54ad645587f2ce895738eff3ee05123eb19e5687d80fa6d657aa3092031004c2"
         run: |
+          set -Eeuo pipefail
           mkdir -p libs
-          LG_RELEASE=$(curl -sS -H "Authorization: token $GH_TOKEN" \
-            https://api.github.com/repos/BadgersMC/LumaGuilds/releases/latest)
-          LG_ASSET_URL=$(echo "$LG_RELEASE" | python3 -c "
-          import sys, json
-          r = json.load(sys.stdin)
-          if 'assets' not in r:
-              print(f'ERROR: bad API response: {json.dumps(r)[:200]}', file=sys.stderr)
-              sys.exit(1)
-          print(next(a['browser_download_url'] for a in r['assets'] if a['name'].endswith('.jar')))
-          ")
-          echo "Downloading LumaGuilds from $LG_ASSET_URL"
-          curl -sSL -o libs/LumaGuilds.jar "$LG_ASSET_URL"
-          ls -lh libs/LumaGuilds.jar
+          # Match build.yml: do not silently compile against an incompatible
+          # new upstream release (the latest JAR carries Kotlin 2.3 metadata).
+          curl --fail --location --retry 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 300 \
+            --output libs/LumaGuilds.jar \
+            "https://github.com/BadgersMC/LumaGuilds/releases/download/v${LUMAGUILDS_VERSION}/LumaGuilds-${LUMAGUILDS_VERSION}.jar"
+          echo "${LUMAGUILDS_SHA256}  libs/LumaGuilds.jar" | sha256sum --check --strict
 
       - name: Build shadowJar
         env:
